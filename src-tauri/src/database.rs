@@ -1,0 +1,842 @@
+use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+/// Goal metric types
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum GoalMetric {
+    Networth,
+    Kills,
+    LastHits,
+    Level,
+}
+
+impl GoalMetric {
+    fn to_string(&self) -> &'static str {
+        match self {
+            GoalMetric::Networth => "networth",
+            GoalMetric::Kills => "kills",
+            GoalMetric::LastHits => "last_hits",
+            GoalMetric::Level => "level",
+        }
+    }
+
+    fn from_string(s: &str) -> Option<Self> {
+        match s {
+            "networth" => Some(GoalMetric::Networth),
+            "kills" => Some(GoalMetric::Kills),
+            "last_hits" => Some(GoalMetric::LastHits),
+            "level" => Some(GoalMetric::Level),
+            _ => None,
+        }
+    }
+}
+
+/// Game mode for goals (Ranked or Turbo)
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum GoalGameMode {
+    Ranked,
+    Turbo,
+}
+
+impl GoalGameMode {
+    fn to_string(&self) -> &'static str {
+        match self {
+            GoalGameMode::Ranked => "ranked",
+            GoalGameMode::Turbo => "turbo",
+        }
+    }
+
+    fn from_string(s: &str) -> Option<Self> {
+        match s {
+            "ranked" => Some(GoalGameMode::Ranked),
+            "turbo" => Some(GoalGameMode::Turbo),
+            _ => None,
+        }
+    }
+}
+
+/// Represents a performance goal
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Goal {
+    pub id: i64,
+    pub hero_id: Option<i32>,  // None means "any hero"
+    pub metric: GoalMetric,
+    pub target_value: i32,
+    pub target_time_minutes: i32,
+    pub game_mode: GoalGameMode,
+    pub created_at: i64,
+}
+
+/// Input for creating a new goal (without id and created_at)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NewGoal {
+    pub hero_id: Option<i32>,
+    pub metric: GoalMetric,
+    pub target_value: i32,
+    pub target_time_minutes: i32,
+    pub game_mode: GoalGameMode,
+}
+
+/// Match processing state
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum MatchState {
+    Unparsed,
+    Parsing,
+    Parsed,
+    Failed,
+}
+
+impl MatchState {
+    fn to_string(&self) -> &'static str {
+        match self {
+            MatchState::Unparsed => "unparsed",
+            MatchState::Parsing => "parsing",
+            MatchState::Parsed => "parsed",
+            MatchState::Failed => "failed",
+        }
+    }
+
+    fn from_string(s: &str) -> Self {
+        match s {
+            "parsing" => MatchState::Parsing,
+            "parsed" => MatchState::Parsed,
+            "failed" => MatchState::Failed,
+            _ => MatchState::Unparsed,
+        }
+    }
+}
+
+/// Represents a Dota 2 match from OpenDota API
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Match {
+    pub match_id: i64,
+    pub hero_id: i32,
+    pub start_time: i64,
+    pub duration: i32,
+    pub game_mode: i32,
+    pub lobby_type: i32,
+    pub radiant_win: bool,
+    pub player_slot: i32,
+    pub kills: i32,
+    pub deaths: i32,
+    pub assists: i32,
+    pub xp_per_min: i32,
+    pub gold_per_min: i32,
+    pub last_hits: i32,
+    pub denies: i32,
+    pub hero_damage: i32,
+    pub tower_damage: i32,
+    pub hero_healing: i32,
+    pub parse_state: MatchState,
+}
+
+impl Match {
+    /// Determine if the player won this match
+    pub fn is_win(&self) -> bool {
+        let is_radiant = self.player_slot < 128;
+        (is_radiant && self.radiant_win) || (!is_radiant && !self.radiant_win)
+    }
+}
+
+/// Get the path to the database file in the AppData directory
+fn get_db_path() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|mut path| {
+        path.push("DotaKeeper");
+        path.push("dota_keeper.db");
+        path
+    })
+}
+
+/// Initialize the database, creating tables if they don't exist
+pub fn init_db() -> Result<Connection, String> {
+    let path = get_db_path().ok_or_else(|| "Could not determine database directory".to_string())?;
+
+    // Create the directory if it doesn't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create database directory: {}", e))?;
+    }
+
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    // Create the matches table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS matches (
+            match_id INTEGER PRIMARY KEY,
+            hero_id INTEGER NOT NULL,
+            start_time INTEGER NOT NULL,
+            duration INTEGER NOT NULL,
+            game_mode INTEGER NOT NULL,
+            lobby_type INTEGER NOT NULL,
+            radiant_win INTEGER NOT NULL,
+            player_slot INTEGER NOT NULL,
+            kills INTEGER NOT NULL,
+            deaths INTEGER NOT NULL,
+            assists INTEGER NOT NULL,
+            xp_per_min INTEGER NOT NULL,
+            gold_per_min INTEGER NOT NULL,
+            last_hits INTEGER NOT NULL,
+            denies INTEGER NOT NULL,
+            hero_damage INTEGER NOT NULL,
+            tower_damage INTEGER NOT NULL,
+            hero_healing INTEGER NOT NULL,
+            parse_state TEXT NOT NULL DEFAULT 'unparsed'
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create matches table: {}", e))?;
+
+    // Add parse_state column if it doesn't exist (for existing databases)
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN parse_state TEXT NOT NULL DEFAULT 'unparsed'",
+        [],
+    );
+
+    // Create the goal_progress table for storing time-based metrics
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS goal_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            time_minutes INTEGER NOT NULL,
+            last_hits INTEGER NOT NULL,
+            denies INTEGER NOT NULL,
+            FOREIGN KEY (match_id) REFERENCES matches(match_id),
+            UNIQUE(match_id, time_minutes)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create goal_progress table: {}", e))?;
+
+    // Create the match_cs table for storing per-minute CS data
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS match_cs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            minute INTEGER NOT NULL,
+            last_hits INTEGER NOT NULL,
+            denies INTEGER NOT NULL,
+            FOREIGN KEY (match_id) REFERENCES matches(match_id),
+            UNIQUE(match_id, minute)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create match_cs table: {}", e))?;
+
+    // Create the goals table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS goals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hero_id INTEGER,
+            metric TEXT NOT NULL,
+            target_value INTEGER NOT NULL,
+            target_time_minutes INTEGER NOT NULL,
+            game_mode TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create goals table: {}", e))?;
+
+    Ok(conn)
+}
+
+/// Check if a match already exists in the database
+pub fn match_exists(conn: &Connection, match_id: i64) -> Result<bool, String> {
+    let count: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM matches WHERE match_id = ?1",
+            params![match_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to check if match exists: {}", e))?;
+
+    Ok(count > 0)
+}
+
+/// Insert a match into the database
+pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO matches (
+            match_id, hero_id, start_time, duration, game_mode, lobby_type,
+            radiant_win, player_slot, kills, deaths, assists, xp_per_min,
+            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+        params![
+            m.match_id,
+            m.hero_id,
+            m.start_time,
+            m.duration,
+            m.game_mode,
+            m.lobby_type,
+            m.radiant_win as i32,
+            m.player_slot,
+            m.kills,
+            m.deaths,
+            m.assists,
+            m.xp_per_min,
+            m.gold_per_min,
+            m.last_hits,
+            m.denies,
+            m.hero_damage,
+            m.tower_damage,
+            m.hero_healing,
+            m.parse_state.to_string(),
+        ],
+    ).map_err(|e| format!("Failed to insert match: {}", e))?;
+
+    Ok(())
+}
+
+/// Get all matches from the database, ordered by start_time descending
+pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
+                    radiant_win, player_slot, kills, deaths, assists, xp_per_min,
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+             FROM matches ORDER BY start_time DESC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let matches = stmt
+        .query_map([], |row| {
+            let parse_state_str: String = row.get(18).unwrap_or_else(|_| "unparsed".to_string());
+            Ok(Match {
+                match_id: row.get(0)?,
+                hero_id: row.get(1)?,
+                start_time: row.get(2)?,
+                duration: row.get(3)?,
+                game_mode: row.get(4)?,
+                lobby_type: row.get(5)?,
+                radiant_win: row.get::<_, i32>(6)? != 0,
+                player_slot: row.get(7)?,
+                kills: row.get(8)?,
+                deaths: row.get(9)?,
+                assists: row.get(10)?,
+                xp_per_min: row.get(11)?,
+                gold_per_min: row.get(12)?,
+                last_hits: row.get(13)?,
+                denies: row.get(14)?,
+                hero_damage: row.get(15)?,
+                tower_damage: row.get(16)?,
+                hero_healing: row.get(17)?,
+                parse_state: MatchState::from_string(&parse_state_str),
+            })
+        })
+        .map_err(|e| format!("Failed to query matches: {}", e))?;
+
+    let mut result = Vec::new();
+    for m in matches {
+        result.push(m.map_err(|e| format!("Failed to read match: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+/// Insert a new goal into the database
+pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get current time: {}", e))?
+        .as_secs() as i64;
+
+    conn.execute(
+        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            goal.hero_id,
+            goal.metric.to_string(),
+            goal.target_value,
+            goal.target_time_minutes,
+            goal.game_mode.to_string(),
+            now,
+        ],
+    ).map_err(|e| format!("Failed to insert goal: {}", e))?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok(Goal {
+        id,
+        hero_id: goal.hero_id,
+        metric: goal.metric.clone(),
+        target_value: goal.target_value,
+        target_time_minutes: goal.target_time_minutes,
+        game_mode: goal.game_mode.clone(),
+        created_at: now,
+    })
+}
+
+/// Get all goals from the database
+pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at
+             FROM goals ORDER BY created_at DESC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let goals = stmt
+        .query_map([], |row| {
+            let metric_str: String = row.get(2)?;
+            let game_mode_str: String = row.get(5)?;
+            Ok(Goal {
+                id: row.get(0)?,
+                hero_id: row.get(1)?,
+                metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
+                target_value: row.get(3)?,
+                target_time_minutes: row.get(4)?,
+                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query goals: {}", e))?;
+
+    let mut result = Vec::new();
+    for g in goals {
+        result.push(g.map_err(|e| format!("Failed to read goal: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+/// Update an existing goal
+pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
+    conn.execute(
+        "UPDATE goals SET hero_id = ?1, metric = ?2, target_value = ?3,
+         target_time_minutes = ?4, game_mode = ?5 WHERE id = ?6",
+        params![
+            goal.hero_id,
+            goal.metric.to_string(),
+            goal.target_value,
+            goal.target_time_minutes,
+            goal.game_mode.to_string(),
+            goal.id,
+        ],
+    ).map_err(|e| format!("Failed to update goal: {}", e))?;
+
+    Ok(())
+}
+
+/// Delete a goal by ID
+pub fn delete_goal(conn: &Connection, goal_id: i64) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM goals WHERE id = ?1",
+        params![goal_id],
+    ).map_err(|e| format!("Failed to delete goal: {}", e))?;
+
+    Ok(())
+}
+
+/// Result of evaluating a goal against a match
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GoalEvaluation {
+    pub goal: Goal,
+    pub achieved: bool,
+    pub actual_value: i32,
+}
+
+/// Match with goal evaluation summary
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchWithGoals {
+    #[serde(flatten)]
+    pub match_data: Match,
+    pub goals_achieved: i32,
+    pub goals_applicable: i32,
+}
+
+/// Evaluate a single goal against a match
+pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Option<GoalEvaluation> {
+    // Check if goal applies to this match based on hero
+    if let Some(goal_hero_id) = goal.hero_id {
+        if goal_hero_id != match_data.hero_id {
+            return None; // Goal doesn't apply to this hero
+        }
+    }
+
+    // Check if goal applies based on game mode
+    // Game mode values: https://github.com/odota/dotaconstants/blob/master/build/game_mode.json
+    // 22 = All Pick Ranked, 23 = Turbo
+    let is_ranked = match_data.game_mode == 22;
+    let is_turbo = match_data.game_mode == 23;
+
+    let mode_matches = match goal.game_mode {
+        GoalGameMode::Ranked => is_ranked,
+        GoalGameMode::Turbo => is_turbo,
+    };
+
+    if !mode_matches {
+        return None; // Goal doesn't apply to this game mode
+    }
+
+    // Calculate actual value at target time
+    let duration_minutes = match_data.duration / 60;
+    let target_minutes = goal.target_time_minutes;
+
+    let actual_value = match &goal.metric {
+        GoalMetric::Kills => {
+            // For kills, we assume linear progression
+            if duration_minutes <= target_minutes {
+                match_data.kills
+            } else {
+                // Estimate kills at target time
+                ((match_data.kills as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+            }
+        }
+        GoalMetric::LastHits => {
+            // Try to get exact CS data from match_cs table if match is parsed
+            if match_data.parse_state == MatchState::Parsed {
+                // For a goal at "10 minutes", we need lh_t[10] which is stored with minute=10
+                // because we store the array index directly
+                if let Ok(Some(cs_data)) = get_match_cs_at_minute(conn, match_data.match_id, target_minutes) {
+                    cs_data.last_hits
+                } else {
+                    // Fall back to linear estimation if no parsed data
+                    if duration_minutes <= target_minutes {
+                        match_data.last_hits
+                    } else {
+                        ((match_data.last_hits as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+                    }
+                }
+            } else {
+                // Use linear estimation for unparsed matches
+                if duration_minutes <= target_minutes {
+                    match_data.last_hits
+                } else {
+                    ((match_data.last_hits as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+                }
+            }
+        }
+        GoalMetric::Networth | GoalMetric::Level => {
+            // These require per-minute data which we don't have in the current schema
+            // For now, we'll need to skip these or mark them as not evaluable
+            // Return None to indicate we can't evaluate this goal with current data
+            return None;
+        }
+    };
+
+    let achieved = actual_value >= goal.target_value;
+
+    Some(GoalEvaluation {
+        goal: goal.clone(),
+        achieved,
+        actual_value,
+    })
+}
+
+/// Evaluate all goals against a match
+pub fn evaluate_match_goals(conn: &Connection, match_data: &Match) -> Result<Vec<GoalEvaluation>, String> {
+    let goals = get_all_goals(conn)?;
+
+    let evaluations: Vec<GoalEvaluation> = goals
+        .iter()
+        .filter_map(|goal| evaluate_goal(conn, goal, match_data))
+        .collect();
+
+    Ok(evaluations)
+}
+
+/// Get all matches with goal evaluation summaries
+pub fn get_matches_with_goals(conn: &Connection) -> Result<Vec<MatchWithGoals>, String> {
+    let matches = get_all_matches(conn)?;
+    let goals = get_all_goals(conn)?;
+
+    let matches_with_goals: Vec<MatchWithGoals> = matches
+        .into_iter()
+        .map(|match_data| {
+            let evaluations: Vec<GoalEvaluation> = goals
+                .iter()
+                .filter_map(|goal| evaluate_goal(conn, goal, &match_data))
+                .collect();
+
+            let goals_applicable = evaluations.len() as i32;
+            let goals_achieved = evaluations.iter().filter(|e| e.achieved).count() as i32;
+
+            MatchWithGoals {
+                match_data,
+                goals_achieved,
+                goals_applicable,
+            }
+        })
+        .collect();
+
+    Ok(matches_with_goals)
+}
+
+/// Goal progress at a specific time
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GoalProgress {
+    pub match_id: i64,
+    pub time_minutes: i32,
+    pub last_hits: i32,
+    pub denies: i32,
+}
+
+/// Insert goal progress data for a match
+pub fn insert_goal_progress(conn: &Connection, progress: &GoalProgress) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO goal_progress (match_id, time_minutes, last_hits, denies)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            progress.match_id,
+            progress.time_minutes,
+            progress.last_hits,
+            progress.denies,
+        ],
+    ).map_err(|e| format!("Failed to insert goal progress: {}", e))?;
+
+    Ok(())
+}
+
+/// Get goal progress for a specific match
+pub fn get_goal_progress(conn: &Connection, match_id: i64) -> Result<Vec<GoalProgress>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, time_minutes, last_hits, denies
+             FROM goal_progress
+             WHERE match_id = ?1
+             ORDER BY time_minutes ASC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let progress_items = stmt
+        .query_map(params![match_id], |row| {
+            Ok(GoalProgress {
+                match_id: row.get(0)?,
+                time_minutes: row.get(1)?,
+                last_hits: row.get(2)?,
+                denies: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query goal progress: {}", e))?;
+
+    let mut result = Vec::new();
+    for item in progress_items {
+        result.push(item.map_err(|e| format!("Failed to read goal progress: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+/// Update match parse state
+pub fn update_match_state(conn: &Connection, match_id: i64, state: MatchState) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET parse_state = ?1 WHERE match_id = ?2",
+        params![state.to_string(), match_id],
+    ).map_err(|e| format!("Failed to update match state: {}", e))?;
+
+    Ok(())
+}
+
+/// Match CS data at a specific minute
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchCS {
+    pub match_id: i64,
+    pub minute: i32,
+    pub last_hits: i32,
+    pub denies: i32,
+}
+
+/// Insert CS data for all minutes in a match
+pub fn insert_match_cs_data(conn: &Connection, match_id: i64, lh_t: &[i32], dn_t: &[i32]) -> Result<(), String> {
+    // Delete existing data for this match first
+    conn.execute(
+        "DELETE FROM match_cs WHERE match_id = ?1",
+        params![match_id],
+    ).map_err(|e| format!("Failed to delete existing CS data: {}", e))?;
+
+    // Insert data for each minute
+    // OpenDota's lh_t array uses 0-based indexing:
+    // - lh_t[10] contains the CS at the 10-minute mark
+    // - We store the array index directly as the minute value in the database
+    // - So for a "10 minute" goal, we store minute=10 which maps to lh_t[10]
+    let max_len = lh_t.len().min(dn_t.len());
+
+    for i in 0..max_len {
+        let minute = i as i32; // Store array index as minute (lh_t[10] -> minute=10)
+        conn.execute(
+            "INSERT INTO match_cs (match_id, minute, last_hits, denies) VALUES (?1, ?2, ?3, ?4)",
+            params![match_id, minute, lh_t[i], dn_t[i]],
+        ).map_err(|e| format!("Failed to insert CS data: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get CS data for a match at a specific minute
+pub fn get_match_cs_at_minute(conn: &Connection, match_id: i64, minute: i32) -> Result<Option<MatchCS>, String> {
+    let result = conn.query_row(
+        "SELECT match_id, minute, last_hits, denies FROM match_cs WHERE match_id = ?1 AND minute = ?2",
+        params![match_id, minute],
+        |row| {
+            Ok(MatchCS {
+                match_id: row.get(0)?,
+                minute: row.get(1)?,
+                last_hits: row.get(2)?,
+                denies: row.get(3)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(cs) => Ok(Some(cs)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query CS data: {}", e)),
+    }
+}
+
+/// Daily goal progress data
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DayGoalProgress {
+    pub date: String, // YYYY-MM-DD format
+    pub achieved: i32,
+    pub total: i32,
+}
+
+/// Goal with daily progress
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GoalWithDailyProgress {
+    pub goal: Goal,
+    pub daily_progress: Vec<DayGoalProgress>,
+}
+
+/// Get goal progress by day for the last N days
+pub fn get_goals_with_daily_progress(conn: &Connection, days: i32) -> Result<Vec<GoalWithDailyProgress>, String> {
+    let goals = get_all_goals(conn)?;
+    let matches = get_all_matches(conn)?;
+
+    // Get current timestamp
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // Calculate the start of today (midnight UTC)
+    let today_start = (now / 86400) * 86400;
+
+    let mut result = Vec::new();
+
+    for goal in goals {
+        let mut daily_progress = Vec::new();
+
+        // Generate data for each of the last N days
+        for day_offset in (0..days).rev() {
+            let day_start = today_start - (day_offset as i64 * 86400);
+            let day_end = day_start + 86400;
+
+            // Format date as YYYY-MM-DD
+            let date = format_unix_timestamp_as_date(day_start);
+
+            // Filter matches for this day
+            let day_matches: Vec<&Match> = matches.iter()
+                .filter(|m| m.start_time >= day_start && m.start_time < day_end)
+                .collect();
+
+            // Count applicable matches and achievements
+            let mut total = 0;
+            let mut achieved = 0;
+
+            for match_data in day_matches {
+                if let Some(evaluation) = evaluate_goal(conn, &goal, match_data) {
+                    total += 1;
+                    if evaluation.achieved {
+                        achieved += 1;
+                    }
+                }
+            }
+
+            daily_progress.push(DayGoalProgress {
+                date,
+                achieved,
+                total,
+            });
+        }
+
+        result.push(GoalWithDailyProgress {
+            goal,
+            daily_progress,
+        });
+    }
+
+    Ok(result)
+}
+
+/// Format Unix timestamp as YYYY-MM-DD
+fn format_unix_timestamp_as_date(timestamp: i64) -> String {
+    use chrono::{DateTime, Utc, Datelike};
+    let dt: DateTime<Utc> = DateTime::from_timestamp(timestamp, 0).unwrap();
+    format!("{:04}-{:02}-{:02}", dt.year(), dt.month(), dt.day())
+}
+
+/// Match data point for histogram
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchDataPoint {
+    pub match_id: i64,
+    pub hero_id: i32,
+    pub start_time: i64,
+    pub value: i32,
+    pub achieved: bool,
+}
+
+/// Get match data for a specific goal (for histogram visualization)
+pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchDataPoint>, String> {
+    // Get the goal
+    let mut stmt = conn
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at FROM goals WHERE id = ?1")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let goal = stmt
+        .query_row(params![goal_id], |row| {
+            let metric_str: String = row.get(2)?;
+            let game_mode_str: String = row.get(5)?;
+            Ok(Goal {
+                id: row.get(0)?,
+                hero_id: row.get(1)?,
+                metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
+                target_value: row.get(3)?,
+                target_time_minutes: row.get(4)?,
+                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| format!("Failed to get goal: {}", e))?;
+
+    // Get all matches
+    let matches = get_all_matches(conn)?;
+
+    // Evaluate goal against each match and collect data points
+    let mut data_points = Vec::new();
+
+    for match_data in matches {
+        if let Some(evaluation) = evaluate_goal(conn, &goal, &match_data) {
+            data_points.push(MatchDataPoint {
+                match_id: match_data.match_id,
+                hero_id: match_data.hero_id,
+                start_time: match_data.start_time,
+                value: evaluation.actual_value,
+                achieved: evaluation.achieved,
+            });
+        }
+    }
+
+    Ok(data_points)
+}
+
+/// Get a single goal by ID
+pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at FROM goals WHERE id = ?1")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    stmt.query_row(params![goal_id], |row| {
+        let metric_str: String = row.get(2)?;
+        let game_mode_str: String = row.get(5)?;
+        Ok(Goal {
+            id: row.get(0)?,
+            hero_id: row.get(1)?,
+            metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
+            target_value: row.get(3)?,
+            target_time_minutes: row.get(4)?,
+            game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+            created_at: row.get(6)?,
+        })
+    })
+    .map_err(|e| format!("Failed to get goal: {}", e))
+}
