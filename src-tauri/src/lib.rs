@@ -227,6 +227,7 @@ fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_steam_id,

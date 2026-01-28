@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { check } from '@tauri-apps/plugin-updater';
+  import { relaunch } from '@tauri-apps/plugin-process';
   import '../app.css';
 
   let isLoading = $state(true);
@@ -9,9 +11,13 @@
   let currentSteamId = $state("");
   let steamId = $state("");
   let error = $state("");
+  let updateAvailable = $state(false);
+  let updateVersion = $state("");
+  let isUpdating = $state(false);
 
   onMount(async () => {
     await loadSettings();
+    await checkForUpdates();
   });
 
   async function loadSettings() {
@@ -71,6 +77,35 @@
   function isActive(path) {
     return $page.url.pathname === path;
   }
+
+  async function checkForUpdates() {
+    try {
+      const update = await check();
+      if (update?.available) {
+        updateAvailable = true;
+        updateVersion = update.version;
+        console.log(`Update available: ${update.version}`);
+      }
+    } catch (e) {
+      console.error('Failed to check for updates:', e);
+    }
+  }
+
+  async function installUpdate() {
+    if (!updateAvailable) return;
+
+    isUpdating = true;
+    try {
+      const update = await check();
+      if (update?.available) {
+        await update.downloadAndInstall();
+        await relaunch();
+      }
+    } catch (e) {
+      error = `Failed to install update: ${e}`;
+      isUpdating = false;
+    }
+  }
 </script>
 
 {#if isLoading}
@@ -100,6 +135,20 @@
   </div>
 {:else}
   <div class="app-layout">
+    {#if updateAvailable}
+      <div class="update-banner">
+        <div class="update-content">
+          <span class="update-icon">🔄</span>
+          <div class="update-text">
+            <strong>Update Available!</strong>
+            <span>Version {updateVersion} is ready to install</span>
+          </div>
+          <button class="update-btn" onclick={installUpdate} disabled={isUpdating}>
+            {isUpdating ? 'Installing...' : 'Install & Restart'}
+          </button>
+        </div>
+      </div>
+    {/if}
     <aside class="sidebar">
       <div class="sidebar-header">
         <h1>Dota Keeper</h1>
@@ -280,6 +329,77 @@
     display: flex;
     min-height: 100vh;
     background: #0a0a0f;
+    position: relative;
+  }
+
+  /* Update Banner */
+  .update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, rgba(40, 80, 120, 0.95) 0%, rgba(30, 60, 100, 0.95) 100%);
+    border-bottom: 2px solid rgba(100, 150, 200, 0.5);
+    z-index: 1000;
+    padding: 12px 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .update-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .update-icon {
+    font-size: 1.5rem;
+    animation: rotate 2s linear infinite;
+  }
+
+  @keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .update-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .update-text strong {
+    color: #fff;
+    font-size: 1rem;
+  }
+
+  .update-text span {
+    color: #d0d0d0;
+    font-size: 0.875rem;
+  }
+
+  .update-btn {
+    background: linear-gradient(180deg, rgba(50, 200, 100, 0.9) 0%, rgba(40, 160, 80, 0.9) 100%);
+    color: white;
+    border: 2px solid rgba(50, 200, 100, 0.6);
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin: 0;
+  }
+
+  .update-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(60, 220, 110, 1) 0%, rgba(50, 180, 90, 1) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(50, 200, 100, 0.4);
+  }
+
+  .update-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   /* Sidebar */
