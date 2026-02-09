@@ -133,6 +133,69 @@ pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Ma
     Ok(matches)
 }
 
+/// Fetch matches before a specific timestamp using the matches endpoint
+pub async fn fetch_matches_before(
+    steam_id: &str,
+    before_timestamp: i64,
+    limit: usize,
+) -> Result<Vec<Match>, String> {
+    let account_id = steam_id64_to_id32(steam_id)?;
+    let client = reqwest::Client::new();
+
+    let mut all_matches: Vec<Match> = Vec::new();
+    let mut offset = 0;
+    const BATCH_SIZE: usize = 100;
+
+    // Fetch matches in batches until we have enough matches before the timestamp
+    while all_matches.len() < limit && offset < 500 {
+        // Limit to 500 total matches to avoid infinite loops
+        let url = format!(
+            "{}/players/{}/matches?limit={}&offset={}",
+            OPENDOTA_API_BASE, account_id, BATCH_SIZE, offset
+        );
+
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch matches: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "OpenDota API returned error: {}",
+                response.status()
+            ));
+        }
+
+        let matches: Vec<OpenDotaMatch> = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse matches: {}", e))?;
+
+        // If no more matches, break
+        if matches.is_empty() {
+            break;
+        }
+
+        // Filter and collect matches that are before the timestamp
+        for m in matches {
+            if m.start_time < before_timestamp {
+                all_matches.push(m.into());
+                if all_matches.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        offset += BATCH_SIZE;
+
+        // Small delay to avoid rate limiting
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    }
+
+    Ok(all_matches)
+}
+
 /// Request OpenDota to parse a match
 pub async fn request_match_parse(match_id: i64) -> Result<(), String> {
     let url = format!("{}/request/{}", OPENDOTA_API_BASE, match_id);

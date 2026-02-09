@@ -5,9 +5,9 @@ mod settings;
 use database::{
     delete_goal, evaluate_match_goals, get_all_goals, get_all_matches, get_goal_by_id,
     get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
-    get_matches_with_goals, init_db, insert_goal, insert_match, insert_match_cs_data,
-    match_exists, update_goal, update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress,
-    LastHitsAnalysis, MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
+    get_matches_with_goals, get_oldest_match_timestamp, init_db, insert_goal, insert_match,
+    insert_match_cs_data, match_exists, update_goal, update_match_state, Goal, GoalEvaluation,
+    GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
 };
 use settings::Settings;
 
@@ -220,6 +220,102 @@ fn get_last_hits_analysis_data(
     get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
 }
 
+/// Backfill and parse historical matches (100 games before the oldest match)
+#[tauri::command]
+async fn backfill_historical_matches(steam_id: String) -> Result<String, String> {
+    let conn = init_db()?;
+
+    // Get the oldest match timestamp
+    let oldest_timestamp = get_oldest_match_timestamp(&conn)?;
+
+    // If no matches exist, fetch from current time
+    let before_timestamp = oldest_timestamp.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+    });
+
+    // Fetch 100 matches before the oldest timestamp
+    let matches = opendota::fetch_matches_before(&steam_id, before_timestamp, 100).await?;
+
+    if matches.is_empty() {
+        return Ok("No new matches found to backfill.".to_string());
+    }
+
+    // Insert matches that don't already exist
+    let mut new_count = 0;
+    let mut parsed_count = 0;
+
+    for m in &matches {
+        if !match_exists(&conn, m.match_id)? {
+            insert_match(&conn, m)?;
+            new_count += 1;
+        }
+    }
+
+    // Convert Steam ID for parsing
+    let account_id = steam_id64_to_id32(&steam_id)?;
+
+    // Parse matches (with a small delay between each to avoid rate limiting)
+    for m in &matches {
+        // Request parse
+        if let Err(e) = opendota::request_match_parse(m.match_id).await {
+            eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
+            continue;
+        }
+
+        update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+
+        // Wait a bit for the parse to complete
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        // Fetch detailed match data
+        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+            Ok(dm) => dm,
+            Err(e) => {
+                eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                continue;
+            }
+        };
+
+        // Find the player's data
+        let player_data = match detailed_match
+            .players
+            .iter()
+            .find(|p| p.account_id == Some(account_id))
+        {
+            Some(p) => p,
+            None => {
+                eprintln!("Player not found in match {}", m.match_id);
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                continue;
+            }
+        };
+
+        // Store CS data if available
+        if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+            if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
+                eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
+            } else {
+                update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                parsed_count += 1;
+            }
+        } else {
+            update_match_state(&conn, m.match_id, MatchState::Failed)?;
+        }
+
+        // Small delay to avoid rate limiting
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+
+    Ok(format!(
+        "Backfill complete! Added {} new matches, parsed {} matches.",
+        new_count, parsed_count
+    ))
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -257,7 +353,8 @@ pub fn run() {
             parse_match,
             get_database_folder_path,
             open_database_folder,
-            get_last_hits_analysis_data
+            get_last_hits_analysis_data,
+            backfill_historical_matches
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

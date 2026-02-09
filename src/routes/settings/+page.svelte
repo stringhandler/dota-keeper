@@ -5,9 +5,13 @@
   let databasePath = $state("");
   let isLoading = $state(true);
   let error = $state("");
+  let successMessage = $state("");
+  let isBackfilling = $state(false);
+  let steamId = $state("");
 
   onMount(async () => {
     await loadDatabasePath();
+    await loadSteamId();
   });
 
   async function loadDatabasePath() {
@@ -20,12 +24,42 @@
     }
   }
 
+  async function loadSteamId() {
+    try {
+      const settings = await invoke("get_settings");
+      steamId = settings.steam_id || "";
+    } catch (e) {
+      console.error("Failed to load Steam ID:", e);
+    }
+  }
+
   async function openDatabaseFolder() {
     error = "";
+    successMessage = "";
     try {
       await invoke("open_database_folder");
     } catch (e) {
       error = `Failed to open database folder: ${e}`;
+    }
+  }
+
+  async function backfillMatches() {
+    if (!steamId) {
+      error = "No Steam ID configured";
+      return;
+    }
+
+    error = "";
+    successMessage = "";
+    isBackfilling = true;
+
+    try {
+      const result = await invoke("backfill_historical_matches", { steamId });
+      successMessage = result;
+    } catch (e) {
+      error = `Failed to backfill matches: ${e}`;
+    } finally {
+      isBackfilling = false;
     }
   }
 </script>
@@ -38,6 +72,10 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  {#if successMessage}
+    <p class="success">{successMessage}</p>
   {/if}
 
   <div class="settings-section">
@@ -56,6 +94,28 @@
       </div>
       <button class="open-folder-btn" onclick={openDatabaseFolder} disabled={isLoading}>
         Open Folder
+      </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Match History</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Backfill Historical Matches</h3>
+        <p class="setting-description">
+          Download and parse 100 matches from before your oldest stored match. This helps build up your historical data for better analysis and trends.
+        </p>
+        <p class="warning-text">
+          ⚠️ This process may take several minutes as it fetches and parses each match individually.
+        </p>
+      </div>
+      <button
+        class="backfill-btn"
+        onclick={backfillMatches}
+        disabled={isBackfilling || !steamId}
+      >
+        {isBackfilling ? 'Backfilling...' : 'Backfill 100 Matches'}
       </button>
     </div>
   </div>
@@ -108,6 +168,15 @@
   margin-bottom: 1.5rem;
 }
 
+.success {
+  color: #60c040;
+  background-color: rgba(96, 192, 64, 0.2);
+  border: 1px solid rgba(96, 192, 64, 0.4);
+  border-radius: 3px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
 .settings-section {
   padding: 30px;
   background:
@@ -117,6 +186,7 @@
   background-size: 100%, 6px 6px, 6px 6px;
   border: 2px solid rgba(139, 92, 46, 0.4);
   border-radius: 8px;
+  margin-bottom: 2rem;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -229,13 +299,59 @@
   opacity: 0.6;
 }
 
+.warning-text {
+  margin: 0.5rem 0 0 0;
+  color: #f0b840;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.backfill-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(139, 92, 46, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(60, 80, 100, 0.8) 0%, rgba(40, 60, 80, 0.8) 100%);
+  transition: all 0.3s ease;
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.backfill-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(70, 95, 120, 0.9) 0%, rgba(50, 75, 100, 0.9) 100%);
+  border-color: rgba(139, 92, 46, 0.8);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(100, 150, 200, 0.2);
+  transform: translateY(-2px);
+}
+
+.backfill-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.backfill-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 @media (max-width: 600px) {
   .setting-item {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .open-folder-btn {
+  .open-folder-btn,
+  .backfill-btn {
     width: 100%;
   }
 }

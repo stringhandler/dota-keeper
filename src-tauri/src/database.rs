@@ -285,6 +285,21 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
     Ok(())
 }
 
+/// Get the oldest match timestamp from the database
+pub fn get_oldest_match_timestamp(conn: &Connection) -> Result<Option<i64>, String> {
+    let result = conn.query_row(
+        "SELECT MIN(start_time) FROM matches",
+        [],
+        |row| row.get::<_, Option<i64>>(0),
+    );
+
+    match result {
+        Ok(timestamp) => Ok(timestamp),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to get oldest match timestamp: {}", e)),
+    }
+}
+
 /// Get all matches from the database, ordered by start_time descending
 pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
     let mut stmt = conn
