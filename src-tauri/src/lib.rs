@@ -4,10 +4,10 @@ mod settings;
 
 use database::{
     delete_goal, evaluate_match_goals, get_all_goals, get_all_matches, get_goal_by_id,
-    get_goal_match_data, get_goals_with_daily_progress, get_matches_with_goals, init_db,
-    insert_goal, insert_goal_progress, insert_match, insert_match_cs_data, match_exists,
-    update_goal, update_match_state, Goal, GoalEvaluation, GoalProgress, GoalWithDailyProgress,
-    MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
+    get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
+    get_matches_with_goals, init_db, insert_goal, insert_match, insert_match_cs_data,
+    match_exists, update_goal, update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress,
+    LastHitsAnalysis, MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
 };
 use settings::Settings;
 
@@ -208,6 +208,18 @@ async fn open_database_folder() -> Result<(), String> {
     Ok(())
 }
 
+/// Get last hits analysis with filtering
+#[tauri::command]
+fn get_last_hits_analysis_data(
+    time_minutes: i32,
+    window_size: usize,
+    hero_id: Option<i32>,
+    game_mode: Option<i32>,
+) -> Result<LastHitsAnalysis, String> {
+    let conn = init_db()?;
+    get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -244,7 +256,8 @@ pub fn run() {
             evaluate_goals_for_match,
             parse_match,
             get_database_folder_path,
-            open_database_folder
+            open_database_folder,
+            get_last_hits_analysis_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

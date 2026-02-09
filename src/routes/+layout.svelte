@@ -167,6 +167,10 @@
           <span class="nav-icon">⚔️</span>
           <span class="nav-label">Matches</span>
         </a>
+        <a href="/analysis" class="nav-item" class:active={isActive('/analysis')}>
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">Analysis</span>
+        </a>
         <a href="/goals" class="nav-item" class:active={isActive('/goals')}>
           <span class="nav-icon">🎯</span>
           <span class="nav-label">Goals</span>

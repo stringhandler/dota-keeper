@@ -840,3 +840,236 @@ pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
     })
     .map_err(|e| format!("Failed to get goal: {}", e))
 }
+
+/// Last hits analysis data point
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LastHitsDataPoint {
+    pub match_id: i64,
+    pub hero_id: i32,
+    pub start_time: i64,
+    pub last_hits: i32,
+    pub game_mode: i32,
+}
+
+/// Last hits analysis result
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LastHitsAnalysis {
+    pub current_period: LastHitsPeriodStats,
+    pub previous_period: Option<LastHitsPeriodStats>,
+    pub per_hero_stats: Vec<HeroLastHitsStats>,
+}
+
+/// Statistics for a period of games
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LastHitsPeriodStats {
+    pub average: f64,
+    pub min: i32,
+    pub max: i32,
+    pub count: usize,
+    pub data_points: Vec<LastHitsDataPoint>,
+}
+
+/// Per-hero last hits statistics
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HeroLastHitsStats {
+    pub hero_id: i32,
+    pub average: f64,
+    pub count: usize,
+    pub trend_percentage: f64, // Positive = improving, Negative = declining
+}
+
+/// Get last hits analysis with filtering
+pub fn get_last_hits_analysis(
+    conn: &Connection,
+    time_minutes: i32,
+    window_size: usize,
+    hero_id_filter: Option<i32>,
+    game_mode_filter: Option<i32>,
+) -> Result<LastHitsAnalysis, String> {
+    // Build the query with filters
+    let mut query = String::from(
+        "SELECT m.match_id, m.hero_id, m.start_time, m.game_mode, mc.last_hits
+         FROM matches m
+         LEFT JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = ?1
+         WHERE m.parse_state = 'parsed' AND mc.last_hits IS NOT NULL"
+    );
+
+    let mut param_count = 1;
+    if hero_id_filter.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND m.hero_id = ?{}", param_count));
+    }
+
+    if game_mode_filter.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND m.game_mode = ?{}", param_count));
+    }
+
+    query.push_str(" ORDER BY m.start_time DESC");
+
+    let mut stmt = conn
+        .prepare(&query)
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    // Build params vector
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(time_minutes)];
+    if let Some(hero) = hero_id_filter {
+        params_vec.push(Box::new(hero));
+    }
+    if let Some(mode) = game_mode_filter {
+        params_vec.push(Box::new(mode));
+    }
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+
+    let rows = stmt
+        .query_map(&params_refs[..], |row| {
+            Ok(LastHitsDataPoint {
+                match_id: row.get(0)?,
+                hero_id: row.get(1)?,
+                start_time: row.get(2)?,
+                game_mode: row.get(3)?,
+                last_hits: row.get(4)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query matches: {}", e))?;
+
+    let mut data_points = Vec::new();
+    for row in rows {
+        data_points.push(row.map_err(|e| format!("Failed to read row: {}", e))?);
+    }
+
+    // Calculate current period stats (last N games)
+    let current_data: Vec<_> = data_points.iter().take(window_size).cloned().collect();
+    let current_period = calculate_period_stats(&current_data);
+
+    // Calculate previous period stats (next N games) if we have enough data
+    let previous_period = if data_points.len() >= window_size * 2 {
+        let previous_data: Vec<_> = data_points
+            .iter()
+            .skip(window_size)
+            .take(window_size)
+            .cloned()
+            .collect();
+        Some(calculate_period_stats(&previous_data))
+    } else {
+        None
+    };
+
+    // Calculate per-hero stats (only for current period, and only if no hero filter)
+    let per_hero_stats = if hero_id_filter.is_none() && !current_data.is_empty() {
+        calculate_per_hero_stats(&current_data, &data_points, window_size)
+    } else {
+        Vec::new()
+    };
+
+    Ok(LastHitsAnalysis {
+        current_period,
+        previous_period,
+        per_hero_stats,
+    })
+}
+
+/// Calculate statistics for a period of games
+fn calculate_period_stats(data_points: &[LastHitsDataPoint]) -> LastHitsPeriodStats {
+    if data_points.is_empty() {
+        return LastHitsPeriodStats {
+            average: 0.0,
+            min: 0,
+            max: 0,
+            count: 0,
+            data_points: Vec::new(),
+        };
+    }
+
+    let last_hits: Vec<i32> = data_points.iter().map(|d| d.last_hits).collect();
+    let sum: i32 = last_hits.iter().sum();
+    let average = sum as f64 / last_hits.len() as f64;
+    let min = *last_hits.iter().min().unwrap_or(&0);
+    let max = *last_hits.iter().max().unwrap_or(&0);
+
+    LastHitsPeriodStats {
+        average,
+        min,
+        max,
+        count: data_points.len(),
+        data_points: data_points.to_vec(),
+    }
+}
+
+/// Calculate per-hero statistics
+fn calculate_per_hero_stats(
+    current_data: &[LastHitsDataPoint],
+    all_data: &[LastHitsDataPoint],
+    window_size: usize,
+) -> Vec<HeroLastHitsStats> {
+    use std::collections::HashMap;
+
+    // Group current period data by hero
+    let mut hero_groups: HashMap<i32, Vec<i32>> = HashMap::new();
+    for point in current_data {
+        hero_groups
+            .entry(point.hero_id)
+            .or_insert_with(Vec::new)
+            .push(point.last_hits);
+    }
+
+    // Calculate stats for each hero
+    let mut stats: Vec<HeroLastHitsStats> = hero_groups
+        .into_iter()
+        .filter(|(_, lh_values)| !lh_values.is_empty())
+        .map(|(hero_id, lh_values)| {
+            let sum: i32 = lh_values.iter().sum();
+            let average = sum as f64 / lh_values.len() as f64;
+            let count = lh_values.len();
+
+            // Calculate trend by comparing to previous period for this hero
+            let trend_percentage = calculate_hero_trend(hero_id, all_data, window_size);
+
+            HeroLastHitsStats {
+                hero_id,
+                average,
+                count,
+                trend_percentage,
+            }
+        })
+        .collect();
+
+    // Sort by average (descending)
+    stats.sort_by(|a, b| b.average.partial_cmp(&a.average).unwrap_or(std::cmp::Ordering::Equal));
+
+    stats
+}
+
+/// Calculate trend percentage for a specific hero
+fn calculate_hero_trend(hero_id: i32, all_data: &[LastHitsDataPoint], window_size: usize) -> f64 {
+    // Get current period data for this hero
+    let current: Vec<i32> = all_data
+        .iter()
+        .take(window_size)
+        .filter(|d| d.hero_id == hero_id)
+        .map(|d| d.last_hits)
+        .collect();
+
+    // Get previous period data for this hero
+    let previous: Vec<i32> = all_data
+        .iter()
+        .skip(window_size)
+        .take(window_size)
+        .filter(|d| d.hero_id == hero_id)
+        .map(|d| d.last_hits)
+        .collect();
+
+    if current.is_empty() || previous.is_empty() {
+        return 0.0;
+    }
+
+    let current_avg = current.iter().sum::<i32>() as f64 / current.len() as f64;
+    let previous_avg = previous.iter().sum::<i32>() as f64 / previous.len() as f64;
+
+    if previous_avg == 0.0 {
+        return 0.0;
+    }
+
+    ((current_avg - previous_avg) / previous_avg) * 100.0
+}
