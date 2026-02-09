@@ -210,7 +210,7 @@
           <h2>Per-Hero Breakdown</h2>
           <div class="hero-list">
             {#each analysis.per_hero_stats as heroStat}
-              <div class="hero-row">
+              <a href="/analysis/{heroStat.hero_id}" class="hero-row">
                 <div class="hero-name">{getHeroName(heroStat.hero_id)}</div>
                 <div class="hero-avg">{heroStat.average.toFixed(1)} avg</div>
                 <div class="hero-count">({heroStat.count} games)</div>
@@ -219,7 +219,8 @@
                     {heroStat.trend_percentage > 0 ? '↗' : '↘'} {Math.abs(heroStat.trend_percentage).toFixed(1)}%
                   </div>
                 {/if}
-              </div>
+                <div class="hero-detail-btn">View Details →</div>
+              </a>
             {/each}
           </div>
         </div>
@@ -490,13 +491,22 @@
 
   .hero-row {
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
     gap: 1rem;
     align-items: center;
     padding: 15px 20px;
     background: rgba(30, 30, 40, 0.4);
     border-left: 3px solid rgba(139, 92, 46, 0.5);
     border-radius: 3px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  .hero-row:hover {
+    background: rgba(40, 40, 50, 0.6);
+    border-left-color: #d4af37;
+    transform: translateX(5px);
   }
 
   .hero-name {
@@ -531,5 +541,16 @@
   .hero-trend.negative {
     color: #ff6b6b;
     background: rgba(255, 107, 107, 0.2);
+  }
+
+  .hero-detail-btn {
+    font-size: 0.85rem;
+    color: #a0a0a0;
+    font-weight: 600;
+    transition: color 0.3s ease;
+  }
+
+  .hero-row:hover .hero-detail-btn {
+    color: #d4af37;
   }
 </style>
