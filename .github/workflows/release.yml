@@ -48,6 +48,7 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: v__VERSION__
           releaseName: 'Dota Keeper v__VERSION__'
@@ -55,3 +56,86 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  update-release-json:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Get version from package.json
+        id: version
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Download release signatures
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures || true
+
+      - name: Update latest.json
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Read signatures
+          WIN_SIG=""
+          LINUX_SIG=""
+          MACOS_X64_SIG=""
+          MACOS_ARM_SIG=""
+
+          if [ -f "./signatures/dota-keeper_${VERSION}_x64_en-US.msi.zip.sig" ]; then
+            WIN_SIG=$(cat "./signatures/dota-keeper_${VERSION}_x64_en-US.msi.zip.sig")
+          fi
+
+          if [ -f "./signatures/dota-keeper_${VERSION}_amd64.AppImage.tar.gz.sig" ]; then
+            LINUX_SIG=$(cat "./signatures/dota-keeper_${VERSION}_amd64.AppImage.tar.gz.sig")
+          fi
+
+          if [ -f "./signatures/dota-keeper_x64.app.tar.gz.sig" ]; then
+            MACOS_X64_SIG=$(cat "./signatures/dota-keeper_x64.app.tar.gz.sig")
+          fi
+
+          if [ -f "./signatures/dota-keeper_aarch64.app.tar.gz.sig" ]; then
+            MACOS_ARM_SIG=$(cat "./signatures/dota-keeper_aarch64.app.tar.gz.sig")
+          fi
+
+          # Update latest.json
+          cat > meta/autoupdate/latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "Release v${VERSION}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi.zip"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_${VERSION}_amd64.AppImage.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "${MACOS_X64_SIG}",
+                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_x64.app.tar.gz"
+              },
+              "darwin-aarch64": {
+                "signature": "${MACOS_ARM_SIG}",
+                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_aarch64.app.tar.gz"
+              }
+            }
+          }
+          EOF
+
+      - name: Commit and push latest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add meta/autoupdate/latest.json
+          git commit -m "chore: update latest.json for v${{ steps.version.outputs.VERSION }}"
+          git push origin main
