@@ -155,6 +155,35 @@
       default: return "unparsed";
     }
   }
+
+  function getGameModeName(gameMode) {
+    switch (gameMode) {
+      case 0: return "Unknown";
+      case 1: return "All Pick";
+      case 2: return "Captain's Mode";
+      case 3: return "Random Draft";
+      case 4: return "Single Draft";
+      case 5: return "All Random";
+      case 6: return "Intro";
+      case 7: return "Diretide";
+      case 8: return "Reverse CM";
+      case 9: return "Mid Only";
+      case 10: return "Least Played";
+      case 11: return "Limited Heroes";
+      case 12: return "Compendium";
+      case 13: return "Custom";
+      case 14: return "CD";
+      case 15: return "Balanced Draft";
+      case 16: return "Ability Draft";
+      case 18: return "AR/DM";
+      case 19: return "1v1 Mid";
+      case 20: return "Ranked";
+      case 21: return "Turbo";
+      case 22: return "Ranked All Pick";
+      case 23: return "Turbo";
+      default: return `Mode ${gameMode}`;
+    }
+  }
 </script>
 
 <div class="matches-content">
@@ -188,6 +217,7 @@
                 <th>Match ID</th>
                 <th>Date</th>
                 <th>Hero</th>
+                <th>Game Type</th>
                 <th>Result</th>
                 <th>Duration</th>
                 <th>K/D/A</th>
@@ -229,6 +259,7 @@
                   </td>
                   <td>{formatDate(match.start_time)}</td>
                   <td>{getHeroName(match.hero_id)}</td>
+                  <td>{getGameModeName(match.game_mode)}</td>
                   <td class="result">{isWin(match) ? "Won" : "Lost"}</td>
                   <td>{formatDuration(match.duration)}</td>
                   <td>{match.kills}/{match.deaths}/{match.assists}</td>

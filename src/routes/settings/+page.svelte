@@ -7,6 +7,8 @@
   let error = $state("");
   let successMessage = $state("");
   let isBackfilling = $state(false);
+  let isReparsing = $state(false);
+  let isClearing = $state(false);
   let steamId = $state("");
 
   onMount(async () => {
@@ -60,6 +62,51 @@
       error = `Failed to backfill matches: ${e}`;
     } finally {
       isBackfilling = false;
+    }
+  }
+
+  async function reparsePendingMatches() {
+    if (!steamId) {
+      error = "No Steam ID configured";
+      return;
+    }
+
+    error = "";
+    successMessage = "";
+    isReparsing = true;
+
+    try {
+      const result = await invoke("reparse_pending_matches", { steamId });
+      successMessage = result;
+    } catch (e) {
+      error = `Failed to reparse matches: ${e}`;
+    } finally {
+      isReparsing = false;
+    }
+  }
+
+  async function clearAllMatches() {
+    const confirmed = confirm(
+      "Are you sure you want to clear ALL matches?\n\n" +
+      "This will permanently delete all match data, including parsed CS data.\n" +
+      "This action cannot be undone!"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    error = "";
+    successMessage = "";
+    isClearing = true;
+
+    try {
+      const result = await invoke("clear_matches");
+      successMessage = result;
+    } catch (e) {
+      error = `Failed to clear matches: ${e}`;
+    } finally {
+      isClearing = false;
     }
   }
 </script>
@@ -116,6 +163,44 @@
         disabled={isBackfilling || !steamId}
       >
         {isBackfilling ? 'Backfilling...' : 'Backfill 100 Matches'}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Reparse Pending Matches</h3>
+        <p class="setting-description">
+          Retry parsing all matches that failed or haven't been parsed yet. This is useful for matches that couldn't be parsed initially due to API issues.
+        </p>
+        <p class="warning-text">
+          ⚠️ This will attempt to parse all unparsed/failed matches, which may take several minutes.
+        </p>
+      </div>
+      <button
+        class="reparse-btn"
+        onclick={reparsePendingMatches}
+        disabled={isReparsing || !steamId}
+      >
+        {isReparsing ? 'Reparsing...' : 'Reparse Pending'}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Clear All Matches</h3>
+        <p class="setting-description">
+          Permanently delete all match data from the database. This will remove all matches and their associated parsed data.
+        </p>
+        <p class="warning-text">
+          ⚠️ WARNING: This action cannot be undone! All match history will be permanently deleted.
+        </p>
+      </div>
+      <button
+        class="clear-btn"
+        onclick={clearAllMatches}
+        disabled={isClearing}
+      >
+        {isClearing ? 'Clearing...' : 'Clear All Matches'}
       </button>
     </div>
   </div>
@@ -344,6 +429,44 @@
   opacity: 0.6;
 }
 
+.reparse-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(139, 92, 46, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(100, 60, 80, 0.8) 0%, rgba(80, 40, 60, 0.8) 100%);
+  transition: all 0.3s ease;
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.reparse-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(120, 70, 95, 0.9) 0%, rgba(100, 50, 75, 0.9) 100%);
+  border-color: rgba(139, 92, 46, 0.8);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(200, 100, 150, 0.2);
+  transform: translateY(-2px);
+}
+
+.reparse-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.reparse-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 @media (max-width: 600px) {
   .setting-item {
     flex-direction: column;
@@ -351,8 +474,48 @@
   }
 
   .open-folder-btn,
-  .backfill-btn {
+  .backfill-btn,
+  .reparse-btn,
+  .clear-btn {
     width: 100%;
   }
+}
+
+.clear-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(139, 46, 46, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(120, 40, 40, 0.8) 0%, rgba(100, 30, 30, 0.8) 100%);
+  transition: all 0.3s ease;
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.clear-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(150, 50, 50, 0.9) 0%, rgba(130, 40, 40, 0.9) 100%);
+  border-color: rgba(139, 46, 46, 0.8);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(255, 100, 100, 0.3);
+  transform: translateY(-2px);
+}
+
+.clear-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.clear-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>

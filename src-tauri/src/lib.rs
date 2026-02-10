@@ -3,11 +3,12 @@ mod opendota;
 mod settings;
 
 use database::{
-    delete_goal, evaluate_match_goals, get_all_goals, get_all_matches, get_goal_by_id,
-    get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
-    get_matches_with_goals, get_oldest_match_timestamp, init_db, insert_goal, insert_match,
-    insert_match_cs_data, match_exists, update_goal, update_match_state, Goal, GoalEvaluation,
-    GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
+    clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
+    get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
+    get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches, init_db,
+    insert_goal, insert_match, insert_match_cs_data, match_exists, update_goal,
+    update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis,
+    MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
 };
 use settings::Settings;
 
@@ -316,6 +317,98 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
     ))
 }
 
+/// Reparse all unparsed or failed matches
+#[tauri::command]
+async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
+    let conn = init_db()?;
+
+    // Get all unparsed or failed matches
+    let matches = get_unparsed_matches(&conn)?;
+
+    if matches.is_empty() {
+        return Ok("No pending matches to reparse.".to_string());
+    }
+
+    let total_matches = matches.len();
+    let mut parsed_count = 0;
+    let mut failed_count = 0;
+
+    // Convert Steam ID for parsing
+    let account_id = steam_id64_to_id32(&steam_id)?;
+
+    // Parse each match
+    for m in &matches {
+        // Request parse
+        if let Err(e) = opendota::request_match_parse(m.match_id).await {
+            eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
+            failed_count += 1;
+            continue;
+        }
+
+        update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+
+        // Wait a bit for the parse to complete
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        // Fetch detailed match data
+        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+            Ok(dm) => dm,
+            Err(e) => {
+                eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        // Find the player's data
+        let player_data = match detailed_match
+            .players
+            .iter()
+            .find(|p| p.account_id == Some(account_id))
+        {
+            Some(p) => p,
+            None => {
+                eprintln!("Player not found in match {}", m.match_id);
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        // Store CS data if available
+        if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+            if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
+                eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                failed_count += 1;
+            } else {
+                update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                parsed_count += 1;
+            }
+        } else {
+            update_match_state(&conn, m.match_id, MatchState::Failed)?;
+            failed_count += 1;
+        }
+
+        // Small delay to avoid rate limiting
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+
+    Ok(format!(
+        "Reparse complete! Successfully parsed {} of {} matches. {} failed.",
+        parsed_count, total_matches, failed_count
+    ))
+}
+
+/// Clear all matches from the database
+#[tauri::command]
+fn clear_matches() -> Result<String, String> {
+    let conn = init_db()?;
+    clear_all_matches(&conn)?;
+    Ok("All matches cleared successfully.".to_string())
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -354,7 +447,9 @@ pub fn run() {
             get_database_folder_path,
             open_database_folder,
             get_last_hits_analysis_data,
-            backfill_historical_matches
+            backfill_historical_matches,
+            reparse_pending_matches,
+            clear_matches
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

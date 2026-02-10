@@ -161,6 +161,12 @@ pub fn init_db() -> Result<Connection, String> {
     let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
 
+    // Cleanup: Reset any "parsing" matches to "unparsed" (in case app crashed during parsing)
+    conn.execute(
+        "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsing'",
+        [],
+    ).map_err(|e| format!("Failed to cleanup parsing state: {}", e))?;
+
     // Create the matches table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS matches (
@@ -298,6 +304,67 @@ pub fn get_oldest_match_timestamp(conn: &Connection) -> Result<Option<i64>, Stri
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("Failed to get oldest match timestamp: {}", e)),
     }
+}
+
+/// Get all unparsed or failed matches from the database
+pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
+                    radiant_win, player_slot, kills, deaths, assists, xp_per_min,
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+             FROM matches
+             WHERE parse_state = 'unparsed' OR parse_state = 'failed'
+             ORDER BY start_time DESC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let matches = stmt
+        .query_map([], |row| {
+            let parse_state_str: String = row.get(18).unwrap_or_else(|_| "unparsed".to_string());
+            Ok(Match {
+                match_id: row.get(0)?,
+                hero_id: row.get(1)?,
+                start_time: row.get(2)?,
+                duration: row.get(3)?,
+                game_mode: row.get(4)?,
+                lobby_type: row.get(5)?,
+                radiant_win: row.get::<_, i32>(6)? != 0,
+                player_slot: row.get(7)?,
+                kills: row.get(8)?,
+                deaths: row.get(9)?,
+                assists: row.get(10)?,
+                xp_per_min: row.get(11)?,
+                gold_per_min: row.get(12)?,
+                last_hits: row.get(13)?,
+                denies: row.get(14)?,
+                hero_damage: row.get(15)?,
+                tower_damage: row.get(16)?,
+                hero_healing: row.get(17)?,
+                parse_state: MatchState::from_string(&parse_state_str),
+            })
+        })
+        .map_err(|e| format!("Failed to query matches: {}", e))?;
+
+    let mut result = Vec::new();
+    for m in matches {
+        result.push(m.map_err(|e| format!("Failed to read match: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+/// Clear all matches and related data from the database
+pub fn clear_all_matches(conn: &Connection) -> Result<(), String> {
+    // Delete all match CS data first (foreign key constraint)
+    conn.execute("DELETE FROM match_cs", [])
+        .map_err(|e| format!("Failed to delete match CS data: {}", e))?;
+
+    // Delete all matches
+    conn.execute("DELETE FROM matches", [])
+        .map_err(|e| format!("Failed to delete matches: {}", e))?;
+
+    Ok(())
 }
 
 /// Get all matches from the database, ordered by start_time descending

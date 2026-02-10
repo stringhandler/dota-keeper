@@ -143,15 +143,21 @@ pub async fn fetch_matches_before(
     let client = reqwest::Client::new();
 
     let mut all_matches: Vec<Match> = Vec::new();
-    let mut offset = 0;
-    const BATCH_SIZE: usize = 100;
 
-    // Fetch matches in batches until we have enough matches before the timestamp
-    while all_matches.len() < limit && offset < 500 {
-        // Limit to 500 total matches to avoid infinite loops
+    // Calculate days parameter: number of days since Unix epoch
+    // OpenDota uses this to filter matches by date
+    let days_since_epoch = (before_timestamp / 86400) as i32;
+
+    // We'll fetch matches in multiple batches, going back in time
+    // Start from the target date and go back progressively
+    let mut current_days = days_since_epoch;
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: i32 = 12; // ~360 days of history (30 days per attempt)
+
+    while all_matches.len() < limit && attempts < MAX_ATTEMPTS {
         let url = format!(
-            "{}/players/{}/matches?limit={}&offset={}",
-            OPENDOTA_API_BASE, account_id, BATCH_SIZE, offset
+            "{}/players/{}/matches?limit=100&date={}&lobby_type=0,7",
+            OPENDOTA_API_BASE, account_id, current_days
         );
 
         let response = client
@@ -172,12 +178,12 @@ pub async fn fetch_matches_before(
             .await
             .map_err(|e| format!("Failed to parse matches: {}", e))?;
 
-        // If no more matches, break
+        // If no more matches, we've gone too far back
         if matches.is_empty() {
             break;
         }
 
-        // Filter and collect matches that are before the timestamp
+        // Collect matches that are before the timestamp
         for m in matches {
             if m.start_time < before_timestamp {
                 all_matches.push(m.into());
@@ -187,11 +193,19 @@ pub async fn fetch_matches_before(
             }
         }
 
-        offset += BATCH_SIZE;
+        // Go back 30 days for the next batch
+        current_days -= 30;
+        attempts += 1;
 
         // Small delay to avoid rate limiting
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     }
+
+    // Sort by start_time descending (most recent first)
+    all_matches.sort_by(|a, b| b.start_time.cmp(&a.start_time));
+
+    // Take only the requested number of matches
+    all_matches.truncate(limit);
 
     Ok(all_matches)
 }
