@@ -15,6 +15,10 @@
   let currentSteamId = $state("");
   let unlistenMatchStateChanged = null;
 
+  // Pagination
+  let currentPage = $state(1);
+  let pageSize = $state(10);
+
   onMount(async () => {
     await loadData();
 
@@ -206,6 +210,47 @@
       default: return `Mode ${gameMode}`;
     }
   }
+
+  // Pagination computed values
+  $effect(() => {
+    // Reset to page 1 when matches change
+    if (matches.length > 0) {
+      const maxPage = Math.ceil(matches.length / pageSize);
+      if (currentPage > maxPage) {
+        currentPage = 1;
+      }
+    }
+  });
+
+  function getPaginatedMatches() {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return matches.slice(startIndex, endIndex);
+  }
+
+  function getTotalPages() {
+    return Math.ceil(matches.length / pageSize);
+  }
+
+  function goToPage(page) {
+    const totalPages = getTotalPages();
+    if (page >= 1 && page <= totalPages) {
+      currentPage = page;
+    }
+  }
+
+  function nextPage() {
+    goToPage(currentPage + 1);
+  }
+
+  function previousPage() {
+    goToPage(currentPage - 1);
+  }
+
+  function changePageSize(newSize) {
+    pageSize = newSize;
+    currentPage = 1;
+  }
 </script>
 
 <div class="matches-content">
@@ -250,7 +295,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each matches as match}
+              {#each getPaginatedMatches() as match}
                 <tr class={isWin(match) ? "win" : "loss"}>
                   <td class="match-id-cell">
                     <div class="match-id-content">
@@ -321,6 +366,58 @@
               {/each}
             </tbody>
           </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="pagination">
+          <div class="pagination-info">
+            Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, matches.length)} of {matches.length} matches
+          </div>
+
+          <div class="pagination-controls">
+            <button
+              class="pagination-btn"
+              onclick={previousPage}
+              disabled={currentPage === 1}
+              aria-label="Previous page"
+            >
+              ← Previous
+            </button>
+
+            <div class="page-numbers">
+              {#each Array.from({ length: getTotalPages() }, (_, i) => i + 1) as page}
+                {#if getTotalPages() <= 7 || page === 1 || page === getTotalPages() || (page >= currentPage - 1 && page <= currentPage + 1)}
+                  <button
+                    class="page-btn {page === currentPage ? 'active' : ''}"
+                    onclick={() => goToPage(page)}
+                  >
+                    {page}
+                  </button>
+                {:else if page === currentPage - 2 || page === currentPage + 2}
+                  <span class="page-ellipsis">...</span>
+                {/if}
+              {/each}
+            </div>
+
+            <button
+              class="pagination-btn"
+              onclick={nextPage}
+              disabled={currentPage === getTotalPages()}
+              aria-label="Next page"
+            >
+              Next →
+            </button>
+          </div>
+
+          <div class="page-size-selector">
+            <label for="page-size">Per page:</label>
+            <select id="page-size" bind:value={pageSize} onchange={() => changePageSize(pageSize)}>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
         </div>
       {/if}
     </div>
@@ -900,5 +997,143 @@
   .goal-detail-actual {
     font-size: 0.9rem;
     color: #b0b0b0;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 20px;
+    margin-top: 20px;
+    background: rgba(30, 30, 40, 0.5);
+    border: 2px solid rgba(139, 92, 46, 0.3);
+    border-radius: 5px;
+    flex-wrap: wrap;
+  }
+
+  .pagination-info {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pagination-btn {
+    padding: 8px 16px;
+    background: linear-gradient(180deg, rgba(60, 60, 70, 0.8) 0%, rgba(40, 40, 50, 0.8) 100%);
+    border: 2px solid rgba(139, 92, 46, 0.4);
+    border-radius: 3px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+  }
+
+  .pagination-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(70, 70, 80, 0.9) 0%, rgba(50, 50, 60, 0.9) 100%);
+    border-color: rgba(139, 92, 46, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  }
+
+  .pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .page-numbers {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  .page-btn {
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0.5rem;
+    background: rgba(30, 30, 40, 0.6);
+    border: 2px solid rgba(139, 92, 46, 0.3);
+    border-radius: 3px;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .page-btn:hover {
+    background: rgba(40, 40, 50, 0.8);
+    border-color: rgba(139, 92, 46, 0.5);
+    color: #d4af37;
+  }
+
+  .page-btn.active {
+    background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
+    border-color: #d4af37;
+    color: #d4af37;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+  }
+
+  .page-ellipsis {
+    color: #808080;
+    padding: 0 0.25rem;
+  }
+
+  .page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .page-size-selector label {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .page-size-selector select {
+    padding: 8px 12px;
+    background-color: rgba(30, 30, 40, 0.8);
+    border: 2px solid rgba(139, 92, 46, 0.4);
+    border-radius: 3px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .page-size-selector select:focus {
+    border-color: rgba(139, 92, 46, 0.8);
+    outline: none;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+  }
+
+  @media (max-width: 768px) {
+    .pagination {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .pagination-info,
+    .pagination-controls,
+    .page-size-selector {
+      justify-content: center;
+    }
+
+    .page-numbers {
+      flex-wrap: wrap;
+    }
   }
 </style>

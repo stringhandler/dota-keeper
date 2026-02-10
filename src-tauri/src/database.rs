@@ -1085,39 +1085,67 @@ fn calculate_period_stats(data_points: &[LastHitsDataPoint]) -> LastHitsPeriodSt
 
 /// Calculate per-hero statistics
 fn calculate_per_hero_stats(
-    current_data: &[LastHitsDataPoint],
+    _current_data: &[LastHitsDataPoint],
     all_data: &[LastHitsDataPoint],
     window_size: usize,
 ) -> Vec<HeroLastHitsStats> {
     use std::collections::HashMap;
 
-    // Group current period data by hero
-    let mut hero_groups: HashMap<i32, Vec<i32>> = HashMap::new();
-    for point in current_data {
-        hero_groups
+    // Group ALL data by hero (not just current period)
+    let mut hero_data: HashMap<i32, Vec<&LastHitsDataPoint>> = HashMap::new();
+    for point in all_data {
+        hero_data
             .entry(point.hero_id)
             .or_insert_with(Vec::new)
-            .push(point.last_hits);
+            .push(point);
     }
 
-    // Calculate stats for each hero
-    let mut stats: Vec<HeroLastHitsStats> = hero_groups
+    // Calculate stats for each hero using their own independent window
+    let mut stats: Vec<HeroLastHitsStats> = hero_data
         .into_iter()
-        .filter(|(_, lh_values)| !lh_values.is_empty())
-        .map(|(hero_id, lh_values)| {
-            let sum: i32 = lh_values.iter().sum();
-            let average = sum as f64 / lh_values.len() as f64;
-            let count = lh_values.len();
+        .filter_map(|(hero_id, hero_points)| {
+            // For this hero, take the last N games (window_size)
+            let current_games: Vec<i32> = hero_points
+                .iter()
+                .take(window_size)
+                .map(|p| p.last_hits)
+                .collect();
 
-            // Calculate trend by comparing to previous period for this hero
-            let trend_percentage = calculate_hero_trend(hero_id, all_data, window_size);
+            if current_games.is_empty() {
+                return None;
+            }
 
-            HeroLastHitsStats {
+            let sum: i32 = current_games.iter().sum();
+            let average = sum as f64 / current_games.len() as f64;
+            let count = current_games.len();
+
+            // Calculate trend by comparing to previous N games for THIS hero
+            let previous_games: Vec<i32> = hero_points
+                .iter()
+                .skip(window_size)
+                .take(window_size)
+                .map(|p| p.last_hits)
+                .collect();
+
+            let trend_percentage = if !previous_games.is_empty() {
+                let current_avg = average;
+                let previous_avg = previous_games.iter().sum::<i32>() as f64 / previous_games.len() as f64;
+
+                if previous_avg == 0.0 {
+                    0.0
+                } else {
+                    ((current_avg - previous_avg) / previous_avg) * 100.0
+                }
+            } else {
+                0.0
+            };
+
+            Some(HeroLastHitsStats {
                 hero_id,
                 average,
                 count,
                 trend_percentage,
-            }
+            })
         })
         .collect();
 
