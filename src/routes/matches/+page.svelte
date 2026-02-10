@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
+  import { onMount, onDestroy } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
 
   let isLoading = $state(true);
@@ -12,9 +13,30 @@
   let copiedMatchId = $state(null);
   let parsingMatches = $state(new Set());
   let currentSteamId = $state("");
+  let unlistenMatchStateChanged = null;
 
   onMount(async () => {
     await loadData();
+
+    // Listen for match state changes
+    unlistenMatchStateChanged = await listen("match-state-changed", (event) => {
+      const { match_id, state } = event.payload;
+
+      // Find and update the match in the list
+      const matchIndex = matches.findIndex(m => m.match_id === match_id);
+      if (matchIndex !== -1) {
+        matches[matchIndex].parse_state = state;
+        // Force reactivity by creating a new array
+        matches = [...matches];
+      }
+    });
+  });
+
+  onDestroy(() => {
+    // Clean up event listener
+    if (unlistenMatchStateChanged) {
+      unlistenMatchStateChanged();
+    }
   });
 
   async function loadData() {

@@ -5,13 +5,14 @@ mod settings;
 use database::{
     clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
-    get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches, init_db,
-    insert_goal, insert_match, insert_match_cs_data, match_exists, update_goal,
-    update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis,
-    MatchDataPoint, MatchState, MatchWithGoals, NewGoal,
+    get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches, init_db, insert_goal,
+    insert_match, insert_match_cs_data, match_exists, update_goal, update_match_state, Goal,
+    GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState,
+    MatchWithGoals, NewGoal,
 };
+use serde_json;
 use settings::Settings;
-
+use tauri::Emitter;
 /// Get the current settings
 #[tauri::command]
 fn get_settings() -> Settings {
@@ -116,15 +117,29 @@ fn evaluate_goals_for_match(match_id: i64) -> Result<Vec<GoalEvaluation>, String
 
 /// Parse a match and extract goal progress data
 #[tauri::command]
-async fn parse_match(match_id: i64, steam_id: String) -> Result<(), String> {
+async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> Result<(), String> {
     let conn = init_db()?;
 
     // Update match state to parsing
     update_match_state(&conn, match_id, MatchState::Parsing)?;
+    let _ = app.emit(
+        "match-state-changed",
+        serde_json::json!({
+            "match_id": match_id,
+            "state": "Parsing"
+        }),
+    );
 
     // Request OpenDota to parse the match
     if let Err(e) = opendota::request_match_parse(match_id).await {
         update_match_state(&conn, match_id, MatchState::Failed)?;
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({
+                "match_id": match_id,
+                "state": "Failed"
+            }),
+        );
         return Err(format!("Failed to request parse: {}", e));
     }
 
@@ -136,6 +151,13 @@ async fn parse_match(match_id: i64, steam_id: String) -> Result<(), String> {
         Ok(m) => m,
         Err(e) => {
             update_match_state(&conn, match_id, MatchState::Failed)?;
+            let _ = app.emit(
+                "match-state-changed",
+                serde_json::json!({
+                    "match_id": match_id,
+                    "state": "Failed"
+                }),
+            );
             return Err(format!("Failed to fetch match details: {}", e));
         }
     };
@@ -157,6 +179,13 @@ async fn parse_match(match_id: i64, steam_id: String) -> Result<(), String> {
 
     // Update match state to parsed
     update_match_state(&conn, match_id, MatchState::Parsed)?;
+    let _ = app.emit(
+        "match-state-changed",
+        serde_json::json!({
+            "match_id": match_id,
+            "state": "Parsed"
+        }),
+    );
 
     Ok(())
 }
@@ -223,7 +252,10 @@ fn get_last_hits_analysis_data(
 
 /// Backfill and parse historical matches (100 games before the oldest match)
 #[tauri::command]
-async fn backfill_historical_matches(steam_id: String) -> Result<String, String> {
+async fn backfill_historical_matches(
+    app: tauri::AppHandle,
+    steam_id: String,
+) -> Result<String, String> {
     let conn = init_db()?;
 
     // Get the oldest match timestamp
@@ -267,6 +299,13 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
         }
 
         update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({
+                "match_id": m.match_id,
+                "state": "Parsing"
+            }),
+        );
 
         // Wait a bit for the parse to complete
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
@@ -277,6 +316,13 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Failed"
+                    }),
+                );
                 continue;
             }
         };
@@ -291,6 +337,13 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
             None => {
                 eprintln!("Player not found in match {}", m.match_id);
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Failed"
+                    }),
+                );
                 continue;
             }
         };
@@ -301,10 +354,24 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
                 eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
             } else {
                 update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Parsed"
+                    }),
+                );
                 parsed_count += 1;
             }
         } else {
             update_match_state(&conn, m.match_id, MatchState::Failed)?;
+            let _ = app.emit(
+                "match-state-changed",
+                serde_json::json!({
+                    "match_id": m.match_id,
+                    "state": "Failed"
+                }),
+            );
         }
 
         // Small delay to avoid rate limiting
@@ -319,7 +386,10 @@ async fn backfill_historical_matches(steam_id: String) -> Result<String, String>
 
 /// Reparse all unparsed or failed matches
 #[tauri::command]
-async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
+async fn reparse_pending_matches(
+    app: tauri::AppHandle,
+    steam_id: String,
+) -> Result<String, String> {
     let conn = init_db()?;
 
     // Get all unparsed or failed matches
@@ -346,6 +416,13 @@ async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
         }
 
         update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({
+                "match_id": m.match_id,
+                "state": "Parsing"
+            }),
+        );
 
         // Wait a bit for the parse to complete
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
@@ -356,6 +433,13 @@ async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Failed"
+                    }),
+                );
                 failed_count += 1;
                 continue;
             }
@@ -371,6 +455,13 @@ async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
             None => {
                 eprintln!("Player not found in match {}", m.match_id);
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Failed"
+                    }),
+                );
                 failed_count += 1;
                 continue;
             }
@@ -381,13 +472,34 @@ async fn reparse_pending_matches(steam_id: String) -> Result<String, String> {
             if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
                 eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Failed"
+                    }),
+                );
                 failed_count += 1;
             } else {
                 update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({
+                        "match_id": m.match_id,
+                        "state": "Parsed"
+                    }),
+                );
                 parsed_count += 1;
             }
         } else {
             update_match_state(&conn, m.match_id, MatchState::Failed)?;
+            let _ = app.emit(
+                "match-state-changed",
+                serde_json::json!({
+                    "match_id": m.match_id,
+                    "state": "Failed"
+                }),
+            );
             failed_count += 1;
         }
 
