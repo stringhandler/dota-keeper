@@ -228,7 +228,7 @@
 
 .page-header h1 {
   margin: 0 0 0.5rem 0;
-  font-size: 2.5em;
+  font-size: 2em;
   color: #d4af37;
   text-shadow:
     0 0 20px rgba(212, 175, 55, 0.5),
@@ -240,7 +240,7 @@
 .subtitle {
   color: #a0a0a0;
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   letter-spacing: 1px;
 }
 
@@ -279,7 +279,7 @@
 
 .settings-section h2 {
   margin-bottom: 1.5rem;
-  font-size: 1.8em;
+  font-size: 1.5em;
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 2px;
@@ -313,7 +313,7 @@
 
 .setting-info h3 {
   margin: 0 0 0.75rem 0;
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: #d4af37;
   text-transform: uppercase;

@@ -199,7 +199,7 @@
     align-items: center;
     min-height: 100vh;
     color: #d4af37;
-    font-size: 1.2rem;
+    font-size: 1rem;
     letter-spacing: 2px;
     text-transform: uppercase;
   }
@@ -230,7 +230,7 @@
   .login-screen h1 {
     text-align: center;
     margin-bottom: 0.5rem;
-    font-size: 2.5em;
+    font-size: 2em;
     color: #d4af37;
     text-shadow:
       0 0 20px rgba(212, 175, 55, 0.5),
@@ -358,7 +358,7 @@
   }
 
   .update-icon {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     animation: rotate 2s linear infinite;
   }
 
@@ -433,7 +433,7 @@
 
   .sidebar-header h1 {
     margin: 0 0 1rem 0;
-    font-size: 1.8em;
+    font-size: 1.5em;
     color: #d4af37;
     text-shadow:
       0 0 20px rgba(212, 175, 55, 0.5),
@@ -484,7 +484,7 @@
     color: #b0b0b0;
     text-decoration: none;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 1px;
     border-left: 3px solid transparent;
@@ -507,7 +507,7 @@
   }
 
   .nav-icon {
-    font-size: 1.4rem;
+    font-size: 1.2rem;
     filter: grayscale(100%);
     transition: filter 0.3s ease;
   }

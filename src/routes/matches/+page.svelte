@@ -403,7 +403,7 @@
 
   .page-header h1 {
     margin: 0 0 0.5rem 0;
-    font-size: 2.5em;
+    font-size: 2em;
     color: #d4af37;
     text-shadow:
       0 0 20px rgba(212, 175, 55, 0.5),
@@ -415,7 +415,7 @@
   .subtitle {
     color: #a0a0a0;
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.9rem;
     letter-spacing: 1px;
   }
 
@@ -580,7 +580,7 @@
 
   .parsing-spinner {
     display: inline-block;
-    font-size: 1.2em;
+    font-size: 1em;
     animation: spin 2s linear infinite;
   }
 
@@ -614,7 +614,7 @@
     background: rgba(30, 30, 40, 0.6);
     border: 1px solid rgba(139, 92, 46, 0.4);
     padding: 0.3em 0.5em;
-    font-size: 1rem;
+    font-size: 0.9rem;
     cursor: pointer;
     border-radius: 3px;
     transition: all 0.2s ease;
@@ -759,7 +759,7 @@
 
   .modal-header h2 {
     margin: 0;
-    font-size: 1.8rem;
+    font-size: 1.5rem;
     color: #d4af37;
     text-shadow:
       0 0 20px rgba(212, 175, 55, 0.5),
@@ -770,13 +770,13 @@
   .close-btn {
     background: rgba(60, 60, 70, 0.6);
     border: 2px solid rgba(139, 92, 46, 0.4);
-    font-size: 2rem;
+    font-size: 1.5rem;
     line-height: 1;
     cursor: pointer;
     color: #d4af37;
     padding: 0;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -860,13 +860,13 @@
   }
 
   .goal-status-indicator {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -892,7 +892,7 @@
 
   .goal-detail-title {
     font-weight: 600;
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     color: #e0e0e0;
   }
 

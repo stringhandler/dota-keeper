@@ -140,7 +140,7 @@
   align-items: center;
   padding: 3rem;
   color: #d4af37;
-  font-size: 1.2rem;
+  font-size: 1rem;
   letter-spacing: 2px;
   text-transform: uppercase;
 }
@@ -161,7 +161,7 @@
 
 .page-header h1 {
   margin: 0 0 0.5rem 0;
-  font-size: 2.5em;
+  font-size: 2em;
   color: #d4af37;
   text-shadow:
     0 0 20px rgba(212, 175, 55, 0.5),
@@ -173,7 +173,7 @@
 .subtitle {
   color: #a0a0a0;
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   letter-spacing: 1px;
 }
 
@@ -203,7 +203,7 @@
 
 .calendar-section h2 {
   margin-bottom: 1.5rem;
-  font-size: 1.8em;
+  font-size: 1.5em;
   color: #d4af37;
   text-transform: uppercase;
   letter-spacing: 2px;

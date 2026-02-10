@@ -285,7 +285,7 @@
 
   .page-header h1 {
     margin: 0 0 0.5rem 0;
-    font-size: 2.5em;
+    font-size: 2em;
     color: #d4af37;
     text-shadow:
       0 0 20px rgba(212, 175, 55, 0.5),
@@ -297,7 +297,7 @@
   .subtitle {
     color: #a0a0a0;
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.9rem;
     letter-spacing: 1px;
   }
 
@@ -316,7 +316,7 @@
   }
 
   h2 {
-    font-size: 1.5em;
+    font-size: 1.2em;
     margin: 0 0 1.5rem 0;
     color: #d4af37;
     text-transform: uppercase;

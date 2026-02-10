@@ -1070,12 +1070,16 @@ fn calculate_period_stats(data_points: &[LastHitsDataPoint]) -> LastHitsPeriodSt
     let min = *last_hits.iter().min().unwrap_or(&0);
     let max = *last_hits.iter().max().unwrap_or(&0);
 
+    // Reverse data points so charts display oldest to newest (left to right)
+    let mut reversed_points = data_points.to_vec();
+    reversed_points.reverse();
+
     LastHitsPeriodStats {
         average,
         min,
         max,
         count: data_points.len(),
-        data_points: data_points.to_vec(),
+        data_points: reversed_points,
     }
 }
 
