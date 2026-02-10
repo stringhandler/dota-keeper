@@ -133,7 +133,7 @@ pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Ma
     Ok(matches)
 }
 
-/// Fetch matches before a specific timestamp using the matches endpoint
+/// Fetch matches before a specific timestamp using offset-based pagination
 pub async fn fetch_matches_before(
     steam_id: &str,
     before_timestamp: i64,
@@ -142,23 +142,21 @@ pub async fn fetch_matches_before(
     let account_id = steam_id64_to_id32(steam_id)?;
     let client = reqwest::Client::new();
 
+    eprintln!("Backfill: Looking for {} matches before timestamp {}", limit, before_timestamp);
+
     let mut all_matches: Vec<Match> = Vec::new();
-
-    // Calculate days parameter: number of days since Unix epoch
-    // OpenDota uses this to filter matches by date
-    let days_since_epoch = (before_timestamp / 86400) as i32;
-
-    // We'll fetch matches in multiple batches, going back in time
-    // Start from the target date and go back progressively
-    let mut current_days = days_since_epoch;
+    let mut offset = 0;
+    const BATCH_SIZE: usize = 100;
+    const MAX_ATTEMPTS: usize = 50; // Try up to 5000 matches to find what we need
     let mut attempts = 0;
-    const MAX_ATTEMPTS: i32 = 12; // ~360 days of history (30 days per attempt)
 
     while all_matches.len() < limit && attempts < MAX_ATTEMPTS {
         let url = format!(
-            "{}/players/{}/matches?limit=100&date={}&lobby_type=0,7",
-            OPENDOTA_API_BASE, account_id, current_days
+            "{}/players/{}/matches?limit={}&offset={}&significant=0",
+            OPENDOTA_API_BASE, account_id, BATCH_SIZE, offset
         );
+
+        eprintln!("Backfill: Fetching with offset {}, found {} older matches so far", offset, all_matches.len());
 
         let response = client
             .get(&url)
@@ -178,23 +176,28 @@ pub async fn fetch_matches_before(
             .await
             .map_err(|e| format!("Failed to parse matches: {}", e))?;
 
-        // If no more matches, we've gone too far back
+        eprintln!("Backfill: Received {} matches from API", matches.len());
+
+        // If no more matches, we've reached the end
         if matches.is_empty() {
+            eprintln!("Backfill: No more matches available from API");
             break;
         }
 
         // Collect matches that are before the timestamp
+        let mut matches_in_range = 0;
         for m in matches {
             if m.start_time < before_timestamp {
                 all_matches.push(m.into());
+                matches_in_range += 1;
                 if all_matches.len() >= limit {
                     break;
                 }
             }
         }
+        eprintln!("Backfill: Found {} matches in this batch that are older than target timestamp", matches_in_range);
 
-        // Go back 30 days for the next batch
-        current_days -= 30;
+        offset += BATCH_SIZE;
         attempts += 1;
 
         // Small delay to avoid rate limiting
@@ -206,6 +209,8 @@ pub async fn fetch_matches_before(
 
     // Take only the requested number of matches
     all_matches.truncate(limit);
+
+    eprintln!("Backfill: Returning {} total matches", all_matches.len());
 
     Ok(all_matches)
 }
