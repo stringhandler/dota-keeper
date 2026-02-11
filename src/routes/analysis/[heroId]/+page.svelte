@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { getHeroName } from "$lib/heroes.js";
+  import Chart from "$lib/Chart.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -146,6 +147,237 @@
     const buckets = getDistributionBuckets();
     return Math.max(...buckets.map(b => b.count), 1);
   }
+
+  function getDistributionChartConfig() {
+    if (!analysis || !analysis.current_period.data_points) return null;
+
+    const buckets = getDistributionBuckets();
+
+    return {
+      type: 'line',
+      data: {
+        labels: buckets.map(b => b.label),
+        datasets: [{
+          label: 'Game Count',
+          data: buckets.map(b => b.count),
+          borderColor: 'rgba(212, 175, 55, 1)',
+          backgroundColor: 'rgba(212, 175, 55, 0.2)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: 'rgba(212, 175, 55, 1)',
+          pointBorderColor: 'rgba(255, 255, 255, 0.8)',
+          pointBorderWidth: 2,
+          pointHoverBackgroundColor: 'rgba(212, 175, 55, 1)',
+          pointHoverBorderColor: 'rgba(255, 255, 255, 1)',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(30, 30, 40, 0.95)',
+            titleColor: '#d4af37',
+            bodyColor: '#e0e0e0',
+            borderColor: 'rgba(139, 92, 46, 0.8)',
+            borderWidth: 2,
+            padding: 12,
+            displayColors: false,
+            callbacks: {
+              label: function(context) {
+                return `${context.parsed.y} games`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              color: 'rgba(139, 92, 46, 0.2)',
+              borderColor: 'rgba(139, 92, 46, 0.5)',
+            },
+            ticks: {
+              color: '#a0a0a0',
+              font: {
+                size: 11
+              }
+            },
+            title: {
+              display: true,
+              text: 'Last Hits',
+              color: '#d4af37',
+              font: {
+                size: 12,
+                weight: 'bold'
+              }
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(139, 92, 46, 0.2)',
+              borderColor: 'rgba(139, 92, 46, 0.5)',
+            },
+            ticks: {
+              color: '#a0a0a0',
+              font: {
+                size: 11
+              },
+              stepSize: 1
+            },
+            title: {
+              display: true,
+              text: 'Number of Games',
+              color: '#d4af37',
+              font: {
+                size: 12,
+                weight: 'bold'
+              }
+            }
+          }
+        }
+      }
+    };
+  }
+
+  function getTimelineChartConfig() {
+    if (!analysis || !analysis.current_period.data_points) return null;
+
+    const points = analysis.current_period.data_points;
+    const trendLine = calculateTrendLine();
+
+    return {
+      type: 'line',
+      data: {
+        labels: points.map((p, i) => `Game ${i + 1}`),
+        datasets: [
+          {
+            label: 'Last Hits',
+            data: points.map(p => p.last_hits),
+            borderColor: 'rgba(212, 175, 55, 1)',
+            backgroundColor: 'rgba(212, 175, 55, 0.1)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: 'rgba(212, 175, 55, 1)',
+            pointBorderColor: 'rgba(255, 255, 255, 0.8)',
+            pointBorderWidth: 2,
+          },
+          trendLine ? {
+            label: 'Trend',
+            data: points.map((_, i) => getTrendLineValue(i)),
+            borderColor: 'rgba(96, 192, 64, 0.8)',
+            backgroundColor: 'rgba(96, 192, 64, 0.1)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+          } : null
+        ].filter(Boolean)
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              color: '#a0a0a0',
+              font: {
+                size: 11
+              },
+              usePointStyle: true,
+              padding: 15
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(30, 30, 40, 0.95)',
+            titleColor: '#d4af37',
+            bodyColor: '#e0e0e0',
+            borderColor: 'rgba(139, 92, 46, 0.8)',
+            borderWidth: 2,
+            padding: 12,
+            callbacks: {
+              title: function(context) {
+                const point = points[context[0].dataIndex];
+                return formatDate(point.start_time);
+              },
+              label: function(context) {
+                if (context.datasetIndex === 0) {
+                  return `Last Hits: ${context.parsed.y}`;
+                } else {
+                  return `Trend: ${context.parsed.y.toFixed(1)}`;
+                }
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              color: 'rgba(139, 92, 46, 0.2)',
+              borderColor: 'rgba(139, 92, 46, 0.5)',
+            },
+            ticks: {
+              color: '#a0a0a0',
+              font: {
+                size: 10
+              },
+              maxRotation: 45,
+              minRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 15
+            },
+            title: {
+              display: true,
+              text: 'Game Sequence',
+              color: '#d4af37',
+              font: {
+                size: 12,
+                weight: 'bold'
+              }
+            }
+          },
+          y: {
+            grid: {
+              color: 'rgba(139, 92, 46, 0.2)',
+              borderColor: 'rgba(139, 92, 46, 0.5)',
+            },
+            ticks: {
+              color: '#a0a0a0',
+              font: {
+                size: 11
+              }
+            },
+            title: {
+              display: true,
+              text: 'Last Hits',
+              color: '#d4af37',
+              font: {
+                size: 12,
+                weight: 'bold'
+              }
+            }
+          }
+        }
+      }
+    };
+  }
 </script>
 
 <div class="hero-detail-content">
@@ -244,52 +476,16 @@
 
       <div class="distribution-section">
         <h2>Distribution (Last {analysis.current_period.count} games)</h2>
-        <div class="distribution-chart">
-          {#each getDistributionBuckets() as bucket}
-            <div class="distribution-bar">
-              <div class="bar-label">{bucket.label} LH</div>
-              <div class="bar-container">
-                <div
-                  class="bar-fill"
-                  style="width: {(bucket.count / getMaxBucketCount()) * 100}%"
-                ></div>
-                <span class="bar-count">{bucket.count}</span>
-              </div>
-            </div>
-          {/each}
-        </div>
+        {#if getDistributionChartConfig()}
+          <Chart config={getDistributionChartConfig()} height="300px" />
+        {/if}
       </div>
 
       <div class="timeline-section">
         <h2>Recent Games</h2>
-        <div class="timeline-chart">
-          <div class="chart-container">
-            {#each analysis.current_period.data_points as point, index}
-              {@const trendValue = getTrendLineValue(index)}
-              <div class="timeline-point" title="{formatDate(point.start_time)}: {point.last_hits} LH">
-                <div class="point-marker" style="bottom: {(point.last_hits / analysis.current_period.max) * 100}%"></div>
-                {#if trendValue !== null}
-                  <div class="trend-marker" style="bottom: {(trendValue / analysis.current_period.max) * 100}%"></div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-          <div class="chart-axis">
-            <div class="axis-label top">{analysis.current_period.max}</div>
-            <div class="axis-label middle">{Math.round((analysis.current_period.max + analysis.current_period.min) / 2)}</div>
-            <div class="axis-label bottom">{analysis.current_period.min}</div>
-          </div>
-        </div>
-        <div class="chart-legend">
-          <div class="legend-item">
-            <span class="legend-dot actual"></span>
-            <span>Actual LH</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot trend"></span>
-            <span>Trend Line</span>
-          </div>
-        </div>
+        {#if getTimelineChartConfig()}
+          <Chart config={getTimelineChartConfig()} height="350px" />
+        {/if}
       </div>
 
       <div class="games-list-section">
@@ -566,143 +762,6 @@
     color: #e0e0e0;
   }
 
-  .distribution-chart {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .distribution-bar {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .bar-label {
-    min-width: 100px;
-    font-weight: 600;
-    color: #a0a0a0;
-    font-size: 0.9rem;
-  }
-
-  .bar-container {
-    flex: 1;
-    position: relative;
-    height: 40px;
-    background: rgba(30, 30, 40, 0.6);
-    border: 1px solid rgba(139, 92, 46, 0.3);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #d4af37 0%, #f0c050 50%, #d4af37 100%);
-    box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
-    transition: width 0.5s ease;
-  }
-
-  .bar-count {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-weight: bold;
-    color: #e0e0e0;
-    font-size: 0.9rem;
-  }
-
-  .timeline-chart {
-    display: flex;
-    gap: 1rem;
-  }
-
-  .chart-container {
-    flex: 1;
-    display: flex;
-    gap: 4px;
-    height: 200px;
-    background: rgba(30, 30, 40, 0.4);
-    border: 2px solid rgba(139, 92, 46, 0.3);
-    border-radius: 3px;
-    padding: 10px;
-    position: relative;
-  }
-
-  .timeline-point {
-    flex: 1;
-    position: relative;
-    min-width: 8px;
-  }
-
-  .point-marker {
-    position: absolute;
-    width: 100%;
-    height: 8px;
-    background: #d4af37;
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.8);
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .point-marker:hover {
-    transform: scale(1.5);
-    box-shadow: 0 0 15px rgba(212, 175, 55, 1);
-  }
-
-  .trend-marker {
-    position: absolute;
-    width: 100%;
-    height: 2px;
-    background: #60c040;
-    box-shadow: 0 0 4px rgba(96, 192, 64, 0.6);
-  }
-
-  .chart-axis {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 10px 0;
-    min-width: 50px;
-  }
-
-  .axis-label {
-    font-size: 0.85rem;
-    color: #a0a0a0;
-    font-weight: 600;
-  }
-
-  .chart-legend {
-    display: flex;
-    gap: 2rem;
-    margin-top: 1rem;
-    justify-content: center;
-  }
-
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9rem;
-    color: #a0a0a0;
-  }
-
-  .legend-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-  }
-
-  .legend-dot.actual {
-    background: #d4af37;
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.8);
-  }
-
-  .legend-dot.trend {
-    background: #60c040;
-    box-shadow: 0 0 8px rgba(96, 192, 64, 0.6);
-  }
 
   .games-table {
     display: flex;
