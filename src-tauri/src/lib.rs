@@ -9,6 +9,7 @@ use database::{
     insert_match, insert_match_cs_data, match_exists, update_goal, update_match_state, Goal,
     GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState,
     MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
+    get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
 };
 use serde_json;
 use settings::Settings;
@@ -113,6 +114,20 @@ fn evaluate_goals_for_match(match_id: i64) -> Result<Vec<GoalEvaluation>, String
 
     // Evaluate goals for this match
     evaluate_match_goals(&conn, match_data)
+}
+
+/// Get or generate weekly hero goal suggestion
+#[tauri::command]
+fn get_hero_goal_suggestion() -> Result<Option<HeroGoalSuggestion>, String> {
+    let conn = init_db()?;
+    get_or_generate_hero_suggestion(&conn)
+}
+
+/// Force regenerate hero goal suggestion (ignores cache)
+#[tauri::command]
+fn refresh_hero_goal_suggestion() -> Result<Option<HeroGoalSuggestion>, String> {
+    let conn = init_db()?;
+    regenerate_hero_suggestion(&conn)
 }
 
 /// Parse a match and extract goal progress data
@@ -569,6 +584,8 @@ pub fn run() {
             save_goal,
             remove_goal,
             evaluate_goals_for_match,
+            get_hero_goal_suggestion,
+            refresh_hero_goal_suggestion,
             parse_match,
             get_database_folder_path,
             open_database_folder,

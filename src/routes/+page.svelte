@@ -6,11 +6,13 @@
   let isLoading = $state(true);
   let error = $state("");
   let goalCalendar = $state([]);
+  let heroSuggestion = $state(null);
 
   const DAYS_TO_SHOW = 7;
 
   onMount(async () => {
     await loadGoalCalendar();
+    await loadHeroSuggestion();
   });
 
   async function loadGoalCalendar() {
@@ -21,6 +23,41 @@
       console.error("Failed to load goal calendar:", e);
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function loadHeroSuggestion() {
+    try {
+      heroSuggestion = await invoke("get_hero_goal_suggestion");
+    } catch (e) {
+      console.error("Failed to load hero suggestion:", e);
+    }
+  }
+
+  async function acceptSuggestion(suggestion) {
+    try {
+      await invoke("create_goal", {
+        goal: {
+          hero_id: suggestion.hero_id,
+          metric: "LastHits",
+          target_value: suggestion.suggested_last_hits,
+          target_time_minutes: 10,
+          game_mode: "Ranked"
+        }
+      });
+      alert("Goal created successfully!");
+      await loadGoalCalendar();
+    } catch (e) {
+      error = `Failed to create goal: ${e}`;
+    }
+  }
+
+  async function refreshSuggestion() {
+    try {
+      heroSuggestion = await invoke("refresh_hero_goal_suggestion");
+    } catch (e) {
+      error = `Failed to refresh suggestion: ${e}`;
+      console.error("Failed to refresh suggestion:", e);
     }
   }
 
@@ -125,6 +162,46 @@
         </div>
       {/if}
     </div>
+
+    {#if heroSuggestion}
+      <div class="suggestion-section">
+        <h2>🎯 Suggested Goal This Week</h2>
+        <div class="suggestion-card">
+          <div class="hero-info">
+            <div class="hero-name">{getHeroName(heroSuggestion.hero_id)}</div>
+            <div class="time-marker">At 10 Minutes</div>
+            <div class="suggestion-stats">
+              <div class="stat-item">
+                <span class="label">Current Average</span>
+                <span class="value">{Math.round(heroSuggestion.current_average)} CS</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Suggested Target</span>
+                <span class="value highlight">{heroSuggestion.suggested_last_hits} CS</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Improvement</span>
+                <span class="value improvement">
+                  +{heroSuggestion.suggested_last_hits - Math.round(heroSuggestion.current_average)} CS
+                  (+{Math.round(((heroSuggestion.suggested_last_hits - heroSuggestion.current_average) / heroSuggestion.current_average) * 100)}%)
+                </span>
+              </div>
+            </div>
+            <div class="games-info">
+              Based on your last {heroSuggestion.games_analyzed} games
+            </div>
+          </div>
+          <div class="suggestion-actions">
+            <button class="refresh-btn" onclick={() => refreshSuggestion()}>
+              🔄 Refresh
+            </button>
+            <button class="accept-btn" onclick={() => acceptSuggestion(heroSuggestion)}>
+              Create Goal
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -360,5 +437,135 @@
   font-size: 0.75rem;
   color: #b0b0b0;
   font-weight: 600;
+}
+
+.suggestion-section {
+  margin-top: 2rem;
+  padding: 30px;
+  background: linear-gradient(135deg, rgba(40, 30, 60, 0.8) 0%, rgba(30, 20, 50, 0.9) 100%);
+  border: 2px solid rgba(139, 92, 200, 0.4);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(138, 43, 226, 0.3);
+}
+
+.suggestion-section h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.5em;
+  color: #b89bdb;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(184, 155, 219, 0.5);
+}
+
+.suggestion-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  background: rgba(30, 25, 40, 0.8);
+  border-radius: 5px;
+  border-left: 4px solid #b89bdb;
+}
+
+.hero-name {
+  font-size: 1.8em;
+  font-weight: bold;
+  color: #d4af37;
+  margin-bottom: 0.5rem;
+}
+
+.time-marker {
+  font-size: 0.9rem;
+  color: #b89bdb;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.suggestion-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-item .label {
+  font-size: 0.85rem;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stat-item .value {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #e0e0e0;
+}
+
+.stat-item .highlight {
+  color: #b89bdb;
+  text-shadow: 0 0 10px rgba(184, 155, 219, 0.5);
+}
+
+.stat-item .improvement {
+  color: #60c040;
+}
+
+.games-info {
+  font-size: 0.85rem;
+  color: #a0a0a0;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-direction: column;
+}
+
+.refresh-btn {
+  background: linear-gradient(180deg, rgba(60, 60, 80, 0.8) 0%, rgba(40, 40, 60, 0.8) 100%);
+  color: #e0e0e0;
+  padding: 10px 20px;
+  border: 2px solid rgba(139, 139, 139, 0.6);
+  border-radius: 3px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.refresh-btn:hover {
+  background: linear-gradient(180deg, rgba(80, 80, 100, 0.9) 0%, rgba(60, 60, 80, 0.9) 100%);
+  box-shadow: 0 0 15px rgba(139, 139, 139, 0.5);
+  transform: translateY(-2px);
+}
+
+.accept-btn {
+  background: linear-gradient(180deg, rgba(100, 70, 140, 0.8) 0%, rgba(80, 50, 120, 0.8) 100%);
+  color: #e0e0e0;
+  padding: 12px 24px;
+  border: 2px solid rgba(184, 155, 219, 0.6);
+  border-radius: 3px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.accept-btn:hover {
+  background: linear-gradient(180deg, rgba(120, 90, 160, 0.9) 0%, rgba(100, 70, 140, 0.9) 100%);
+  box-shadow: 0 0 20px rgba(184, 155, 219, 0.5);
+  transform: translateY(-2px);
 }
 </style>

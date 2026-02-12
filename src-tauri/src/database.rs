@@ -1,6 +1,7 @@
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use rand::Rng;
 
 /// Goal metric types
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -76,6 +77,16 @@ pub struct NewGoal {
     pub target_value: i32,
     pub target_time_minutes: i32,
     pub game_mode: GoalGameMode,
+}
+
+/// Hero goal suggestion (weekly personalized goal)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HeroGoalSuggestion {
+    pub hero_id: i32,
+    pub suggested_last_hits: i32,
+    pub current_average: f64,
+    pub created_at: i64,
+    pub games_analyzed: i32,
 }
 
 /// Match processing state
@@ -248,6 +259,19 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create hero_favorites table: {}", e))?;
+
+    // Create the hero_goal_suggestions table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS hero_goal_suggestions (
+            id INTEGER PRIMARY KEY,
+            hero_id INTEGER NOT NULL,
+            suggested_last_hits INTEGER NOT NULL,
+            current_average REAL NOT NULL,
+            created_at INTEGER NOT NULL,
+            games_analyzed INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create hero_goal_suggestions table: {}", e))?;
 
     Ok(conn)
 }
@@ -1247,4 +1271,191 @@ pub fn get_favorite_hero_ids(conn: &Connection) -> Result<Vec<i32>, String> {
     }
 
     Ok(result)
+}
+
+/// Get current hero goal suggestion if it exists and is less than 7 days old
+pub fn get_current_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSuggestion>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let result = conn.query_row(
+        "SELECT hero_id, suggested_last_hits, current_average, created_at, games_analyzed
+         FROM hero_goal_suggestions
+         WHERE id = 1",
+        [],
+        |row| {
+            Ok(HeroGoalSuggestion {
+                hero_id: row.get(0)?,
+                suggested_last_hits: row.get(1)?,
+                current_average: row.get(2)?,
+                created_at: row.get(3)?,
+                games_analyzed: row.get(4)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(suggestion) => {
+            // Check if suggestion is less than 7 days old
+            let age_seconds = now - suggestion.created_at;
+            let seven_days_seconds = 7 * 24 * 60 * 60;
+
+            if age_seconds < seven_days_seconds {
+                Ok(Some(suggestion))
+            } else {
+                Ok(None)
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query hero suggestion: {}", e)),
+    }
+}
+
+/// Generate a new hero goal suggestion based on recent gameplay
+pub fn generate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSuggestion>, String> {
+    // Get last 20 matches ordered by start_time
+    let mut stmt = conn
+        .prepare("SELECT hero_id FROM matches ORDER BY start_time DESC LIMIT 20")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let hero_ids: Vec<i32> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| format!("Failed to query recent matches: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect hero IDs: {}", e))?;
+
+    if hero_ids.is_empty() {
+        return Ok(None);
+    }
+
+    // Get unique heroes and count total games for each
+    let mut hero_game_counts: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+    for &hero_id in &hero_ids {
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM matches WHERE hero_id = ?1",
+                params![hero_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Failed to count games for hero {}: {}", hero_id, e))?;
+
+        hero_game_counts.insert(hero_id, count);
+    }
+
+    // Filter to heroes with >= 5 total games
+    let qualifying_heroes: Vec<i32> = hero_game_counts
+        .iter()
+        .filter(|(_, &count)| count >= 5)
+        .map(|(&hero_id, _)| hero_id)
+        .collect();
+
+    if qualifying_heroes.is_empty() {
+        return Ok(None);
+    }
+
+    // Randomly select one qualifying hero
+    let mut rng = rand::thread_rng();
+    let selected_hero = qualifying_heroes[rng.gen_range(0..qualifying_heroes.len())];
+
+    // Get last 5 games for selected hero with last hits at 10 minutes
+    // First try to get from match_cs table (parsed matches), fall back to estimating from total last hits
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.match_id, m.duration,
+                    COALESCE(
+                        (SELECT last_hits FROM match_cs WHERE match_id = m.match_id AND minute = 10),
+                        CAST(m.last_hits * 10.0 / (m.duration / 60.0) AS INTEGER)
+                    ) as lh_at_10
+             FROM matches m
+             WHERE m.hero_id = ?1
+             ORDER BY m.start_time DESC
+             LIMIT 5"
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let last_hits_values: Vec<i32> = stmt
+        .query_map(params![selected_hero], |row| row.get::<_, i32>(2))
+        .map_err(|e| format!("Failed to query last hits: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect last hits: {}", e))?;
+
+    if last_hits_values.is_empty() {
+        return Ok(None);
+    }
+
+    // Filter out unrealistic values (0 or negative, which can happen with short games)
+    let valid_values: Vec<i32> = last_hits_values.into_iter().filter(|&v| v > 0).collect();
+
+    if valid_values.is_empty() {
+        return Ok(None);
+    }
+
+    // Calculate average last hits at 10 minutes
+    let sum: i32 = valid_values.iter().sum();
+    let average = sum as f64 / valid_values.len() as f64;
+
+    // Generate target: 5-10% higher than average
+    let improvement_factor = 1.05 + rng.gen_range(0.0..0.05);
+    let target_last_hits = (average * improvement_factor).round() as i32;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    Ok(Some(HeroGoalSuggestion {
+        hero_id: selected_hero,
+        suggested_last_hits: target_last_hits,
+        current_average: average,
+        created_at: now,
+        games_analyzed: valid_values.len() as i32,
+    }))
+}
+
+/// Save a hero goal suggestion to the database
+pub fn save_hero_suggestion(conn: &Connection, suggestion: &HeroGoalSuggestion) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO hero_goal_suggestions
+         (id, hero_id, suggested_last_hits, current_average, created_at, games_analyzed)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5)",
+        params![
+            suggestion.hero_id,
+            suggestion.suggested_last_hits,
+            suggestion.current_average,
+            suggestion.created_at,
+            suggestion.games_analyzed,
+        ],
+    )
+    .map_err(|e| format!("Failed to save hero suggestion: {}", e))?;
+
+    Ok(())
+}
+
+/// Get or generate a hero goal suggestion
+pub fn get_or_generate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSuggestion>, String> {
+    // Check if we have a current valid suggestion
+    if let Some(suggestion) = get_current_hero_suggestion(conn)? {
+        return Ok(Some(suggestion));
+    }
+
+    // Generate a new suggestion
+    if let Some(suggestion) = generate_hero_suggestion(conn)? {
+        save_hero_suggestion(conn, &suggestion)?;
+        return Ok(Some(suggestion));
+    }
+
+    Ok(None)
+}
+
+/// Force regenerate a new hero goal suggestion (ignores current suggestion age)
+pub fn regenerate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSuggestion>, String> {
+    // Generate a new suggestion
+    if let Some(suggestion) = generate_hero_suggestion(conn)? {
+        save_hero_suggestion(conn, &suggestion)?;
+        return Ok(Some(suggestion));
+    }
+
+    Ok(None)
 }

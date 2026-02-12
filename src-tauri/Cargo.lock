@@ -812,6 +812,7 @@ version = "0.1.2"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
+ "rand 0.8.5",
  "reqwest",
  "rusqlite",
  "serde",
