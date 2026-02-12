@@ -241,6 +241,14 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create goals table: {}", e))?;
 
+    // Create the hero_favorites table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS hero_favorites (
+            hero_id INTEGER PRIMARY KEY
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create hero_favorites table: {}", e))?;
+
     Ok(conn)
 }
 
@@ -1186,4 +1194,57 @@ fn calculate_hero_trend(hero_id: i32, all_data: &[LastHitsDataPoint], window_siz
     }
 
     ((current_avg - previous_avg) / previous_avg) * 100.0
+}
+
+/// Toggle hero favorite status
+pub fn toggle_hero_favorite(conn: &Connection, hero_id: i32) -> Result<bool, String> {
+    // Check if hero is currently favorited
+    let is_favorite = is_hero_favorite(conn, hero_id)?;
+
+    if is_favorite {
+        // Remove from favorites
+        conn.execute(
+            "DELETE FROM hero_favorites WHERE hero_id = ?1",
+            params![hero_id],
+        ).map_err(|e| format!("Failed to remove hero from favorites: {}", e))?;
+        Ok(false)
+    } else {
+        // Add to favorites
+        conn.execute(
+            "INSERT INTO hero_favorites (hero_id) VALUES (?1)",
+            params![hero_id],
+        ).map_err(|e| format!("Failed to add hero to favorites: {}", e))?;
+        Ok(true)
+    }
+}
+
+/// Check if a hero is favorited
+pub fn is_hero_favorite(conn: &Connection, hero_id: i32) -> Result<bool, String> {
+    let count: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM hero_favorites WHERE hero_id = ?1",
+            params![hero_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to check if hero is favorite: {}", e))?;
+
+    Ok(count > 0)
+}
+
+/// Get all favorite hero IDs
+pub fn get_favorite_hero_ids(conn: &Connection) -> Result<Vec<i32>, String> {
+    let mut stmt = conn
+        .prepare("SELECT hero_id FROM hero_favorites")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let hero_ids = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| format!("Failed to query favorite heroes: {}", e))?;
+
+    let mut result = Vec::new();
+    for id in hero_ids {
+        result.push(id.map_err(|e| format!("Failed to read hero ID: {}", e))?);
+    }
+
+    Ok(result)
 }

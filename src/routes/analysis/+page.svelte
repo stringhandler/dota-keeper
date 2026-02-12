@@ -11,6 +11,10 @@
   let windowSize = $state(30);
   let selectedHeroId = $state(null);
   let selectedGameMode = $state(null);
+  let heroFilter = $state("all"); // "all" or "favorites"
+
+  // Favorites
+  let favoriteHeroes = $state(new Set());
 
   // Analysis data
   let analysis = $state(null);
@@ -24,8 +28,39 @@
   ];
 
   onMount(async () => {
+    await loadFavorites();
     await loadAnalysis();
   });
+
+  async function loadFavorites() {
+    try {
+      const favorites = await invoke("get_favorite_heroes");
+      favoriteHeroes = new Set(favorites);
+    } catch (e) {
+      console.error("Failed to load favorite heroes:", e);
+    }
+  }
+
+  async function toggleFavorite(heroId) {
+    try {
+      const isFavorite = await invoke("toggle_favorite_hero", { heroId });
+
+      if (isFavorite) {
+        favoriteHeroes.add(heroId);
+      } else {
+        favoriteHeroes.delete(heroId);
+      }
+
+      // Trigger reactivity
+      favoriteHeroes = new Set(favoriteHeroes);
+
+      // Reload analysis to update sorting
+      await loadAnalysis();
+    } catch (e) {
+      console.error("Failed to toggle favorite:", e);
+      error = `Failed to toggle favorite: ${e}`;
+    }
+  }
 
   async function loadAnalysis() {
     isLoading = true;
@@ -87,6 +122,34 @@
     .sort((a, b) => a.label.localeCompare(b.label));
 
   heroList.unshift({ value: null, label: "All Heroes" });
+
+  // Filter and sort hero stats based on favorites
+  function getFilteredHeroStats() {
+    if (!analysis || !analysis.per_hero_stats) return [];
+
+    let stats = [...analysis.per_hero_stats];
+
+    // Apply filter
+    if (heroFilter === "favorites") {
+      stats = stats.filter(stat => favoriteHeroes.has(stat.hero_id));
+    }
+
+    // Sort: favorites first when showing all heroes
+    if (heroFilter === "all") {
+      stats.sort((a, b) => {
+        const aFav = favoriteHeroes.has(a.hero_id) ? 1 : 0;
+        const bFav = favoriteHeroes.has(b.hero_id) ? 1 : 0;
+
+        // Favorites first
+        if (aFav !== bFav) return bFav - aFav;
+
+        // Within same favorite status, sort by average (descending)
+        return b.average - a.average;
+      });
+    }
+
+    return stats;
+  }
 </script>
 
 <div class="analysis-content">
@@ -100,21 +163,21 @@
     <div class="filters-grid">
       <div class="filter-group">
         <label for="time-minutes">Time Marker</label>
-        <select id="time-minutes" bind:value={timeMinutes} on:change={handleFilterChange}>
+        <select id="time-minutes" bind:value={timeMinutes} onchange={handleFilterChange}>
           <option value={10}>10 minutes</option>
         </select>
       </div>
 
       <div class="filter-group">
         <label for="window-size">Window Size</label>
-        <select id="window-size" bind:value={windowSize} on:change={handleFilterChange}>
+        <select id="window-size" bind:value={windowSize} onchange={handleFilterChange}>
           <option value={30}>30 games</option>
         </select>
       </div>
 
       <div class="filter-group">
         <label for="hero-filter">Hero</label>
-        <select id="hero-filter" bind:value={selectedHeroId} on:change={handleFilterChange}>
+        <select id="hero-filter" bind:value={selectedHeroId} onchange={handleFilterChange}>
           {#each heroList as hero}
             <option value={hero.value}>{hero.label}</option>
           {/each}
@@ -123,10 +186,18 @@
 
       <div class="filter-group">
         <label for="mode-filter">Game Mode</label>
-        <select id="mode-filter" bind:value={selectedGameMode} on:change={handleFilterChange}>
+        <select id="mode-filter" bind:value={selectedGameMode} onchange={handleFilterChange}>
           {#each gameModes as mode}
             <option value={mode.value}>{mode.label}</option>
           {/each}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="hero-favorites-filter">Show</label>
+        <select id="hero-favorites-filter" bind:value={heroFilter}>
+          <option value="all">All Heroes</option>
+          <option value="favorites">Favorites Only</option>
         </select>
       </div>
     </div>
@@ -209,18 +280,31 @@
         <div class="hero-breakdown-section">
           <h2>Per-Hero Breakdown</h2>
           <div class="hero-list">
-            {#each analysis.per_hero_stats as heroStat}
-              <a href="/analysis/{heroStat.hero_id}" class="hero-row">
-                <div class="hero-name">{getHeroName(heroStat.hero_id)}</div>
-                <div class="hero-avg">{heroStat.average.toFixed(1)} avg</div>
-                <div class="hero-count">({heroStat.count} games)</div>
-                {#if heroStat.trend_percentage !== 0}
-                  <div class="hero-trend" class:positive={heroStat.trend_percentage > 0} class:negative={heroStat.trend_percentage < 0}>
-                    {heroStat.trend_percentage > 0 ? '↗' : '↘'} {Math.abs(heroStat.trend_percentage).toFixed(1)}%
-                  </div>
-                {/if}
-                <div class="hero-detail-btn">View Details →</div>
-              </a>
+            {#each getFilteredHeroStats() as heroStat}
+              <div class="hero-row-container">
+                <button
+                  class="favorite-btn"
+                  class:is-favorite={favoriteHeroes.has(heroStat.hero_id)}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    toggleFavorite(heroStat.hero_id);
+                  }}
+                  title={favoriteHeroes.has(heroStat.hero_id) ? "Remove from favorites" : "Add to favorites"}
+                >
+                  {favoriteHeroes.has(heroStat.hero_id) ? '★' : '☆'}
+                </button>
+                <a href="/analysis/{heroStat.hero_id}" class="hero-row">
+                  <div class="hero-name">{getHeroName(heroStat.hero_id)}</div>
+                  <div class="hero-avg">{heroStat.average.toFixed(1)} avg</div>
+                  <div class="hero-count">({heroStat.count} games)</div>
+                  {#if heroStat.trend_percentage !== 0}
+                    <div class="hero-trend" class:positive={heroStat.trend_percentage > 0} class:negative={heroStat.trend_percentage < 0}>
+                      {heroStat.trend_percentage > 0 ? '↗' : '↘'} {Math.abs(heroStat.trend_percentage).toFixed(1)}%
+                    </div>
+                  {/if}
+                  <div class="hero-detail-btn">View Details →</div>
+                </a>
+              </div>
             {/each}
           </div>
         </div>
@@ -489,7 +573,40 @@
     gap: 0.75rem;
   }
 
+  .hero-row-container {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .favorite-btn {
+    flex-shrink: 0;
+    width: 45px;
+    background: rgba(30, 30, 40, 0.6);
+    border: 2px solid rgba(139, 92, 46, 0.4);
+    border-radius: 3px;
+    color: #a0a0a0;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .favorite-btn:hover {
+    background: rgba(40, 40, 50, 0.8);
+    border-color: #d4af37;
+    color: #d4af37;
+  }
+
+  .favorite-btn.is-favorite {
+    color: #d4af37;
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+  }
+
   .hero-row {
+    flex: 1;
     display: grid;
     grid-template-columns: 1fr auto auto auto auto;
     gap: 1rem;

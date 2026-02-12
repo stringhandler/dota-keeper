@@ -8,7 +8,7 @@ use database::{
     get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches, init_db, insert_goal,
     insert_match, insert_match_cs_data, match_exists, update_goal, update_match_state, Goal,
     GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState,
-    MatchWithGoals, NewGoal,
+    MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
 };
 use serde_json;
 use settings::Settings;
@@ -521,6 +521,20 @@ fn clear_matches() -> Result<String, String> {
     Ok("All matches cleared successfully.".to_string())
 }
 
+/// Toggle hero favorite status
+#[tauri::command]
+fn toggle_favorite_hero(hero_id: i32) -> Result<bool, String> {
+    let conn = init_db()?;
+    toggle_hero_favorite(&conn, hero_id)
+}
+
+/// Get all favorite hero IDs
+#[tauri::command]
+fn get_favorite_heroes() -> Result<Vec<i32>, String> {
+    let conn = init_db()?;
+    get_favorite_hero_ids(&conn)
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -561,7 +575,9 @@ pub fn run() {
             get_last_hits_analysis_data,
             backfill_historical_matches,
             reparse_pending_matches,
-            clear_matches
+            clear_matches,
+            toggle_favorite_hero,
+            get_favorite_heroes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
