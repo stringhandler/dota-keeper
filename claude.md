@@ -24,6 +24,11 @@ I want an application that tracks my Dota 2 games and analyzes my performance ag
 
 > **AI Context Note**: Future AI prompts working on this project should reference this `project management` directory for project context, requirements, and documentation. This serves as the central location for project planning and specifications.
 
+
+## Project management
+
+Tasks are stored in `meta/tasks/`. It has `upnext`, `backlog` and `done`. When asked to create a new task, create it either in `backlog` or `upnext` as a `.md` file.
+
 ## Status
 
 - [ ] Initial setup
