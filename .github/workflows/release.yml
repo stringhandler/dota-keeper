@@ -77,9 +77,18 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           echo "Downloading signatures for version v${VERSION}"
-          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures
+
+          # Create signatures directory
+          mkdir -p ./signatures
+
+          # Download from draft release (add || true to not fail if no sigs found)
+          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures || {
+            echo "Warning: Could not download signature files. They may not exist yet."
+            echo "This is expected if TAURI_SIGNING_PRIVATE_KEY is not configured."
+          }
+
           echo "Downloaded signature files:"
-          ls -la ./signatures/ || echo "No signatures found"
+          ls -la ./signatures/ || echo "No signatures directory or files found"
 
       - name: Update latest.json
         run: |
@@ -128,6 +137,9 @@ jobs:
             echo "Warning: macOS ARM signature not found"
           fi
 
+          # Create meta/autoupdate directory if it doesn't exist
+          mkdir -p meta/autoupdate
+
           # Update latest.json
           cat > meta/autoupdate/latest.json << EOF
           {
@@ -154,6 +166,9 @@ jobs:
             }
           }
           EOF
+
+          echo "Generated latest.json:"
+          cat meta/autoupdate/latest.json
 
       - name: Upload latest.json to release
         env:
