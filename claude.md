@@ -29,6 +29,12 @@ I want an application that tracks my Dota 2 games and analyzes my performance ag
 
 Tasks are stored in `meta/tasks/`. It has `upnext`, `backlog` and `done`. When asked to create a new task, create it either in `backlog` or `upnext` as a `.md` file.
 
+
+## Releases
+
+Where creating a release, you need to update package.json, src-tauri/Cargo.toml, tauri.conf.json. Also, populate the CHANGELOG.md with the changes
+
+
 ## Status
 
 - [ ] Initial setup

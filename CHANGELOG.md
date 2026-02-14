@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to Dota Keeper will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.3] - 2026-02-12
+
+### Added
+- **Weekly Challenges**: New challenge system to track weekly improvement goals
+- **Goal Suggestions**: Intelligent goal recommendations based on play patterns
+- **Hero Favourites**: Mark and track favorite heroes for quick access
+- **Tasks System**: Set and track personal Dota 2 improvement tasks
+- **Charting Library**: Visual charts for performance metrics and trends
+- **Last Hit Analysis**: Detailed last-hitting performance statistics
+- **Per-Hero Detail Pages**: Dedicated pages for in-depth hero performance
+- **Match Backfilling**: Automatic backfill of historical match data
+- **Real-time Events**: Live updates for match data and statistics
+- **Clear Matches**: Option to clear match history
+- **Auto-update System**: Automatic application updates
+
+### Changed
+- **Analysis Range**: Increased number of games that can be analyzed at once
+- **Font Rendering**: Improved font rendering for better readability
+- **Documentation**: Enhanced README with comprehensive usage guidelines
+
+### Fixed
+- Backfilling reliability issues that could cause incomplete data retrieval
+- Real-time event handling stability improvements
+
