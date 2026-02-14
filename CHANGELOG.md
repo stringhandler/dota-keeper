@@ -5,6 +5,12 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-02-14
+
+### Changed
+- Improved release workflow signature detection for more reliable multi-platform builds
+- Enhanced signature file discovery to support different platform naming conventions
+
 ## [0.1.3] - 2026-02-12
 
 ### Added
