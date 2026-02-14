@@ -65,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: release
 
       - name: Get version from package.json
         id: version
@@ -76,33 +76,56 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures || true
+          echo "Downloading signatures for version v${VERSION}"
+          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures
+          echo "Downloaded signature files:"
+          ls -la ./signatures/ || echo "No signatures found"
 
       - name: Update latest.json
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Read signatures
+          # Read signatures with better error handling
           WIN_SIG=""
           LINUX_SIG=""
           MACOS_X64_SIG=""
           MACOS_ARM_SIG=""
 
-          if [ -f "./signatures/dota-keeper_${VERSION}_x64_en-US.msi.zip.sig" ]; then
-            WIN_SIG=$(cat "./signatures/dota-keeper_${VERSION}_x64_en-US.msi.zip.sig")
+          # Windows signature
+          WIN_SIG_FILE=$(find ./signatures -name "*x64_en-US.msi.zip.sig" -o -name "*x64-setup.exe.sig" | head -n 1)
+          if [ -n "$WIN_SIG_FILE" ] && [ -f "$WIN_SIG_FILE" ]; then
+            WIN_SIG=$(cat "$WIN_SIG_FILE")
+            echo "Found Windows signature: $WIN_SIG_FILE"
+          else
+            echo "Warning: Windows signature not found"
           fi
 
-          if [ -f "./signatures/dota-keeper_${VERSION}_amd64.AppImage.tar.gz.sig" ]; then
-            LINUX_SIG=$(cat "./signatures/dota-keeper_${VERSION}_amd64.AppImage.tar.gz.sig")
+          # Linux signature
+          LINUX_SIG_FILE=$(find ./signatures -name "*amd64.AppImage.tar.gz.sig" -o -name "*.AppImage.tar.gz.sig" | head -n 1)
+          if [ -n "$LINUX_SIG_FILE" ] && [ -f "$LINUX_SIG_FILE" ]; then
+            LINUX_SIG=$(cat "$LINUX_SIG_FILE")
+            echo "Found Linux signature: $LINUX_SIG_FILE"
+          else
+            echo "Warning: Linux signature not found"
           fi
 
-          if [ -f "./signatures/dota-keeper_x64.app.tar.gz.sig" ]; then
-            MACOS_X64_SIG=$(cat "./signatures/dota-keeper_x64.app.tar.gz.sig")
+          # macOS x64 signature
+          MACOS_X64_SIG_FILE=$(find ./signatures -name "*x64.app.tar.gz.sig" | head -n 1)
+          if [ -n "$MACOS_X64_SIG_FILE" ] && [ -f "$MACOS_X64_SIG_FILE" ]; then
+            MACOS_X64_SIG=$(cat "$MACOS_X64_SIG_FILE")
+            echo "Found macOS x64 signature: $MACOS_X64_SIG_FILE"
+          else
+            echo "Warning: macOS x64 signature not found"
           fi
 
-          if [ -f "./signatures/dota-keeper_aarch64.app.tar.gz.sig" ]; then
-            MACOS_ARM_SIG=$(cat "./signatures/dota-keeper_aarch64.app.tar.gz.sig")
+          # macOS ARM signature
+          MACOS_ARM_SIG_FILE=$(find ./signatures -name "*aarch64.app.tar.gz.sig" | head -n 1)
+          if [ -n "$MACOS_ARM_SIG_FILE" ] && [ -f "$MACOS_ARM_SIG_FILE" ]; then
+            MACOS_ARM_SIG=$(cat "$MACOS_ARM_SIG_FILE")
+            echo "Found macOS ARM signature: $MACOS_ARM_SIG_FILE"
+          else
+            echo "Warning: macOS ARM signature not found"
           fi
 
           # Update latest.json
@@ -132,10 +155,9 @@ jobs:
           }
           EOF
 
-      - name: Commit and push latest.json
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add meta/autoupdate/latest.json
-          git commit -m "chore: update latest.json for v${{ steps.version.outputs.VERSION }}"
-          git push origin main
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          gh release upload "v${VERSION}" meta/autoupdate/latest.json --clobber
