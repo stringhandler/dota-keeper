@@ -350,6 +350,10 @@
                   <td>
                     {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
                       <span class="parsing-spinner" aria-label="Parsing in progress">⏳</span>
+                    {:else if match.parse_state === "Unparsed"}
+                      <span class="parse-needed" title="Parse match to see accurate goal evaluation">
+                        Parse needed
+                      </span>
                     {:else if match.goals_applicable > 0}
                       <button
                         class="goals-btn"
@@ -673,6 +677,13 @@
 
   .no-goals {
     color: #808080;
+  }
+
+  .parse-needed {
+    color: #ffc107;
+    font-size: 0.85rem;
+    font-style: italic;
+    text-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
   }
 
   .parsing-spinner {

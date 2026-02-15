@@ -187,22 +187,47 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         .find(|p| p.account_id == Some(account_id))
         .ok_or_else(|| "Player not found in match".to_string())?;
 
-    // Store all per-minute CS data
+    // Store all per-minute CS data - this is REQUIRED for parsing to be successful
+    // Without per-minute data, we can't evaluate last-hit goals accurately
     if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+        // Verify data is not empty
+        if lh_t.is_empty() || dn_t.is_empty() {
+            update_match_state(&conn, match_id, MatchState::Failed)?;
+            let _ = app.emit(
+                "match-state-changed",
+                serde_json::json!({
+                    "match_id": match_id,
+                    "state": "Failed"
+                }),
+            );
+            return Err("OpenDota returned empty per-minute data. The match may not be fully parsed yet. Try again in a few minutes.".to_string());
+        }
+
         insert_match_cs_data(&conn, match_id, lh_t, dn_t)?;
+
+        // Only mark as Parsed if we successfully stored the data
+        update_match_state(&conn, match_id, MatchState::Parsed)?;
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({
+                "match_id": match_id,
+                "state": "Parsed"
+            }),
+        );
+
+        Ok(())
+    } else {
+        // Per-minute data not available yet
+        update_match_state(&conn, match_id, MatchState::Failed)?;
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({
+                "match_id": match_id,
+                "state": "Failed"
+            }),
+        );
+        Err("OpenDota has not finished parsing this match yet. The per-minute data is not available. Try again in a few minutes.".to_string())
     }
-
-    // Update match state to parsed
-    update_match_state(&conn, match_id, MatchState::Parsed)?;
-    let _ = app.emit(
-        "match-state-changed",
-        serde_json::json!({
-            "match_id": match_id,
-            "state": "Parsed"
-        }),
-    );
-
-    Ok(())
 }
 
 /// Get goals with daily progress for the last N days

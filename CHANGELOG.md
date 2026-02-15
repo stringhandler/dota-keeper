@@ -5,11 +5,15 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.5] - 2026-02-14
+## [0.1.5] - 2026-02-15
 
 ### Fixed
 - Fixed release workflow to handle missing signature files gracefully
 - Ensured latest.json is always generated and uploaded to releases
+- Fixed goal evaluation showing incorrect results for unparsed matches
+- Fixed last-hit goals using inaccurate linear estimation instead of actual per-minute data
+- Parse process now requires per-minute data from OpenDota before marking match as "Parsed"
+- Added clear error messages when OpenDota hasn't finished parsing a match yet
 
 ## [0.1.4] - 2026-02-14
 

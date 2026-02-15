@@ -558,6 +558,11 @@ pub struct MatchWithGoals {
 
 /// Evaluate a single goal against a match
 pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Option<GoalEvaluation> {
+    // Skip goal evaluation for unparsed matches - data might be incomplete
+    if match_data.parse_state == MatchState::Unparsed {
+        return None;
+    }
+
     // Check if goal applies to this match based on hero
     if let Some(goal_hero_id) = goal.hero_id {
         if goal_hero_id != match_data.hero_id {
@@ -595,27 +600,17 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
             }
         }
         GoalMetric::LastHits => {
-            // Try to get exact CS data from match_cs table if match is parsed
-            if match_data.parse_state == MatchState::Parsed {
-                // For a goal at "10 minutes", we need lh_t[10] which is stored with minute=10
-                // because we store the array index directly
-                if let Ok(Some(cs_data)) = get_match_cs_at_minute(conn, match_data.match_id, target_minutes) {
-                    cs_data.last_hits
-                } else {
-                    // Fall back to linear estimation if no parsed data
-                    if duration_minutes <= target_minutes {
-                        match_data.last_hits
-                    } else {
-                        ((match_data.last_hits as f32 / duration_minutes as f32) * target_minutes as f32) as i32
-                    }
-                }
+            // ONLY use exact per-minute CS data from OpenDota - never estimate
+            // Linear estimation (total_cs / game_time * target_time) is completely inaccurate
+            // because CS progression is not linear (it's faster early game)
+
+            // Get exact CS data at the target minute from match_cs table
+            if let Ok(Some(cs_data)) = get_match_cs_at_minute(conn, match_data.match_id, target_minutes) {
+                cs_data.last_hits
             } else {
-                // Use linear estimation for unparsed matches
-                if duration_minutes <= target_minutes {
-                    match_data.last_hits
-                } else {
-                    ((match_data.last_hits as f32 / duration_minutes as f32) * target_minutes as f32) as i32
-                }
+                // No parsed per-minute data available - cannot evaluate this goal
+                // This goal won't be counted for this match
+                return None;
             }
         }
         GoalMetric::Networth | GoalMetric::Level => {
