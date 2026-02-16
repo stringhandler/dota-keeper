@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { getHeroName, heroes } from "$lib/heroes.js";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -294,7 +295,9 @@
                   {favoriteHeroes.has(heroStat.hero_id) ? '★' : '☆'}
                 </button>
                 <a href="/analysis/{heroStat.hero_id}" class="hero-row">
-                  <div class="hero-name">{getHeroName(heroStat.hero_id)}</div>
+                  <div class="hero-name">
+                    <HeroIcon heroId={heroStat.hero_id} size="small" />
+                  </div>
                   <div class="hero-avg">{heroStat.average.toFixed(1)} avg</div>
                   <div class="hero-count">({heroStat.count} games)</div>
                   {#if heroStat.trend_percentage !== 0}

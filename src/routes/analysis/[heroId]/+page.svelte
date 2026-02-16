@@ -4,6 +4,7 @@
   import { page } from "$app/stores";
   import { getHeroName } from "$lib/heroes.js";
   import Chart from "$lib/Chart.svelte";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -384,7 +385,10 @@
   <div class="page-header">
     <div class="header-content">
       <a href="/analysis" class="back-link">← Back to Analysis</a>
-      <h1>{heroName} - Last Hits Analysis</h1>
+      <h1>
+        <HeroIcon heroId={heroId} size="large" showName={false} />
+        {heroName} - Last Hits Analysis
+      </h1>
       <p class="subtitle">Detailed performance tracking and trends</p>
     </div>
   </div>

@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -139,7 +140,12 @@
           {#each goalCalendar as goalData}
             <div class="calendar-row">
               <div class="goal-label">
-                <span class="goal-text">{formatGoalDescription(goalData.goal)}</span>
+                <span class="goal-text">
+                  {#if goalData.goal.hero_id !== null}
+                    <HeroIcon heroId={goalData.goal.hero_id} size="small" showName={false} />
+                  {/if}
+                  {formatGoalDescription(goalData.goal)}
+                </span>
                 <a href="/goals/{goalData.goal.id}" class="details-btn">View Details</a>
               </div>
               {#each goalData.daily_progress as day}
@@ -168,7 +174,9 @@
         <h2>🎯 Suggested Goal This Week</h2>
         <div class="suggestion-card">
           <div class="hero-info">
-            <div class="hero-name">{getHeroName(heroSuggestion.hero_id)}</div>
+            <div class="hero-name">
+              <HeroIcon heroId={heroSuggestion.hero_id} size="medium" />
+            </div>
             <div class="time-marker">At 10 Minutes</div>
             <div class="suggestion-stats">
               <div class="stat-item">

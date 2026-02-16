@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { heroes, getHeroName } from "$lib/heroes.js";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let goalId = $derived($page.params.goalId);
   let goal = $state(null);
@@ -184,7 +185,12 @@
       <div class="header-content">
         <a href="/goals" class="back-link">← Back to Goals</a>
         <h1>Goal Details</h1>
-        <p class="goal-description">{formatGoalDescription(goal)}</p>
+        <p class="goal-description">
+          {#if goal.hero_id !== null}
+            <HeroIcon heroId={goal.hero_id} size="medium" showName={false} />
+          {/if}
+          {formatGoalDescription(goal)}
+        </p>
       </div>
     </div>
 

@@ -3,6 +3,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -361,7 +362,9 @@
                     </div>
                   </td>
                   <td>{formatDate(match.start_time)}</td>
-                  <td>{getHeroName(match.hero_id)}</td>
+                  <td>
+                    <HeroIcon heroId={match.hero_id} size="small" />
+                  </td>
                   <td>{getGameModeName(match.game_mode)}</td>
                   <td class="result">{isWin(match) ? "Won" : "Lost"}</td>
                   <td>{formatDuration(match.duration)}</td>
@@ -472,7 +475,10 @@
         </div>
         <div class="modal-body">
           <div class="match-summary">
-            <p><strong>Hero:</strong> {getHeroName(selectedMatch.hero_id)}</p>
+            <p>
+              <strong>Hero:</strong>
+              <HeroIcon heroId={selectedMatch.hero_id} size="medium" />
+            </p>
             <p><strong>Result:</strong> <span class={isWin(selectedMatch) ? "win-text" : "loss-text"}>{isWin(selectedMatch) ? "Won" : "Lost"}</span></p>
             <p><strong>Duration:</strong> {formatDuration(selectedMatch.duration)}</p>
           </div>
@@ -488,7 +494,12 @@
                   </div>
                   <div class="goal-detail-info">
                     <div class="goal-detail-title">
-                      {evaluation.goal.hero_id !== null ? getHeroName(evaluation.goal.hero_id) : "Any Hero"}
+                      {#if evaluation.goal.hero_id !== null}
+                        <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
+                        {getHeroName(evaluation.goal.hero_id)}
+                      {:else}
+                        Any Hero
+                      {/if}
                       - {getMetricLabel(evaluation.goal.metric)}
                     </div>
                     <div class="goal-detail-target">

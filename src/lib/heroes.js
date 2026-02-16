@@ -130,3 +130,58 @@ export const heroes = {
 export function getHeroName(heroId) {
   return heroes[heroId] || `Unknown (${heroId})`;
 }
+
+/**
+ * Convert hero name to URL-safe format for OpenDota CDN
+ * Examples:
+ * - "Anti-Mage" -> "antimage"
+ * - "Queen of Pain" -> "queenofpain"
+ * - "Nature's Prophet" -> "furion"
+ */
+export function getHeroUrlName(heroId) {
+  const heroName = heroes[heroId];
+  if (!heroName) return null;
+
+  // Special cases that don't follow the pattern
+  const specialCases = {
+    "Anti-Mage": "antimage",
+    "Centaur Warrunner": "centaur",
+    "Clockwerk": "rattletrap",
+    "Doom": "doom_bringer",
+    "Io": "wisp",
+    "Lifestealer": "life_stealer",
+    "Magnus": "magnataur",
+    "Nature's Prophet": "furion",
+    "Necrophos": "necrolyte",
+    "Outworld Destroyer": "obsidian_destroyer",
+    "Queen of Pain": "queenofpain",
+    "Shadow Fiend": "nevermore",
+    "Timbersaw": "shredder",
+    "Treant Protector": "treant",
+    "Underlord": "abyssal_underlord",
+    "Vengeful Spirit": "vengefulspirit",
+    "Windranger": "windrunner",
+    "Wraith King": "skeleton_king",
+    "Zeus": "zuus",
+  };
+
+  if (specialCases[heroName]) {
+    return specialCases[heroName];
+  }
+
+  // Default transformation: lowercase, remove special chars, replace spaces with underscores
+  return heroName
+    .toLowerCase()
+    .replace(/['\-]/g, '')
+    .replace(/\s+/g, '_');
+}
+
+/**
+ * Get the OpenDota CDN URL for a hero's icon
+ */
+export function getHeroIconUrl(heroId) {
+  const urlName = getHeroUrlName(heroId);
+  if (!urlName) return null;
+
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${urlName}.png`;
+}

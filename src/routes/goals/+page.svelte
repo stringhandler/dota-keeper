@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { heroes, getHeroName } from "$lib/heroes.js";
+  import HeroIcon from "$lib/HeroIcon.svelte";
 
   let goals = $state([]);
   let isLoading = $state(true);
@@ -247,7 +248,12 @@
           {#each goals as goal}
             <div class="goal-card">
               <div class="goal-info">
-                <div class="goal-description">{formatGoalDescription(goal)}</div>
+                <div class="goal-description">
+                  {#if goal.hero_id !== null}
+                    <HeroIcon heroId={goal.hero_id} size="small" showName={false} />
+                  {/if}
+                  {formatGoalDescription(goal)}
+                </div>
                 <div class="goal-mode">{goal.game_mode}</div>
               </div>
               <div class="goal-actions">
