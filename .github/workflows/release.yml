@@ -45,23 +45,35 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install
 
+      - name: Get version from package.json
+        id: version
+        shell: bash
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Check signing configuration
         shell: bash
         run: |
           if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "✓ TAURI_SIGNING_PRIVATE_KEY is set"
+            echo "✓ TAURI_SIGNING_PRIVATE_KEY is set (length: ${#TAURI_SIGNING_PRIVATE_KEY})"
           else
             echo "✗ TAURI_SIGNING_PRIVATE_KEY is NOT set"
           fi
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
+            echo "✓ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is set"
+          else
+            echo "✗ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is NOT set"
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
-      - uses: tauri-apps/tauri-action@v0.5
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Dota Keeper v__VERSION__'
+          tagName: v${{ steps.version.outputs.VERSION }}
+          releaseName: 'Dota Keeper v${{ steps.version.outputs.VERSION }}'
           releaseBody: 'See the assets below to download this release.'
           releaseDraft: true
           prerelease: false
@@ -72,6 +84,12 @@ jobs:
         run: |
           echo "Checking for .sig files in target directory..."
           find src-tauri/target -name "*.sig" -type f || echo "No .sig files found"
+          echo ""
+          echo "Listing all files in bundle directories:"
+          find src-tauri/target -type d -name "bundle" -exec sh -c 'echo "=== {} ==="; ls -la "{}" 2>/dev/null || true' \;
+          echo ""
+          echo "Searching for any signature-related files:"
+          find src-tauri/target -type f \( -name "*.sig" -o -name "*signature*" \) 2>/dev/null || echo "No signature files found"
 
       - name: List all release assets
         shell: bash
@@ -79,7 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Listing all assets in the draft release..."
-          gh release view "v__VERSION__" --json assets --jq '.assets[].name' || echo "Could not list release assets"
+          gh release view "v${{ steps.version.outputs.VERSION }}" --json assets --jq '.assets[].name' || echo "Could not list release assets"
 
   update-release-json:
     needs: release
