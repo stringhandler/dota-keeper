@@ -54,7 +54,7 @@ jobs:
             echo "✗ TAURI_SIGNING_PRIVATE_KEY is NOT set"
           fi
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -72,6 +72,14 @@ jobs:
         run: |
           echo "Checking for .sig files in target directory..."
           find src-tauri/target -name "*.sig" -type f || echo "No .sig files found"
+
+      - name: List all release assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Listing all assets in the draft release..."
+          gh release view "v__VERSION__" --json assets --jq '.assets[].name' || echo "Could not list release assets"
 
   update-release-json:
     needs: release
