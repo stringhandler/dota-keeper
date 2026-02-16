@@ -14,6 +14,7 @@
   let parsingMatches = $state(new Set());
   let currentSteamId = $state("");
   let unlistenMatchStateChanged = null;
+  let autoRefreshTimer = null;
 
   // Pagination
   let currentPage = $state(1);
@@ -34,6 +35,11 @@
         matches = [...matches];
       }
     });
+
+    // Set up auto-refresh timer (every 30 seconds)
+    autoRefreshTimer = setInterval(async () => {
+      await autoRefreshAndParse();
+    }, 30000); // 30 seconds
   });
 
   onDestroy(() => {
@@ -41,7 +47,37 @@
     if (unlistenMatchStateChanged) {
       unlistenMatchStateChanged();
     }
+
+    // Clean up auto-refresh timer
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+    }
   });
+
+  async function autoRefreshAndParse() {
+    try {
+      // Refresh matches silently (don't show loading state)
+      const newMatches = await invoke("refresh_matches");
+      matches = newMatches;
+
+      // Get the last 10 matches
+      const recentMatches = matches.slice(0, 10);
+
+      // Auto-parse unparsed or failed matches
+      for (const match of recentMatches) {
+        // Only parse if: Unparsed or Failed, and not currently parsing
+        if ((match.parse_state === "Unparsed" || match.parse_state === "Failed") &&
+            !parsingMatches.has(match.match_id)) {
+          // Don't await - let it run in background
+          parseMatch(match.match_id).catch(err => {
+            console.error(`Auto-parse failed for match ${match.match_id}:`, err);
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Auto-refresh failed:", e);
+    }
+  }
 
   async function loadData() {
     try {
