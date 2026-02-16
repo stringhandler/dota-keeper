@@ -1,6 +1,7 @@
 mod database;
 mod opendota;
 mod settings;
+mod items;
 
 use database::{
     clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
@@ -10,6 +11,7 @@ use database::{
     GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState,
     MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
     get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
+    insert_item_timing, get_item_timings_for_match, NewItemTiming,
 };
 use serde_json;
 use settings::Settings;
@@ -205,6 +207,21 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
         insert_match_cs_data(&conn, match_id, lh_t, dn_t)?;
 
+        // Store item purchase timings if available
+        if let Some(purchase_log) = &player_data.purchase_log {
+            for purchase in purchase_log {
+                if let Some(item_id) = items::get_item_id(&purchase.key) {
+                    let timing = NewItemTiming {
+                        match_id,
+                        item_id,
+                        timing_seconds: purchase.time,
+                    };
+                    // Ignore errors for individual item inserts
+                    let _ = insert_item_timing(&conn, &timing);
+                }
+            }
+        }
+
         // Only mark as Parsed if we successfully stored the data
         update_match_state(&conn, match_id, MatchState::Parsed)?;
         let _ = app.emit(
@@ -393,6 +410,20 @@ async fn backfill_historical_matches(
             if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
                 eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
             } else {
+                // Store item purchase timings if available
+                if let Some(purchase_log) = &player_data.purchase_log {
+                    for purchase in purchase_log {
+                        if let Some(item_id) = items::get_item_id(&purchase.key) {
+                            let timing = NewItemTiming {
+                                match_id: m.match_id,
+                                item_id,
+                                timing_seconds: purchase.time,
+                            };
+                            let _ = insert_item_timing(&conn, &timing);
+                        }
+                    }
+                }
+
                 update_match_state(&conn, m.match_id, MatchState::Parsed)?;
                 let _ = app.emit(
                     "match-state-changed",
@@ -521,6 +552,20 @@ async fn reparse_pending_matches(
                 );
                 failed_count += 1;
             } else {
+                // Store item purchase timings if available
+                if let Some(purchase_log) = &player_data.purchase_log {
+                    for purchase in purchase_log {
+                        if let Some(item_id) = items::get_item_id(&purchase.key) {
+                            let timing = NewItemTiming {
+                                match_id: m.match_id,
+                                item_id,
+                                timing_seconds: purchase.time,
+                            };
+                            let _ = insert_item_timing(&conn, &timing);
+                        }
+                    }
+                }
+
                 update_match_state(&conn, m.match_id, MatchState::Parsed)?;
                 let _ = app.emit(
                     "match-state-changed",
@@ -575,6 +620,19 @@ fn get_favorite_heroes() -> Result<Vec<i32>, String> {
     get_favorite_hero_ids(&conn)
 }
 
+/// Get all trackable items
+#[tauri::command]
+fn get_all_items() -> Vec<items::Item> {
+    items::get_all_items()
+}
+
+/// Get item timings for a specific match
+#[tauri::command]
+fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, String> {
+    let conn = init_db()?;
+    get_item_timings_for_match(&conn, match_id)
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -619,7 +677,9 @@ pub fn run() {
             reparse_pending_matches,
             clear_matches,
             toggle_favorite_hero,
-            get_favorite_heroes
+            get_favorite_heroes,
+            get_all_items,
+            get_match_item_timings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

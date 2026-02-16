@@ -8,6 +8,7 @@
   let isLoading = $state(true);
   let error = $state("");
   let isSaving = $state(false);
+  let items = $state([]);
 
   // Form state
   let editingGoal = $state(null);
@@ -15,6 +16,9 @@
   let formMetric = $state("Networth");
   let formTargetValue = $state("");
   let formTargetTime = $state("");
+  let formItemId = $state("");
+  let formItemMinutes = $state("");
+  let formItemSeconds = $state("");
   let formGameMode = $state("Ranked");
 
   // Get sorted hero list for dropdown
@@ -24,6 +28,7 @@
 
   onMount(async () => {
     await loadGoals();
+    await loadItems();
   });
 
   async function loadGoals() {
@@ -36,12 +41,23 @@
     }
   }
 
+  async function loadItems() {
+    try {
+      items = await invoke("get_all_items");
+    } catch (e) {
+      console.error("Failed to load items:", e);
+    }
+  }
+
   function resetForm() {
     editingGoal = null;
     formHeroId = "";
     formMetric = "Networth";
     formTargetValue = "";
     formTargetTime = "";
+    formItemId = "";
+    formItemMinutes = "";
+    formItemSeconds = "";
     formGameMode = "Ranked";
   }
 
@@ -51,6 +67,14 @@
     formMetric = goal.metric;
     formTargetValue = goal.target_value.toString();
     formTargetTime = goal.target_time_minutes.toString();
+    formItemId = goal.item_id !== null ? goal.item_id.toString() : "";
+
+    // For item timing goals, split seconds into minutes and seconds
+    if (goal.metric === "ItemTiming" && goal.target_value) {
+      formItemMinutes = Math.floor(goal.target_value / 60).toString();
+      formItemSeconds = (goal.target_value % 60).toString();
+    }
+
     formGameMode = goal.game_mode;
   }
 
@@ -58,20 +82,54 @@
     event.preventDefault();
     error = "";
 
-    if (!formTargetValue || !formTargetTime) {
-      error = "Please fill in all required fields";
-      return;
+    // Validation for item timing goals
+    if (formMetric === "ItemTiming") {
+      if (!formHeroId) {
+        error = "Hero selection is required for Item Timing goals";
+        return;
+      }
+      if (!formItemId) {
+        error = "Item selection is required for Item Timing goals";
+        return;
+      }
+      if (!formItemMinutes && formItemMinutes !== "0") {
+        error = "Target time (minutes) is required";
+        return;
+      }
+
+      // Convert minutes and seconds to total seconds
+      const minutes = parseInt(formItemMinutes) || 0;
+      const seconds = parseInt(formItemSeconds) || 0;
+
+      if (minutes < 0 || seconds < 0 || seconds >= 60) {
+        error = "Invalid time values (seconds must be 0-59)";
+        return;
+      }
+
+      if (minutes === 0 && seconds === 0) {
+        error = "Target time must be greater than 0";
+        return;
+      }
+    } else {
+      // Normal validation for other goals
+      if (!formTargetValue || !formTargetTime) {
+        error = "Please fill in all required fields";
+        return;
+      }
     }
 
-    const targetValue = parseInt(formTargetValue);
-    const targetTime = parseInt(formTargetTime);
+    // Calculate target value based on metric type
+    const targetValue = formMetric === "ItemTiming"
+      ? (parseInt(formItemMinutes) || 0) * 60 + (parseInt(formItemSeconds) || 0)
+      : parseInt(formTargetValue);
+    const targetTime = formMetric === "ItemTiming" ? 0 : parseInt(formTargetTime);
 
     if (isNaN(targetValue) || targetValue <= 0) {
       error = "Target value must be a positive number";
       return;
     }
 
-    if (isNaN(targetTime) || targetTime <= 0) {
+    if (formMetric !== "ItemTiming" && (isNaN(targetTime) || targetTime <= 0)) {
       error = "Target time must be a positive number";
       return;
     }
@@ -87,6 +145,7 @@
             metric: formMetric,
             target_value: targetValue,
             target_time_minutes: targetTime,
+            item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
             created_at: editingGoal.created_at,
           },
@@ -98,6 +157,7 @@
             metric: formMetric,
             target_value: targetValue,
             target_time_minutes: targetTime,
+            item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
           },
         });
@@ -145,12 +205,26 @@
     }
   }
 
+  function getItemName(itemId) {
+    const item = items.find(i => i.id === itemId);
+    return item ? item.display_name : `Item ${itemId}`;
+  }
+
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
-    const metricLabel = getMetricLabel(goal.metric);
-    const unit = getMetricUnit(goal.metric);
-    const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
-    return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+
+    if (goal.metric === "ItemTiming") {
+      const itemName = goal.item_id !== null ? getItemName(goal.item_id) : "Unknown Item";
+      const minutes = Math.floor(goal.target_value / 60);
+      const seconds = goal.target_value % 60;
+      const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
+      return `${heroName}: ${itemName} by ${timeStr}`;
+    } else {
+      const metricLabel = getMetricLabel(goal.metric);
+      const unit = getMetricUnit(goal.metric);
+      const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
+      return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+    }
   }
 </script>
 
@@ -185,36 +259,77 @@
             <option value="Kills">Kills</option>
             <option value="LastHits">Last Hits</option>
             <option value="Level">Level</option>
+            <option value="ItemTiming">Item Timing</option>
           </select>
         </div>
 
-        <div class="form-group">
-          <label for="target-value">
-            Target {getMetricLabel(formMetric)}
-            {#if getMetricUnit(formMetric)}
-              <span class="unit">({getMetricUnit(formMetric)})</span>
-            {/if}
-          </label>
-          <input
-            id="target-value"
-            type="number"
-            min="1"
-            placeholder={formMetric === "Level" ? "e.g., 6" : "e.g., 5000"}
-            bind:value={formTargetValue}
-          />
-        </div>
+        {#if formMetric === "ItemTiming"}
+          <div class="form-group">
+            <label for="item">Item (required) <span class="required">*</span></label>
+            <select id="item" bind:value={formItemId} required>
+              <option value="">Select an item...</option>
+              {#each items as item}
+                <option value={item.id}>{item.display_name}</option>
+              {/each}
+            </select>
+          </div>
 
-        <div class="form-group">
-          <label for="target-time">Target Time (minutes)</label>
-          <input
-            id="target-time"
-            type="number"
-            min="1"
-            max="120"
-            placeholder="e.g., 10"
-            bind:value={formTargetTime}
-          />
-        </div>
+          <div class="form-group">
+            <label>Target Time <span class="required">*</span></label>
+            <div class="time-inputs">
+              <div class="time-input-group">
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  placeholder="9"
+                  bind:value={formItemMinutes}
+                />
+                <span class="time-label">minutes</span>
+              </div>
+              <span class="time-separator">:</span>
+              <div class="time-input-group">
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  placeholder="30"
+                  bind:value={formItemSeconds}
+                />
+                <span class="time-label">seconds</span>
+              </div>
+            </div>
+            <span class="help-text">Example: 9:30 for Armlet timing</span>
+          </div>
+        {:else}
+          <div class="form-group">
+            <label for="target-value">
+              Target {getMetricLabel(formMetric)}
+              {#if getMetricUnit(formMetric)}
+                <span class="unit">({getMetricUnit(formMetric)})</span>
+              {/if}
+            </label>
+            <input
+              id="target-value"
+              type="number"
+              min="1"
+              placeholder={formMetric === "Level" ? "e.g., 6" : "e.g., 5000"}
+              bind:value={formTargetValue}
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="target-time">Target Time (minutes)</label>
+            <input
+              id="target-time"
+              type="number"
+              min="1"
+              max="120"
+              placeholder="e.g., 10"
+              bind:value={formTargetTime}
+            />
+          </div>
+        {/if}
 
         <div class="form-group">
           <label for="game-mode">Game Mode</label>
@@ -368,6 +483,48 @@
   .form-group .unit {
     font-weight: 400;
     color: #a0a0a0;
+  }
+
+  .form-group .required {
+    color: #ff6b6b;
+    font-weight: bold;
+  }
+
+  .form-group .help-text {
+    font-size: 0.85rem;
+    color: #a0a0a0;
+    font-style: italic;
+    margin-top: 0.25rem;
+    display: block;
+  }
+
+  .time-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .time-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .time-input-group input {
+    width: 80px;
+  }
+
+  .time-label {
+    font-size: 0.75rem;
+    color: #a0a0a0;
+    text-align: center;
+  }
+
+  .time-separator {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #d4af37;
+    margin-bottom: 1.5rem;
   }
 
   input,

@@ -65,6 +65,13 @@ pub struct DetailedPlayer {
     pub player_slot: i32,
     pub lh_t: Option<Vec<i32>>,  // Last hits at each minute
     pub dn_t: Option<Vec<i32>>,  // Denies at each minute
+    pub purchase_log: Option<Vec<PurchaseLogEntry>>,  // Item purchases
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PurchaseLogEntry {
+    pub time: i32,  // Game time in seconds when item was purchased
+    pub key: String,  // Item name/key (e.g., "blink", "armlet")
 }
 
 /// Parse request status

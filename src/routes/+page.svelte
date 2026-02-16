@@ -8,13 +8,23 @@
   let error = $state("");
   let goalCalendar = $state([]);
   let heroSuggestion = $state(null);
+  let items = $state([]);
 
   const DAYS_TO_SHOW = 7;
 
   onMount(async () => {
     await loadGoalCalendar();
     await loadHeroSuggestion();
+    await loadItems();
   });
+
+  async function loadItems() {
+    try {
+      items = await invoke("get_all_items");
+    } catch (e) {
+      console.error("Failed to load items:", e);
+    }
+  }
 
   async function loadGoalCalendar() {
     try {
@@ -82,12 +92,26 @@
     }
   }
 
+  function getItemName(itemId) {
+    const item = items.find(i => i.id === itemId);
+    return item ? item.display_name : `Item ${itemId}`;
+  }
+
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
-    const metricLabel = getMetricLabel(goal.metric);
-    const unit = getMetricUnit(goal.metric);
-    const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
-    return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+
+    if (goal.metric === "ItemTiming") {
+      const itemName = goal.item_id !== null ? getItemName(goal.item_id) : "Unknown Item";
+      const minutes = Math.floor(goal.target_value / 60);
+      const seconds = goal.target_value % 60;
+      const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
+      return `${heroName}: ${itemName} by ${timeStr}`;
+    } else {
+      const metricLabel = getMetricLabel(goal.metric);
+      const unit = getMetricUnit(goal.metric);
+      const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
+      return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+    }
   }
 
   function getProgressPercentage(day) {

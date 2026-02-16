@@ -29,3 +29,4 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
+lazy_static = "1.5"

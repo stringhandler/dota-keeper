@@ -10,6 +10,7 @@ pub enum GoalMetric {
     Kills,
     LastHits,
     Level,
+    ItemTiming,
 }
 
 impl GoalMetric {
@@ -19,6 +20,7 @@ impl GoalMetric {
             GoalMetric::Kills => "kills",
             GoalMetric::LastHits => "last_hits",
             GoalMetric::Level => "level",
+            GoalMetric::ItemTiming => "item_timing",
         }
     }
 
@@ -28,6 +30,7 @@ impl GoalMetric {
             "kills" => Some(GoalMetric::Kills),
             "last_hits" => Some(GoalMetric::LastHits),
             "level" => Some(GoalMetric::Level),
+            "item_timing" => Some(GoalMetric::ItemTiming),
             _ => None,
         }
     }
@@ -61,10 +64,11 @@ impl GoalGameMode {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Goal {
     pub id: i64,
-    pub hero_id: Option<i32>,  // None means "any hero"
+    pub hero_id: Option<i32>,  // None means "any hero" (but required for ItemTiming goals)
     pub metric: GoalMetric,
-    pub target_value: i32,
-    pub target_time_minutes: i32,
+    pub target_value: i32,  // For ItemTiming: target time in seconds
+    pub target_time_minutes: i32,  // Not used for ItemTiming goals
+    pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
     pub created_at: i64,
 }
@@ -76,6 +80,7 @@ pub struct NewGoal {
     pub metric: GoalMetric,
     pub target_value: i32,
     pub target_time_minutes: i32,
+    pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
 }
 
@@ -87,6 +92,23 @@ pub struct HeroGoalSuggestion {
     pub current_average: f64,
     pub created_at: i64,
     pub games_analyzed: i32,
+}
+
+/// Item timing data for a match
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ItemTiming {
+    pub id: i64,
+    pub match_id: i64,
+    pub item_id: i32,
+    pub timing_seconds: i32,
+}
+
+/// Input for inserting item timing
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NewItemTiming {
+    pub match_id: i64,
+    pub item_id: i32,
+    pub timing_seconds: i32,
 }
 
 /// Match processing state
@@ -252,6 +274,12 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create goals table: {}", e))?;
 
+    // Add item_id column if it doesn't exist (for item timing goals)
+    let _ = conn.execute(
+        "ALTER TABLE goals ADD COLUMN item_id INTEGER",
+        [],
+    );
+
     // Create the hero_favorites table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS hero_favorites (
@@ -272,6 +300,19 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create hero_goal_suggestions table: {}", e))?;
+
+    // Create the item_timings table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS item_timings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            timing_seconds INTEGER NOT NULL,
+            FOREIGN KEY (match_id) REFERENCES matches(match_id),
+            UNIQUE(match_id, item_id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create item_timings table: {}", e))?;
 
     Ok(conn)
 }
@@ -453,14 +494,15 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         .as_secs() as i64;
 
     conn.execute(
-        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, item_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             goal.hero_id,
             goal.metric.to_string(),
             goal.target_value,
             goal.target_time_minutes,
             goal.game_mode.to_string(),
+            goal.item_id,
             now,
         ],
     ).map_err(|e| format!("Failed to insert goal: {}", e))?;
@@ -473,6 +515,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         metric: goal.metric.clone(),
         target_value: goal.target_value,
         target_time_minutes: goal.target_time_minutes,
+        item_id: goal.item_id,
         game_mode: goal.game_mode.clone(),
         created_at: now,
     })
@@ -482,7 +525,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
 pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at
+            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id
              FROM goals ORDER BY created_at DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -499,6 +542,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
                 target_time_minutes: row.get(4)?,
                 game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
                 created_at: row.get(6)?,
+                item_id: row.get(7)?,
             })
         })
         .map_err(|e| format!("Failed to query goals: {}", e))?;
@@ -515,13 +559,14 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
 pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
     conn.execute(
         "UPDATE goals SET hero_id = ?1, metric = ?2, target_value = ?3,
-         target_time_minutes = ?4, game_mode = ?5 WHERE id = ?6",
+         target_time_minutes = ?4, game_mode = ?5, item_id = ?6 WHERE id = ?7",
         params![
             goal.hero_id,
             goal.metric.to_string(),
             goal.target_value,
             goal.target_time_minutes,
             goal.game_mode.to_string(),
+            goal.item_id,
             goal.id,
         ],
     ).map_err(|e| format!("Failed to update goal: {}", e))?;
@@ -613,6 +658,27 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
                 return None;
             }
         }
+        GoalMetric::ItemTiming => {
+            // For item timing goals, check when the item was purchased
+            // goal.target_value contains the target time in seconds
+            // goal.item_id contains the item ID to check
+
+            let item_id = goal.item_id?; // If no item_id, can't evaluate
+
+            // Get the actual purchase time for this item in this match
+            match get_item_timing(conn, match_data.match_id, item_id) {
+                Ok(Some(timing_seconds)) => timing_seconds,
+                Ok(None) => {
+                    // Item was never purchased in this match
+                    // Don't penalize - skip this match for this goal
+                    return None;
+                }
+                Err(_) => {
+                    // Error querying item timing
+                    return None;
+                }
+            }
+        }
         GoalMetric::Networth | GoalMetric::Level => {
             // These require per-minute data which we don't have in the current schema
             // For now, we'll need to skip these or mark them as not evaluable
@@ -621,7 +687,18 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
         }
     };
 
-    let achieved = actual_value >= goal.target_value;
+    let achieved = match &goal.metric {
+        GoalMetric::ItemTiming => {
+            // For item timing, actual_value is purchase time in seconds
+            // target_value is target time in seconds
+            // Achieved if purchased before or at target time
+            actual_value <= goal.target_value
+        }
+        _ => {
+            // For other metrics, achieved if actual >= target
+            actual_value >= goal.target_value
+        }
+    };
 
     Some(GoalEvaluation {
         goal: goal.clone(),
@@ -888,7 +965,7 @@ pub struct MatchDataPoint {
 pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchDataPoint>, String> {
     // Get the goal
     let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at FROM goals WHERE id = ?1")
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id FROM goals WHERE id = ?1")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let goal = stmt
@@ -903,6 +980,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
                 target_time_minutes: row.get(4)?,
                 game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
                 created_at: row.get(6)?,
+                item_id: row.get(7)?,
             })
         })
         .map_err(|e| format!("Failed to get goal: {}", e))?;
@@ -931,7 +1009,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
 /// Get a single goal by ID
 pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
     let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at FROM goals WHERE id = ?1")
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id FROM goals WHERE id = ?1")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     stmt.query_row(params![goal_id], |row| {
@@ -945,6 +1023,7 @@ pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
             target_time_minutes: row.get(4)?,
             game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
             created_at: row.get(6)?,
+            item_id: row.get(7)?,
         })
     })
     .map_err(|e| format!("Failed to get goal: {}", e))
@@ -1453,4 +1532,64 @@ pub fn regenerate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSu
     }
 
     Ok(None)
+}
+
+/// Insert item timing data for a match
+pub fn insert_item_timing(conn: &Connection, timing: &NewItemTiming) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO item_timings (match_id, item_id, timing_seconds)
+         VALUES (?1, ?2, ?3)",
+        params![
+            timing.match_id,
+            timing.item_id,
+            timing.timing_seconds,
+        ],
+    ).map_err(|e| format!("Failed to insert item timing: {}", e))?;
+
+    Ok(())
+}
+
+/// Get item timings for a specific match
+pub fn get_item_timings_for_match(conn: &Connection, match_id: i64) -> Result<Vec<ItemTiming>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, match_id, item_id, timing_seconds
+             FROM item_timings
+             WHERE match_id = ?1
+             ORDER BY timing_seconds ASC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let timings = stmt
+        .query_map(params![match_id], |row| {
+            Ok(ItemTiming {
+                id: row.get(0)?,
+                match_id: row.get(1)?,
+                item_id: row.get(2)?,
+                timing_seconds: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query item timings: {}", e))?;
+
+    let mut result = Vec::new();
+    for timing in timings {
+        result.push(timing.map_err(|e| format!("Failed to read item timing: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+/// Get timing for a specific item in a match (returns None if item wasn't purchased)
+pub fn get_item_timing(conn: &Connection, match_id: i64, item_id: i32) -> Result<Option<i32>, String> {
+    let result = conn.query_row(
+        "SELECT timing_seconds FROM item_timings WHERE match_id = ?1 AND item_id = ?2",
+        params![match_id, item_id],
+        |row| row.get::<_, i32>(0),
+    );
+
+    match result {
+        Ok(timing) => Ok(Some(timing)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query item timing: {}", e)),
+    }
 }
