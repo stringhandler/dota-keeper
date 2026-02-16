@@ -235,8 +235,23 @@ If tauri-action doesn't upload signatures:
 **HIGH** - Blocks proper autoupdate functionality
 
 ## Status
-- [ ] Diagnosis complete
-- [ ] Root cause identified
-- [ ] Fix implemented
-- [ ] Testing completed
-- [ ] Deployed and verified
+- [x] Diagnosis complete
+- [x] Root cause identified
+- [x] Fix implemented
+- [x] Testing completed
+- [x] Deployed and verified
+
+## Resolution (2026-02-16)
+
+### Root Cause
+Missing `createUpdaterArtifacts: true` in `tauri.conf.json` bundle configuration prevented Tauri from generating `.sig` signature files during the build process.
+
+### Fix Applied
+1. Added `"createUpdaterArtifacts": true` to `tauri.conf.json` bundle configuration
+2. Fixed version placeholder substitution in release workflow (changed `v__VERSION__` to use actual version from package.json)
+3. Enhanced debugging output in workflow to verify signature generation
+
+### Verification
+- Signatures are now being generated for all platforms
+- `latest.json` contains valid signature strings
+- Autoupdate functionality is working correctly

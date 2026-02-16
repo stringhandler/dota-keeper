@@ -16,6 +16,19 @@ I want an application that tracks my Dota 2 games and analyzes my performance ag
 - Analyze matches against these goals
 - Provide progress tracking and insights
 
+#### Goal Achievement Design Principle
+**Target Achievement Rate: ~75%**
+
+Goals should be challenging but achievable. When evaluating whether a user is passing or failing a goal, the system should aim for users to hit their goals approximately **75% of the time**:
+
+- **Too Easy** (>85% success rate): Suggest raising the goal
+- **Optimal** (70-80% success rate): Goal is well-calibrated, encourage user
+- **Below Target** (60-70% success rate): Goal is challenging, user is close
+- **Too Hard** (<60% success rate): Suggest lowering the goal
+- **Way Too Hard** (<50% success rate): Strongly suggest lowering the goal
+
+This creates a "stretch goal" mentality while maintaining motivation through regular success. The 75% target applies to all goal suggestions, notifications, and achievement status indicators throughout the application.
+
 ### Data Storage
 - Store all data in a SQLite database
 - Database location: User's local AppData directory (`%LOCALAPPDATA%/DotaKeeper/`)
