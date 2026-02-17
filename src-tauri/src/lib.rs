@@ -6,10 +6,10 @@ mod items;
 use database::{
     clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
-    get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches, init_db, insert_goal,
-    insert_match, insert_match_cs_data, match_exists, update_goal, update_match_state, Goal,
-    GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchDataPoint, MatchState,
-    MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
+    get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches,
+    init_db, insert_goal, insert_match, insert_match_cs_data, match_exists, update_goal,
+    update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchCS,
+    MatchDataPoint, MatchState, MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
     get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
     insert_item_timing, get_item_timings_for_match, NewItemTiming,
 };
@@ -633,6 +633,13 @@ fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, St
     get_item_timings_for_match(&conn, match_id)
 }
 
+/// Get per-minute CS data for a specific match
+#[tauri::command]
+fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
+    let conn = init_db()?;
+    get_match_cs_data(&conn, match_id)
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -679,7 +686,8 @@ pub fn run() {
             toggle_favorite_hero,
             get_favorite_heroes,
             get_all_items,
-            get_match_item_timings
+            get_match_item_timings,
+            get_match_cs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

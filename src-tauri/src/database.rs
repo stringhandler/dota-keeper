@@ -868,6 +868,29 @@ pub fn get_match_cs_at_minute(conn: &Connection, match_id: i64, minute: i32) -> 
     }
 }
 
+/// Get all CS data for a match ordered by minute
+pub fn get_match_cs_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchCS>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, minute, last_hits, denies FROM match_cs WHERE match_id = ?1 ORDER BY minute ASC",
+        )
+        .map_err(|e| format!("Failed to prepare CS data query: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![match_id], |row| {
+            Ok(MatchCS {
+                match_id: row.get(0)?,
+                minute: row.get(1)?,
+                last_hits: row.get(2)?,
+                denies: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query CS data: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect CS data: {}", e))
+}
+
 /// Daily goal progress data
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DayGoalProgress {

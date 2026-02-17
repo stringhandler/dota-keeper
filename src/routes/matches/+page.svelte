@@ -338,6 +338,14 @@
                     <div class="match-id-content">
                       <span class="match-id-text">{match.match_id}</span>
                       <div class="match-id-actions">
+                        <a
+                          class="icon-btn details-btn"
+                          href="/matches/{match.match_id}"
+                          aria-label="View match details"
+                          title="View match details"
+                        >
+                          🔍
+                        </a>
                         <button
                           class="icon-btn copy-btn"
                           onclick={() => copyMatchId(match.match_id)}
@@ -783,6 +791,14 @@
     background-color: rgba(60, 60, 70, 0.8);
     border-color: rgba(139, 92, 46, 0.6);
     box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+  }
+
+  .details-btn {
+    min-width: 1.5rem;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .copy-btn {

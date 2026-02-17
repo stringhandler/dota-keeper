@@ -41,7 +41,7 @@ This creates a "stretch goal" mentality while maintaining motivation through reg
 ## Project management
 
 Tasks are stored in `meta/tasks/`. It has `upnext`, `backlog` and `done`. When asked to create a new task, create it either in `backlog` or `upnext` as a `.md` file.
-
+When a task is completed by you and requires manual verification, move to `meta/tasks/to_test`. You should also create a small .md doc with steps for me to test, in the same directory.
 
 ## Releases
 
