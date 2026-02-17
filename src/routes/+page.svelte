@@ -8,6 +8,7 @@
   let error = $state("");
   let goalCalendar = $state([]);
   let heroSuggestion = $state(null);
+  let goals = $state([]);
   let items = $state([]);
   let dailyProgress = $state(null);
   let dailyStreak = $state(0);
@@ -15,6 +16,16 @@
   let midnightTimer = null;
 
   const DAYS_TO_SHOW = 7;
+
+  let isSuggestionAdopted = $derived(
+    heroSuggestion !== null &&
+    goals.some(
+      (g) =>
+        g.hero_id === heroSuggestion.hero_id &&
+        g.metric === "LastHits" &&
+        g.target_time_minutes === 10
+    )
+  );
 
   onMount(async () => {
     await loadGoalCalendar();
@@ -75,7 +86,10 @@
 
   async function loadGoalCalendar() {
     try {
-      goalCalendar = await invoke("get_goals_calendar", { days: DAYS_TO_SHOW });
+      [goalCalendar, goals] = await Promise.all([
+        invoke("get_goals_calendar", { days: DAYS_TO_SHOW }),
+        invoke("get_goals"),
+      ]);
     } catch (e) {
       error = `Failed to load goal calendar: ${e}`;
       console.error("Failed to load goal calendar:", e);
@@ -103,7 +117,6 @@
           game_mode: "Ranked"
         }
       });
-      alert("Goal created successfully!");
       await loadGoalCalendar();
     } catch (e) {
       error = `Failed to create goal: ${e}`;
@@ -277,7 +290,7 @@
       </div>
     {/if}
 
-    {#if heroSuggestion}
+    {#if heroSuggestion && !isSuggestionAdopted}
       <div class="suggestion-section">
         <h2>🎯 Suggested Goal This Week</h2>
         <div class="suggestion-card">
