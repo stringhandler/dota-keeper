@@ -5,6 +5,18 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-02-17
+
+### Added
+- **Match Details View**: New per-match page with hero stats, KDA, GPM/XPM, damage, and a last-hits/denies chart showing progress against goal target lines
+- **Daily Challenges**: Personalized daily challenges generated from recent performance with a progress bar, streak counter, and dashboard widget
+- **Item Timing Goal Display**: Goal details page now correctly shows item name and M:SS formatted times for item timing goals
+
+### Fixed
+- **Suggested goal panel** now hides automatically once the matching goal has been created
+- **Dev/prod database separation**: dev builds (`tauri dev`) use `dota_keeper_dev.db`; release builds use `dota_keeper.db` — no more risk of polluting production data during development
+- **Fresh database crash**: app no longer crashes on first launch with a new database (cleanup query was running before tables were created)
+
 ## [0.1.7] - 2026-02-16
 
 ### Fixed
