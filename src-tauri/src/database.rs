@@ -314,6 +314,39 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create item_timings table: {}", e))?;
 
+    // Create the daily_challenges table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS daily_challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenge_date TEXT NOT NULL,
+            challenge_type TEXT NOT NULL,
+            challenge_description TEXT NOT NULL,
+            challenge_target INTEGER NOT NULL,
+            challenge_target_games INTEGER NOT NULL DEFAULT 1,
+            hero_id INTEGER,
+            metric TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            UNIQUE(challenge_date)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create daily_challenges table: {}", e))?;
+
+    // Create the challenge_history table (shared between daily and future weekly)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS challenge_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenge_type TEXT NOT NULL,
+            period_start_date TEXT NOT NULL,
+            challenge_description TEXT NOT NULL,
+            status TEXT NOT NULL,
+            completed_at INTEGER,
+            target_achieved INTEGER
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create challenge_history table: {}", e))?;
+
     Ok(conn)
 }
 
@@ -1615,4 +1648,592 @@ pub fn get_item_timing(conn: &Connection, match_id: i64, item_id: i32) -> Result
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(format!("Failed to query item timing: {}", e)),
     }
+}
+
+// ===== Daily Challenges =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DailyChallenge {
+    pub id: i64,
+    pub challenge_date: String,
+    pub challenge_type: String,
+    pub challenge_description: String,
+    pub challenge_target: i32,
+    pub challenge_target_games: i32,
+    pub hero_id: Option<i32>,
+    pub metric: String,
+    pub status: String,
+    pub created_at: i64,
+    pub completed_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DailyChallengeProgress {
+    pub challenge: DailyChallenge,
+    pub current_value: i32,
+    pub target: i32,
+    pub completed: bool,
+    pub games_counted: i32,
+}
+
+fn get_today_date_string() -> String {
+    use chrono::Local;
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn get_today_midnight_timestamp() -> i64 {
+    use chrono::{Local, NaiveTime, TimeZone};
+    let today = Local::now().date_naive();
+    let midnight = today.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    Local.from_local_datetime(&midnight).unwrap().timestamp()
+}
+
+fn match_is_win(m: &Match) -> bool {
+    let is_radiant = m.player_slot < 128;
+    (is_radiant && m.radiant_win) || (!is_radiant && !m.radiant_win)
+}
+
+/// Map a DB row to a Match struct (used in multiple queries)
+fn row_to_match(row: &rusqlite::Row) -> rusqlite::Result<Match> {
+    Ok(Match {
+        match_id: row.get(0)?,
+        hero_id: row.get(1)?,
+        start_time: row.get(2)?,
+        duration: row.get(3)?,
+        game_mode: row.get(4)?,
+        lobby_type: row.get(5)?,
+        radiant_win: row.get::<_, i32>(6)? != 0,
+        player_slot: row.get(7)?,
+        kills: row.get(8)?,
+        deaths: row.get(9)?,
+        assists: row.get(10)?,
+        xp_per_min: row.get(11)?,
+        gold_per_min: row.get(12)?,
+        last_hits: row.get(13)?,
+        denies: row.get(14)?,
+        hero_damage: row.get(15)?,
+        tower_damage: row.get(16)?,
+        hero_healing: row.get(17)?,
+        parse_state: MatchState::from_string(&row.get::<_, String>(18)?),
+    })
+}
+
+/// Get all matches since a given timestamp
+fn get_matches_since(conn: &Connection, since_timestamp: i64) -> Result<Vec<Match>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
+                    radiant_win, player_slot, kills, deaths, assists, xp_per_min,
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+             FROM matches WHERE start_time >= ?1 ORDER BY start_time DESC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let result = stmt.query_map(params![since_timestamp], row_to_match)
+        .map_err(|e| format!("Failed to query matches: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read match: {}", e));
+    result
+}
+
+/// Map a DB row to a DailyChallenge struct
+fn row_to_daily_challenge(row: &rusqlite::Row) -> rusqlite::Result<DailyChallenge> {
+    Ok(DailyChallenge {
+        id: row.get(0)?,
+        challenge_date: row.get(1)?,
+        challenge_type: row.get(2)?,
+        challenge_description: row.get(3)?,
+        challenge_target: row.get(4)?,
+        challenge_target_games: row.get(5)?,
+        hero_id: row.get(6)?,
+        metric: row.get(7)?,
+        status: row.get(8)?,
+        created_at: row.get(9)?,
+        completed_at: row.get(10)?,
+    })
+}
+
+/// Get the last N challenge metrics to avoid repeating the same type
+fn get_recent_challenge_metrics(conn: &Connection, limit: i64) -> Vec<String> {
+    let mut stmt = match conn.prepare(
+        "SELECT metric FROM daily_challenges ORDER BY challenge_date DESC LIMIT ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    let result = match stmt.query_map(params![limit], |row| row.get::<_, String>(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => vec![],
+    };
+    result
+}
+
+/// Get average stats from last N matches
+fn get_recent_avg_stats(conn: &Connection) -> (f64, f64, f64, f64, Option<f64>) {
+    // (avg_kills, avg_gpm, avg_deaths, avg_hero_damage, avg_cs_at_10)
+    let row = conn.query_row(
+        "SELECT AVG(kills), AVG(gold_per_min), AVG(deaths), AVG(hero_damage)
+         FROM (SELECT kills, gold_per_min, deaths, hero_damage
+               FROM matches ORDER BY start_time DESC LIMIT 20)",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, Option<f64>>(0)?.unwrap_or(10.0),
+                row.get::<_, Option<f64>>(1)?.unwrap_or(400.0),
+                row.get::<_, Option<f64>>(2)?.unwrap_or(5.0),
+                row.get::<_, Option<f64>>(3)?.unwrap_or(15000.0),
+            ))
+        },
+    );
+
+    let (avg_kills, avg_gpm, avg_deaths, avg_dmg) = row.unwrap_or((10.0, 400.0, 5.0, 15000.0));
+
+    let avg_cs10 = conn.query_row(
+        "SELECT AVG(mc.last_hits)
+         FROM (SELECT match_id FROM matches WHERE parse_state = 'parsed'
+               ORDER BY start_time DESC LIMIT 10) m
+         JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = 10",
+        [],
+        |row| row.get::<_, Option<f64>>(0),
+    ).unwrap_or(None);
+
+    (avg_kills, avg_gpm, avg_deaths, avg_dmg, avg_cs10)
+}
+
+/// Pick a random hero from the last N matches
+fn pick_hero_from_recent(conn: &Connection, limit: i64) -> Option<i32> {
+    let mut stmt = conn
+        .prepare("SELECT hero_id FROM matches ORDER BY start_time DESC LIMIT ?1")
+        .ok()?;
+    let heroes: Vec<i32> = stmt
+        .query_map(params![limit], |row| row.get(0))
+        .ok()?
+        .filter_map(|r| r.ok())
+        .collect();
+    if heroes.is_empty() {
+        return None;
+    }
+    let mut rng = rand::thread_rng();
+    Some(heroes[rng.gen_range(0..heroes.len())])
+}
+
+/// Pick a hero NOT played in the last 7 days but played overall
+fn pick_unfamiliar_hero(conn: &Connection) -> Option<i32> {
+    use chrono::Local;
+    let cutoff = (Local::now().timestamp() - 7 * 24 * 3600) as i64;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT hero_id FROM matches
+             WHERE hero_id NOT IN (
+                 SELECT DISTINCT hero_id FROM matches WHERE start_time >= ?1
+             )
+             ORDER BY RANDOM() LIMIT 1",
+        )
+        .ok()?;
+
+    stmt.query_row(params![cutoff], |row| row.get::<_, i32>(0))
+        .ok()
+}
+
+/// Archive any active daily challenges from past days as failed
+pub fn archive_expired_daily_challenges(conn: &Connection) -> Result<(), String> {
+    let today = get_today_date_string();
+
+    // Find active challenges before today
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, challenge_date, challenge_description
+             FROM daily_challenges
+             WHERE status = 'active' AND challenge_date < ?1",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let expired: Vec<(i64, String, String)> = stmt
+        .query_map(params![today], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })
+        .map_err(|e| format!("Failed to query expired challenges: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect expired challenges: {}", e))?;
+
+    for (id, date, description) in &expired {
+        conn.execute(
+            "UPDATE daily_challenges SET status = 'failed' WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("Failed to update challenge status: {}", e))?;
+
+        conn.execute(
+            "INSERT INTO challenge_history (challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved)
+             VALUES ('daily', ?1, ?2, 'failed', NULL, NULL)",
+            params![date, description],
+        )
+        .map_err(|e| format!("Failed to archive challenge: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Generate a new daily challenge for the given date
+fn generate_daily_challenge_for_date(
+    conn: &Connection,
+    date: &str,
+) -> Result<Option<DailyChallenge>, String> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    let (avg_kills, avg_gpm, avg_deaths, avg_dmg, avg_cs10) = get_recent_avg_stats(conn);
+
+    // Avoid repeating same metric as yesterday/recent
+    let recent_metrics = get_recent_challenge_metrics(conn, 3);
+    let last_metric = recent_metrics.first().cloned().unwrap_or_default();
+
+    // All possible challenges, paired (metric, difficulty, build_fn)
+    // We'll pick one that isn't a repeat of last_metric
+    let recent_hero = pick_hero_from_recent(conn, 10);
+    let unfamiliar_hero = pick_unfamiliar_hero(conn);
+
+    // Difficulty roll: 60% easy, 30% medium, 10% hard
+    let roll: f64 = rng.gen();
+    let difficulty = if roll < 0.60 {
+        "easy"
+    } else if roll < 0.90 {
+        "medium"
+    } else {
+        "hard"
+    };
+
+    // Build candidate challenges for each difficulty
+    struct Candidate {
+        metric: &'static str,
+        difficulty: &'static str,
+        description: String,
+        target: i32,
+        hero_id: Option<i32>,
+    }
+
+    let mut candidates: Vec<Candidate> = vec![];
+
+    // Easy candidates
+    candidates.push(Candidate {
+        metric: "wins",
+        difficulty: "easy",
+        description: "Win 1 game today".to_string(),
+        target: 1,
+        hero_id: None,
+    });
+
+    candidates.push(Candidate {
+        metric: "games_played",
+        difficulty: "easy",
+        description: "Play 2 games today".to_string(),
+        target: 2,
+        hero_id: None,
+    });
+
+    candidates.push(Candidate {
+        metric: "positive_kda",
+        difficulty: "easy",
+        description: "Finish with positive KDA in one game (K+A > Deaths)".to_string(),
+        target: 1,
+        hero_id: None,
+    });
+
+    if let Some(hero_id) = recent_hero {
+        candidates.push(Candidate {
+            metric: "wins",
+            difficulty: "easy",
+            description: "Win 1 game with your hero".to_string(),
+            target: 1,
+            hero_id: Some(hero_id),
+        });
+    }
+
+    if let Some(hero_id) = unfamiliar_hero {
+        candidates.push(Candidate {
+            metric: "games_played",
+            difficulty: "easy",
+            description: "Play a game with a hero you haven't used in 7 days".to_string(),
+            target: 1,
+            hero_id: Some(hero_id),
+        });
+    }
+
+    // Medium candidates
+    let kills_target = (avg_kills as i32 + 2).max(10);
+    candidates.push(Candidate {
+        metric: "kills",
+        difficulty: "medium",
+        description: format!("Get {}+ kills in one game", kills_target),
+        target: kills_target,
+        hero_id: None,
+    });
+
+    let gpm_target = (avg_gpm as i32 + 30).max(400);
+    candidates.push(Candidate {
+        metric: "gpm",
+        difficulty: "medium",
+        description: format!("Achieve {}+ GPM in one game", gpm_target),
+        target: gpm_target,
+        hero_id: None,
+    });
+
+    let deaths_target = ((avg_deaths as i32) - 1).max(1).min(4);
+    candidates.push(Candidate {
+        metric: "low_deaths",
+        difficulty: "medium",
+        description: format!("Die {} times or less in one game", deaths_target),
+        target: deaths_target,
+        hero_id: None,
+    });
+
+    // Hard candidates
+    let dmg_target = (avg_dmg as i32 + 2000).max(15000);
+    candidates.push(Candidate {
+        metric: "hero_damage",
+        difficulty: "hard",
+        description: format!("Deal {}+ hero damage in one game", dmg_target),
+        target: dmg_target,
+        hero_id: None,
+    });
+
+    if let Some(avg) = avg_cs10 {
+        let cs_target = (avg as i32 + 5).max(50);
+        candidates.push(Candidate {
+            metric: "cs_at_10",
+            difficulty: "hard",
+            description: format!("Get {}+ CS at 10 minutes", cs_target),
+            target: cs_target,
+            hero_id: None,
+        });
+    }
+
+    // Filter by target difficulty, avoiding the last used metric
+    let matching: Vec<&Candidate> = candidates
+        .iter()
+        .filter(|c| c.difficulty == difficulty && c.metric != last_metric.as_str())
+        .collect();
+
+    // Fall back to any difficulty if no match
+    let pool: Vec<&Candidate> = if matching.is_empty() {
+        candidates.iter().filter(|c| c.difficulty == difficulty).collect()
+    } else {
+        matching
+    };
+
+    // Fall back to any candidate if still empty
+    let pool: Vec<&Candidate> = if pool.is_empty() {
+        candidates.iter().collect()
+    } else {
+        pool
+    };
+
+    if pool.is_empty() {
+        return Ok(None);
+    }
+
+    let chosen = &pool[rng.gen_range(0..pool.len())];
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO daily_challenges
+         (challenge_date, challenge_type, challenge_description, challenge_target,
+          challenge_target_games, hero_id, metric, status, created_at)
+         VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, 'active', ?7)",
+        params![
+            date,
+            chosen.difficulty,
+            chosen.description,
+            chosen.target,
+            chosen.hero_id,
+            chosen.metric,
+            now,
+        ],
+    )
+    .map_err(|e| format!("Failed to insert daily challenge: {}", e))?;
+
+    // Read back to get id
+    conn.query_row(
+        "SELECT id, challenge_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, status, created_at, completed_at
+         FROM daily_challenges WHERE challenge_date = ?1",
+        params![date],
+        row_to_daily_challenge,
+    )
+    .map(Some)
+    .map_err(|e| format!("Failed to read back daily challenge: {}", e))
+}
+
+/// Get or generate the daily challenge for today
+pub fn get_or_generate_daily_challenge(conn: &Connection) -> Result<Option<DailyChallenge>, String> {
+    let today = get_today_date_string();
+
+    // Archive any expired active challenges
+    archive_expired_daily_challenges(conn)?;
+
+    // Check if we already have one for today
+    let existing = conn.query_row(
+        "SELECT id, challenge_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, status, created_at, completed_at
+         FROM daily_challenges WHERE challenge_date = ?1",
+        params![today],
+        row_to_daily_challenge,
+    );
+
+    match existing {
+        Ok(challenge) => Ok(Some(challenge)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => generate_daily_challenge_for_date(conn, &today),
+        Err(e) => Err(format!("Failed to query daily challenge: {}", e)),
+    }
+}
+
+/// Evaluate progress for a daily challenge against today's matches
+pub fn evaluate_daily_challenge_progress(
+    conn: &Connection,
+    challenge: &DailyChallenge,
+) -> Result<DailyChallengeProgress, String> {
+    // If already completed, return complete state
+    if challenge.status == "completed" {
+        return Ok(DailyChallengeProgress {
+            challenge: challenge.clone(),
+            current_value: challenge.challenge_target,
+            target: challenge.challenge_target,
+            completed: true,
+            games_counted: 0,
+        });
+    }
+
+    let midnight = get_today_midnight_timestamp();
+    let mut today_matches = get_matches_since(conn, midnight)?;
+
+    // Filter by hero if challenge is hero-specific
+    if let Some(hero_id) = challenge.hero_id {
+        today_matches.retain(|m| m.hero_id == hero_id);
+    }
+
+    let games_counted = today_matches.len() as i32;
+
+    let (current_value, target) = match challenge.metric.as_str() {
+        "wins" => {
+            let wins = today_matches.iter().filter(|m| match_is_win(m)).count() as i32;
+            (wins, challenge.challenge_target)
+        }
+        "games_played" => (games_counted, challenge.challenge_target),
+        "kills" => {
+            let max = today_matches.iter().map(|m| m.kills).max().unwrap_or(0);
+            (max, challenge.challenge_target)
+        }
+        "gpm" => {
+            let max = today_matches.iter().map(|m| m.gold_per_min).max().unwrap_or(0);
+            (max, challenge.challenge_target)
+        }
+        "hero_damage" => {
+            let max = today_matches.iter().map(|m| m.hero_damage).max().unwrap_or(0);
+            (max, challenge.challenge_target)
+        }
+        "positive_kda" => {
+            let achieved = today_matches
+                .iter()
+                .any(|m| (m.kills + m.assists) > m.deaths);
+            (if achieved { 1 } else { 0 }, 1)
+        }
+        "low_deaths" => {
+            let achieved = today_matches
+                .iter()
+                .any(|m| m.deaths <= challenge.challenge_target);
+            (if achieved { 1 } else { 0 }, 1)
+        }
+        "cs_at_10" => {
+            let mut max_cs = 0i32;
+            for m in today_matches.iter().filter(|m| m.parse_state == MatchState::Parsed) {
+                if let Ok(Some(cs)) = get_match_cs_at_minute(conn, m.match_id, 10) {
+                    if cs.last_hits > max_cs {
+                        max_cs = cs.last_hits;
+                    }
+                }
+            }
+            (max_cs, challenge.challenge_target)
+        }
+        _ => (0, challenge.challenge_target),
+    };
+
+    let completed = current_value >= target;
+
+    // Auto-mark as completed if achieved
+    if completed && challenge.status == "active" {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE daily_challenges SET status = 'completed', completed_at = ?1 WHERE id = ?2",
+            params![now, challenge.id],
+        )
+        .map_err(|e| format!("Failed to mark challenge complete: {}", e))?;
+
+        conn.execute(
+            "INSERT INTO challenge_history
+             (challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved)
+             VALUES ('daily', ?1, ?2, 'completed', ?3, ?4)",
+            params![
+                challenge.challenge_date,
+                challenge.challenge_description,
+                now,
+                current_value,
+            ],
+        )
+        .map_err(|e| format!("Failed to archive completed challenge: {}", e))?;
+    }
+
+    Ok(DailyChallengeProgress {
+        challenge: challenge.clone(),
+        current_value,
+        target,
+        completed,
+        games_counted,
+    })
+}
+
+/// Get or generate today's challenge and evaluate its progress
+pub fn get_daily_challenge_progress(
+    conn: &Connection,
+) -> Result<Option<DailyChallengeProgress>, String> {
+    match get_or_generate_daily_challenge(conn)? {
+        Some(challenge) => Ok(Some(evaluate_daily_challenge_progress(conn, &challenge)?)),
+        None => Ok(None),
+    }
+}
+
+/// Count consecutive days (ending yesterday) where the daily challenge was completed
+pub fn get_daily_streak(conn: &Connection) -> Result<i32, String> {
+    use chrono::{Duration, Local};
+
+    let mut streak = 0i32;
+    let mut check = Local::now().date_naive() - Duration::days(1);
+
+    loop {
+        let date_str = check.format("%Y-%m-%d").to_string();
+
+        let status: Result<String, _> = conn.query_row(
+            "SELECT status FROM daily_challenges WHERE challenge_date = ?1",
+            params![date_str],
+            |row| row.get(0),
+        );
+
+        match status {
+            Ok(s) if s == "completed" => {
+                streak += 1;
+                check -= Duration::days(1);
+            }
+            _ => break,
+        }
+    }
+
+    Ok(streak)
 }

@@ -12,6 +12,8 @@ use database::{
     MatchDataPoint, MatchState, MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
     get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
     insert_item_timing, get_item_timings_for_match, NewItemTiming,
+    get_or_generate_daily_challenge, get_daily_challenge_progress, get_daily_streak,
+    DailyChallenge, DailyChallengeProgress,
 };
 use serde_json;
 use settings::Settings;
@@ -640,6 +642,27 @@ fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
     get_match_cs_data(&conn, match_id)
 }
 
+/// Get (or generate) today's daily challenge
+#[tauri::command]
+fn get_daily_challenge() -> Result<Option<DailyChallenge>, String> {
+    let conn = init_db()?;
+    get_or_generate_daily_challenge(&conn)
+}
+
+/// Get today's daily challenge with evaluated progress
+#[tauri::command]
+fn get_daily_challenge_progress_cmd() -> Result<Option<DailyChallengeProgress>, String> {
+    let conn = init_db()?;
+    get_daily_challenge_progress(&conn)
+}
+
+/// Get the current daily challenge completion streak
+#[tauri::command]
+fn get_daily_streak_cmd() -> Result<i32, String> {
+    let conn = init_db()?;
+    get_daily_streak(&conn)
+}
+
 /// Convert Steam ID64 to Steam ID32 (account ID)
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
@@ -687,7 +710,10 @@ pub fn run() {
             get_favorite_heroes,
             get_all_items,
             get_match_item_timings,
-            get_match_cs
+            get_match_cs,
+            get_daily_challenge,
+            get_daily_challenge_progress_cmd,
+            get_daily_streak_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

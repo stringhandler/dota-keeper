@@ -1,6 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
 
@@ -9,6 +9,10 @@
   let goalCalendar = $state([]);
   let heroSuggestion = $state(null);
   let items = $state([]);
+  let dailyProgress = $state(null);
+  let dailyStreak = $state(0);
+  let timeUntilMidnight = $state("");
+  let midnightTimer = null;
 
   const DAYS_TO_SHOW = 7;
 
@@ -16,7 +20,50 @@
     await loadGoalCalendar();
     await loadHeroSuggestion();
     await loadItems();
+    await loadDailyChallenge();
+    updateMidnightCountdown();
+    midnightTimer = setInterval(updateMidnightCountdown, 60000);
   });
+
+  onDestroy(() => {
+    if (midnightTimer) clearInterval(midnightTimer);
+  });
+
+  function updateMidnightCountdown() {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const diffMs = midnight - now;
+    const hours = Math.floor(diffMs / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    timeUntilMidnight = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  }
+
+  async function loadDailyChallenge() {
+    try {
+      [dailyProgress, dailyStreak] = await Promise.all([
+        invoke("get_daily_challenge_progress_cmd"),
+        invoke("get_daily_streak_cmd"),
+      ]);
+    } catch (e) {
+      console.error("Failed to load daily challenge:", e);
+    }
+  }
+
+  function getDailyProgressPct(progress) {
+    if (!progress) return 0;
+    return Math.min(100, Math.round((progress.current_value / progress.target) * 100));
+  }
+
+  function formatDailyDescription(progress) {
+    if (!progress) return "";
+    const c = progress.challenge;
+    let desc = c.challenge_description;
+    if (c.hero_id !== null) {
+      desc += ` (${getHeroName(c.hero_id)})`;
+    }
+    return desc;
+  }
 
   async function loadItems() {
     try {
@@ -192,6 +239,43 @@
         </div>
       {/if}
     </div>
+
+    {#if dailyProgress}
+      <div class="daily-challenge-section">
+        <h2>⚡ Today's Challenge</h2>
+        <div class="daily-card {dailyProgress.completed ? 'completed' : 'active'}">
+          <div class="daily-card-left">
+            {#if dailyProgress.challenge.hero_id !== null}
+              <HeroIcon heroId={dailyProgress.challenge.hero_id} size="small" showName={false} />
+            {:else}
+              <span class="daily-icon">{dailyProgress.completed ? '✅' : '⚡'}</span>
+            {/if}
+          </div>
+          <div class="daily-card-body">
+            <div class="daily-description">{formatDailyDescription(dailyProgress)}</div>
+            <div class="daily-progress-bar-wrap">
+              <div class="daily-progress-bar">
+                <div class="daily-progress-fill {dailyProgress.completed ? 'done' : ''}"
+                     style="width: {getDailyProgressPct(dailyProgress)}%"></div>
+              </div>
+              <span class="daily-progress-label">
+                {dailyProgress.current_value}/{dailyProgress.target}
+              </span>
+            </div>
+            <div class="daily-meta">
+              {#if dailyProgress.completed}
+                <span class="daily-complete-tag">Complete!</span>
+              {:else}
+                <span class="daily-reset">Resets in {timeUntilMidnight}</span>
+              {/if}
+              {#if dailyStreak > 0}
+                <span class="daily-streak">🔥 {dailyStreak} day streak</span>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if heroSuggestion}
       <div class="suggestion-section">
@@ -468,6 +552,116 @@
 .day-stats {
   font-size: 0.75rem;
   color: #b0b0b0;
+  font-weight: 600;
+}
+
+/* Daily Challenge Widget */
+.daily-challenge-section {
+  margin-top: 2rem;
+}
+
+.daily-challenge-section h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  color: #d4af37;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.daily-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  border-radius: 6px;
+  border: 2px solid rgba(139, 92, 46, 0.4);
+  background: linear-gradient(135deg, rgba(25, 25, 35, 0.9) 0%, rgba(20, 20, 30, 0.95) 100%);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.3s ease;
+}
+
+.daily-card.completed {
+  border-color: rgba(96, 192, 64, 0.5);
+  background: linear-gradient(135deg, rgba(25, 40, 25, 0.9) 0%, rgba(20, 30, 20, 0.95) 100%);
+}
+
+.daily-card-left {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.daily-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.daily-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.daily-description {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.daily-progress-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.daily-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(40, 40, 55, 0.8);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(139, 92, 46, 0.3);
+}
+
+.daily-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.8), rgba(212, 175, 55, 1));
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.daily-progress-fill.done {
+  background: linear-gradient(90deg, rgba(96, 192, 64, 0.8), rgba(96, 192, 64, 1));
+}
+
+.daily-progress-label {
+  font-size: 0.85rem;
+  color: #a0a0a0;
+  white-space: nowrap;
+  min-width: 3rem;
+  text-align: right;
+}
+
+.daily-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.daily-reset {
+  color: #808080;
+}
+
+.daily-complete-tag {
+  color: #60c040;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(96, 192, 64, 0.4);
+}
+
+.daily-streak {
+  color: #ffc107;
   font-weight: 600;
 }
 
