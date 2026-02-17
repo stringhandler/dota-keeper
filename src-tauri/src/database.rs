@@ -172,11 +172,18 @@ impl Match {
     }
 }
 
-/// Get the path to the database file in the AppData directory
+/// Get the path to the database file in the AppData directory.
+/// Dev builds use `dota_keeper_dev.db`; release builds use `dota_keeper.db`.
 fn get_db_path() -> Option<PathBuf> {
     dirs::data_local_dir().map(|mut path| {
         path.push("DotaKeeper");
+
+        #[cfg(debug_assertions)]
+        path.push("dota_keeper_dev.db");
+
+        #[cfg(not(debug_assertions))]
         path.push("dota_keeper.db");
+
         path
     })
 }
@@ -193,12 +200,6 @@ pub fn init_db() -> Result<Connection, String> {
 
     let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    // Cleanup: Reset any "parsing" matches to "unparsed" (in case app crashed during parsing)
-    conn.execute(
-        "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsing'",
-        [],
-    ).map_err(|e| format!("Failed to cleanup parsing state: {}", e))?;
 
     // Create the matches table
     conn.execute(
@@ -225,6 +226,12 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create matches table: {}", e))?;
+
+    // Cleanup: Reset any "parsing" matches to "unparsed" (in case app crashed during parsing)
+    conn.execute(
+        "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsing'",
+        [],
+    ).map_err(|e| format!("Failed to cleanup parsing state: {}", e))?;
 
     // Add parse_state column if it doesn't exist (for existing databases)
     let _ = conn.execute(
