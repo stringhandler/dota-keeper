@@ -8,6 +8,7 @@
   let goalId = $derived($page.params.goalId);
   let goal = $state(null);
   let matchData = $state([]);
+  let items = $state([]);
   let isLoading = $state(true);
   let error = $state("");
 
@@ -115,13 +116,27 @@
     isLoading = true;
     error = "";
     try {
-      goal = await invoke("get_goal", { goalId: parseInt(goalId) });
-      matchData = await invoke("get_goal_histogram_data", { goalId: parseInt(goalId) });
+      [goal, matchData, items] = await Promise.all([
+        invoke("get_goal", { goalId: parseInt(goalId) }),
+        invoke("get_goal_histogram_data", { goalId: parseInt(goalId) }),
+        invoke("get_all_items"),
+      ]);
     } catch (e) {
       error = `Failed to load goal data: ${e}`;
     } finally {
       isLoading = false;
     }
+  }
+
+  function getItemName(itemId) {
+    const item = items.find(i => i.id === itemId);
+    return item ? item.display_name : `Item ${itemId}`;
+  }
+
+  function formatSeconds(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
   function resetFilters() {
@@ -140,6 +155,8 @@
         return "Last Hits";
       case "Level":
         return "Level";
+      case "ItemTiming":
+        return "Item Timing";
       default:
         return metric;
     }
@@ -155,6 +172,8 @@
         return "CS";
       case "Level":
         return "";
+      case "ItemTiming":
+        return "M:SS";
       default:
         return "";
     }
@@ -163,10 +182,19 @@
   function formatGoalDescription(g) {
     if (!g) return "";
     const heroName = g.hero_id !== null ? getHeroName(g.hero_id) : "Any Hero";
-    const metricLabel = getMetricLabel(g.metric);
+    if (g.metric === "ItemTiming") {
+      const itemName = g.item_id !== null ? getItemName(g.item_id) : "Unknown Item";
+      const timeStr = formatSeconds(g.target_value);
+      return `${heroName}: ${itemName} by ${timeStr}`;
+    }
     const unit = getMetricUnit(g.metric);
     const valueStr = unit ? `${g.target_value} ${unit}` : `Level ${g.target_value}`;
     return `${heroName}: ${valueStr} by ${g.target_time_minutes} min`;
+  }
+
+  function formatStatValue(value, metric) {
+    if (metric === "ItemTiming") return formatSeconds(value);
+    return value;
   }
 </script>
 
@@ -245,12 +273,12 @@
           </div>
           <div class="stat-card">
             <div class="stat-label">Average</div>
-            <div class="stat-value">{stats().avgValue} {getMetricUnit(goal.metric)}</div>
+            <div class="stat-value">{formatStatValue(stats().avgValue, goal.metric)} {goal.metric !== "ItemTiming" ? getMetricUnit(goal.metric) : ""}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Range</div>
             <div class="stat-value">
-              {stats().minValue} - {stats().maxValue}
+              {formatStatValue(stats().minValue, goal.metric)} – {formatStatValue(stats().maxValue, goal.metric)}
             </div>
           </div>
         </div>
@@ -311,7 +339,7 @@
                 font-size="14"
                 font-weight="bold"
               >
-                Target: {goal.target_value}
+                Target: {goal.metric === "ItemTiming" ? formatSeconds(goal.target_value) : goal.target_value}
               </text>
             {/if}
 
@@ -353,7 +381,7 @@
                 fill="#a0a0a0"
                 font-size="10"
               >
-                {bin.start}
+                {goal.metric === "ItemTiming" ? formatSeconds(bin.start) : bin.start}
               </text>
             {/each}
 
@@ -366,7 +394,9 @@
               font-size="14"
               font-weight="bold"
             >
-              {getMetricLabel(goal.metric)} ({getMetricUnit(goal.metric) || "value"})
+              {goal.metric === "ItemTiming"
+                ? `${goal.item_id !== null ? getItemName(goal.item_id) : "Item"} Timing (M:SS)`
+                : `${getMetricLabel(goal.metric)} (${getMetricUnit(goal.metric) || "value"})`}
             </text>
             <text
               x="30"
