@@ -113,76 +113,61 @@ jobs:
         id: version
         run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Download release signatures
+      - name: Download and inspect release signatures
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          echo "Downloading signatures for version v${VERSION}"
+          echo "=== Release assets for v${VERSION} ==="
+          gh release view "v${VERSION}" --json assets --jq '.assets[].name' || echo "Could not list assets"
 
-          # Create signatures directory
           mkdir -p ./signatures
 
-          # Download from draft release (add || true to not fail if no sigs found)
-          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures || {
-            echo "Warning: Could not download signature files. They may not exist yet."
-            echo "This is expected if TAURI_SIGNING_PRIVATE_KEY is not configured."
-          }
+          # Download all .sig files
+          echo ""
+          echo "=== Downloading .sig files ==="
+          gh release download "v${VERSION}" --pattern "*.sig" --dir ./signatures 2>&1 || \
+            echo "Warning: gh release download failed or no .sig files found"
 
-          echo "Downloaded signature files:"
-          ls -la ./signatures/ || echo "No signatures directory or files found"
+          echo ""
+          echo "=== Downloaded signature files ==="
+          ls -la ./signatures/ 2>/dev/null || echo "No files downloaded"
 
       - name: Update latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Read signatures with better error handling
           WIN_SIG=""
           LINUX_SIG=""
           MACOS_X64_SIG=""
           MACOS_ARM_SIG=""
 
-          # Windows signature
-          WIN_SIG_FILE=$(find ./signatures -name "*x64_en-US.msi.zip.sig" -o -name "*x64-setup.exe.sig" | head -n 1)
-          if [ -n "$WIN_SIG_FILE" ] && [ -f "$WIN_SIG_FILE" ]; then
-            WIN_SIG=$(cat "$WIN_SIG_FILE")
-            echo "Found Windows signature: $WIN_SIG_FILE"
-          else
-            echo "Warning: Windows signature not found"
-          fi
+          # Classify each downloaded .sig file by its name.
+          # Order matters: aarch64 before x64, amd64 before x64, .app.tar.gz before plain x64.
+          for f in ./signatures/*.sig; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            echo "Classifying: $name"
+            case "$name" in
+              *aarch64*)            MACOS_ARM_SIG=$(cat "$f");  echo "  → macOS ARM" ;;
+              *amd64*)              LINUX_SIG=$(cat "$f");       echo "  → Linux x64" ;;
+              *x64.app.tar.gz.sig)  MACOS_X64_SIG=$(cat "$f");  echo "  → macOS x64" ;;
+              *x64*)                WIN_SIG=$(cat "$f");         echo "  → Windows x64" ;;
+              *)                    echo "  → unrecognised, skipping" ;;
+            esac
+          done
 
-          # Linux signature
-          LINUX_SIG_FILE=$(find ./signatures -name "*amd64.AppImage.tar.gz.sig" -o -name "*.AppImage.tar.gz.sig" | head -n 1)
-          if [ -n "$LINUX_SIG_FILE" ] && [ -f "$LINUX_SIG_FILE" ]; then
-            LINUX_SIG=$(cat "$LINUX_SIG_FILE")
-            echo "Found Linux signature: $LINUX_SIG_FILE"
-          else
-            echo "Warning: Linux signature not found"
-          fi
+          echo ""
+          echo "Windows sig present:    $([ -n "$WIN_SIG" ] && echo yes || echo NO)"
+          echo "Linux sig present:      $([ -n "$LINUX_SIG" ] && echo yes || echo NO)"
+          echo "macOS x64 sig present:  $([ -n "$MACOS_X64_SIG" ] && echo yes || echo NO)"
+          echo "macOS ARM sig present:  $([ -n "$MACOS_ARM_SIG" ] && echo yes || echo NO)"
 
-          # macOS x64 signature
-          MACOS_X64_SIG_FILE=$(find ./signatures -name "*x64.app.tar.gz.sig" | head -n 1)
-          if [ -n "$MACOS_X64_SIG_FILE" ] && [ -f "$MACOS_X64_SIG_FILE" ]; then
-            MACOS_X64_SIG=$(cat "$MACOS_X64_SIG_FILE")
-            echo "Found macOS x64 signature: $MACOS_X64_SIG_FILE"
-          else
-            echo "Warning: macOS x64 signature not found"
-          fi
-
-          # macOS ARM signature
-          MACOS_ARM_SIG_FILE=$(find ./signatures -name "*aarch64.app.tar.gz.sig" | head -n 1)
-          if [ -n "$MACOS_ARM_SIG_FILE" ] && [ -f "$MACOS_ARM_SIG_FILE" ]; then
-            MACOS_ARM_SIG=$(cat "$MACOS_ARM_SIG_FILE")
-            echo "Found macOS ARM signature: $MACOS_ARM_SIG_FILE"
-          else
-            echo "Warning: macOS ARM signature not found"
-          fi
-
-          # Create meta/autoupdate directory if it doesn't exist
           mkdir -p meta/autoupdate
 
-          # Update latest.json
           cat > meta/autoupdate/latest.json << EOF
           {
             "version": "${VERSION}",
@@ -209,8 +194,17 @@ jobs:
           }
           EOF
 
-          echo "Generated latest.json:"
+          echo ""
+          echo "=== Generated latest.json ==="
           cat meta/autoupdate/latest.json
+
+      - name: Commit latest.json to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add meta/autoupdate/latest.json
+          git diff --cached --quiet || git commit -m "chore: update latest.json for v${{ steps.version.outputs.VERSION }}"
+          git push
 
       - name: Upload latest.json to release
         env:
