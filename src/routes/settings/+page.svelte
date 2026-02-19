@@ -10,10 +10,14 @@
   let isReparsing = $state(false);
   let isClearing = $state(false);
   let steamId = $state("");
+  let suggestionDifficulty = $state("Medium");
+  let customPercentage = $state(10);
+  let isSavingDifficulty = $state(false);
 
   onMount(async () => {
     await loadDatabasePath();
     await loadSteamId();
+    await loadDifficulty();
   });
 
   async function loadDatabasePath() {
@@ -32,6 +36,36 @@
       steamId = settings.steam_id || "";
     } catch (e) {
       console.error("Failed to load Steam ID:", e);
+    }
+  }
+
+  async function loadDifficulty() {
+    try {
+      const settings = await invoke("get_settings");
+      suggestionDifficulty = settings.suggestion_difficulty || "Medium";
+      customPercentage = settings.suggestion_custom_percentage
+        ? Math.round(settings.suggestion_custom_percentage * 100)
+        : 10;
+    } catch (e) {
+      console.error("Failed to load difficulty setting:", e);
+    }
+  }
+
+  async function saveDifficulty() {
+    error = "";
+    successMessage = "";
+    isSavingDifficulty = true;
+    try {
+      const pct = suggestionDifficulty === "Custom" ? customPercentage / 100 : null;
+      await invoke("save_suggestion_difficulty", {
+        difficulty: suggestionDifficulty,
+        customPercentage: pct,
+      });
+      successMessage = "Difficulty setting saved.";
+    } catch (e) {
+      error = `Failed to save difficulty: ${e}`;
+    } finally {
+      isSavingDifficulty = false;
     }
   }
 
@@ -141,6 +175,47 @@
       </div>
       <button class="open-folder-btn" onclick={openDatabaseFolder} disabled={isLoading}>
         Open Folder
+      </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Goal Suggestions</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Suggestion Difficulty</h3>
+        <p class="setting-description">
+          Controls how ambitious your CS goal suggestions will be. Medium targets 5–10% improvement over your recent average.
+        </p>
+        <div class="difficulty-controls">
+          <select class="difficulty-select" bind:value={suggestionDifficulty}>
+            <option value="Easy">Easy (3–5% improvement)</option>
+            <option value="Medium">Medium (5–10% improvement)</option>
+            <option value="Hard">Hard (10–15% improvement)</option>
+            <option value="Custom">Custom</option>
+          </select>
+          {#if suggestionDifficulty === "Custom"}
+            <div class="custom-pct">
+              <label>
+                Target improvement:
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  bind:value={customPercentage}
+                  class="pct-input"
+                />%
+              </label>
+            </div>
+          {/if}
+        </div>
+      </div>
+      <button
+        class="save-btn"
+        onclick={saveDifficulty}
+        disabled={isSavingDifficulty}
+      >
+        {isSavingDifficulty ? "Saving..." : "Save"}
       </button>
     </div>
   </div>
@@ -389,6 +464,78 @@
   color: #f0b840;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.difficulty-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.difficulty-select {
+  background: rgba(30, 30, 40, 0.9);
+  color: #e0e0e0;
+  border: 1px solid rgba(139, 92, 46, 0.5);
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  max-width: 260px;
+}
+
+.custom-pct {
+  color: #a0a0a0;
+  font-size: 0.95rem;
+}
+
+.custom-pct label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pct-input {
+  width: 64px;
+  background: rgba(30, 30, 40, 0.9);
+  color: #e0e0e0;
+  border: 1px solid rgba(139, 92, 46, 0.5);
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.save-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(139, 92, 46, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(70, 95, 50, 0.9) 0%, rgba(50, 75, 40, 0.9) 100%);
+  border-color: rgba(139, 92, 46, 0.8);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 20px rgba(100, 255, 100, 0.2);
+  transform: translateY(-2px);
+}
+
+.save-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .backfill-btn {

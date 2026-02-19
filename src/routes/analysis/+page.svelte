@@ -117,12 +117,13 @@
     return value >= 0 ? `+${value.toFixed(1)}%` : `${value.toFixed(1)}%`;
   }
 
-  // Get hero list sorted alphabetically
-  const heroList = Object.entries(heroes)
+  // Hero list split into favorites and others (reactive)
+  let allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ value: parseInt(id), label: name }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  heroList.unshift({ value: null, label: "All Heroes" });
+  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroes.has(h.value)));
+  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroes.has(h.value)));
 
   // Filter and sort hero stats based on favorites
   function getFilteredHeroStats() {
@@ -179,9 +180,19 @@
       <div class="filter-group">
         <label for="hero-filter">Hero</label>
         <select id="hero-filter" bind:value={selectedHeroId} onchange={handleFilterChange}>
-          {#each heroList as hero}
-            <option value={hero.value}>{hero.label}</option>
-          {/each}
+          <option value={null}>All Heroes</option>
+          {#if favoriteHeroList.length > 0}
+            <optgroup label="⭐ Favorites">
+              {#each favoriteHeroList as hero}
+                <option value={hero.value}>{hero.label}</option>
+              {/each}
+            </optgroup>
+          {/if}
+          <optgroup label="All Heroes">
+            {#each otherHeroList as hero}
+              <option value={hero.value}>{hero.label}</option>
+            {/each}
+          </optgroup>
         </select>
       </div>
 

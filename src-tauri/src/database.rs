@@ -340,7 +340,7 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create daily_challenges table: {}", e))?;
 
-    // Create the challenge_history table (shared between daily and future weekly)
+    // Create the challenge_history table (shared between daily and weekly)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS challenge_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -353,6 +353,43 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create challenge_history table: {}", e))?;
+
+    // Create the weekly challenge options table (3 cards shown to user)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS challenge_options (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start_date TEXT NOT NULL,
+            challenge_type TEXT NOT NULL,
+            challenge_description TEXT NOT NULL,
+            challenge_target INTEGER NOT NULL,
+            challenge_target_games INTEGER,
+            hero_id INTEGER,
+            metric TEXT NOT NULL,
+            option_index INTEGER NOT NULL,
+            reroll_generation INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create challenge_options table: {}", e))?;
+
+    // Create the accepted weekly challenges table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS weekly_challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start_date TEXT NOT NULL UNIQUE,
+            challenge_type TEXT NOT NULL,
+            challenge_description TEXT NOT NULL,
+            challenge_target INTEGER NOT NULL,
+            challenge_target_games INTEGER,
+            hero_id INTEGER,
+            metric TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            accepted_at INTEGER,
+            completed_at INTEGER,
+            reroll_count INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create weekly_challenges table: {}", e))?;
 
     Ok(conn)
 }
@@ -1533,8 +1570,10 @@ pub fn generate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSugg
     let sum: i32 = valid_values.iter().sum();
     let average = sum as f64 / valid_values.len() as f64;
 
-    // Generate target: 5-10% higher than average
-    let improvement_factor = 1.05 + rng.gen_range(0.0..0.05);
+    // Generate target based on difficulty setting
+    let settings = crate::settings::Settings::load();
+    let (range_min, range_max) = settings.improvement_range();
+    let improvement_factor = 1.0 + range_min + rng.gen_range(0.0..(range_max - range_min).max(0.001));
     let target_last_hits = (average * improvement_factor).round() as i32;
 
     let now = std::time::SystemTime::now()
@@ -2243,4 +2282,679 @@ pub fn get_daily_streak(conn: &Connection) -> Result<i32, String> {
     }
 
     Ok(streak)
+}
+
+// ===== Weekly Challenges =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChallengeOption {
+    pub id: i64,
+    pub week_start_date: String,
+    pub challenge_type: String,
+    pub challenge_description: String,
+    pub challenge_target: i32,
+    pub challenge_target_games: Option<i32>,
+    pub hero_id: Option<i32>,
+    pub metric: String,
+    pub option_index: i32,
+    pub reroll_generation: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WeeklyChallenge {
+    pub id: i64,
+    pub week_start_date: String,
+    pub challenge_type: String,
+    pub challenge_description: String,
+    pub challenge_target: i32,
+    pub challenge_target_games: Option<i32>,
+    pub hero_id: Option<i32>,
+    pub metric: String,
+    pub status: String,
+    pub accepted_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub reroll_count: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WeeklyChallengeProgress {
+    pub challenge: WeeklyChallenge,
+    pub current_value: i32,
+    pub target: i32,
+    pub games_counted: i32,
+    pub days_remaining: i32,
+    pub completed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChallengeHistoryItem {
+    pub id: i64,
+    pub challenge_type: String,
+    pub period_start_date: String,
+    pub challenge_description: String,
+    pub status: String,
+    pub completed_at: Option<i64>,
+    pub target_achieved: Option<i32>,
+}
+
+fn get_week_start_date() -> String {
+    use chrono::{Datelike, Duration, Local};
+    let today = Local::now().date_naive();
+    let days_since_sunday = today.weekday().num_days_from_sunday();
+    let week_start = today - Duration::days(days_since_sunday as i64);
+    week_start.format("%Y-%m-%d").to_string()
+}
+
+fn get_week_end_timestamp(week_start: &str) -> i64 {
+    use chrono::{Duration, Local, NaiveDate, NaiveTime, TimeZone};
+    let start = NaiveDate::parse_from_str(week_start, "%Y-%m-%d").unwrap_or_else(|_| Local::now().date_naive());
+    let end_day = start + Duration::days(7); // next Sunday = start of next week
+    let midnight = end_day.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    Local.from_local_datetime(&midnight).unwrap().timestamp()
+}
+
+fn days_remaining_in_week() -> i32 {
+    use chrono::{Datelike, Local};
+    let today = Local::now().date_naive();
+    let days_since_sunday = today.weekday().num_days_from_sunday();
+    // days remaining = 7 - days_since_sunday - 1 (today is already partly gone)
+    (6i32 - days_since_sunday as i32).max(0)
+}
+
+fn row_to_challenge_option(row: &rusqlite::Row) -> rusqlite::Result<ChallengeOption> {
+    Ok(ChallengeOption {
+        id: row.get(0)?,
+        week_start_date: row.get(1)?,
+        challenge_type: row.get(2)?,
+        challenge_description: row.get(3)?,
+        challenge_target: row.get(4)?,
+        challenge_target_games: row.get(5)?,
+        hero_id: row.get(6)?,
+        metric: row.get(7)?,
+        option_index: row.get(8)?,
+        reroll_generation: row.get(9)?,
+    })
+}
+
+fn row_to_weekly_challenge(row: &rusqlite::Row) -> rusqlite::Result<WeeklyChallenge> {
+    Ok(WeeklyChallenge {
+        id: row.get(0)?,
+        week_start_date: row.get(1)?,
+        challenge_type: row.get(2)?,
+        challenge_description: row.get(3)?,
+        challenge_target: row.get(4)?,
+        challenge_target_games: row.get(5)?,
+        hero_id: row.get(6)?,
+        metric: row.get(7)?,
+        status: row.get(8)?,
+        accepted_at: row.get(9)?,
+        completed_at: row.get(10)?,
+        reroll_count: row.get(11)?,
+    })
+}
+
+fn row_to_history_item(row: &rusqlite::Row) -> rusqlite::Result<ChallengeHistoryItem> {
+    Ok(ChallengeHistoryItem {
+        id: row.get(0)?,
+        challenge_type: row.get(1)?,
+        period_start_date: row.get(2)?,
+        challenge_description: row.get(3)?,
+        status: row.get(4)?,
+        completed_at: row.get(5)?,
+        target_achieved: row.get(6)?,
+    })
+}
+
+struct WeeklyCandidate {
+    metric: String,
+    challenge_type: String,  // "easy", "medium", "hard"
+    description: String,
+    target: i32,
+    target_games: Option<i32>,
+    hero_id: Option<i32>,
+}
+
+fn generate_weekly_candidates(conn: &Connection) -> Vec<WeeklyCandidate> {
+    let mut candidates = vec![];
+
+    let (avg_kills, avg_gpm, avg_deaths, avg_dmg, avg_cs10) = get_recent_avg_stats(conn);
+    let recent_hero = pick_hero_from_recent(conn, 20);
+
+    // Easy: win/play targets over a week
+    candidates.push(WeeklyCandidate {
+        metric: "wins".to_string(),
+        challenge_type: "easy".to_string(),
+        description: "Win 3 games this week".to_string(),
+        target: 3,
+        target_games: None,
+        hero_id: None,
+    });
+
+    candidates.push(WeeklyCandidate {
+        metric: "games_played".to_string(),
+        challenge_type: "easy".to_string(),
+        description: "Play 5 games this week".to_string(),
+        target: 5,
+        target_games: None,
+        hero_id: None,
+    });
+
+    candidates.push(WeeklyCandidate {
+        metric: "positive_kda_games".to_string(),
+        challenge_type: "easy".to_string(),
+        description: "Finish with positive KDA (K+A > Deaths) in 3 games".to_string(),
+        target: 3,
+        target_games: None,
+        hero_id: None,
+    });
+
+    // Easy hero-specific (max 1)
+    if let Some(hero_id) = recent_hero {
+        candidates.push(WeeklyCandidate {
+            metric: "wins".to_string(),
+            challenge_type: "easy".to_string(),
+            description: "Win 2 games with your favourite hero".to_string(),
+            target: 2,
+            target_games: None,
+            hero_id: Some(hero_id),
+        });
+    }
+
+    // Medium
+    let kills_total = (avg_kills as i32 * 4).max(20);
+    candidates.push(WeeklyCandidate {
+        metric: "kills_total".to_string(),
+        challenge_type: "medium".to_string(),
+        description: format!("Get {}+ total kills this week", kills_total),
+        target: kills_total,
+        target_games: None,
+        hero_id: None,
+    });
+
+    let gpm_target = (avg_gpm as i32 + 50).max(450);
+    candidates.push(WeeklyCandidate {
+        metric: "avg_gpm".to_string(),
+        challenge_type: "medium".to_string(),
+        description: format!("Average {}+ GPM across 5 games", gpm_target),
+        target: gpm_target,
+        target_games: Some(5),
+        hero_id: None,
+    });
+
+    candidates.push(WeeklyCandidate {
+        metric: "wins".to_string(),
+        challenge_type: "medium".to_string(),
+        description: "Win 5 games this week".to_string(),
+        target: 5,
+        target_games: None,
+        hero_id: None,
+    });
+
+    let deaths_target = ((avg_deaths as i32) - 1).max(2);
+    candidates.push(WeeklyCandidate {
+        metric: "low_deaths_games".to_string(),
+        challenge_type: "medium".to_string(),
+        description: format!("Die {} or fewer times in 4 games", deaths_target),
+        target: deaths_target,
+        target_games: Some(4),
+        hero_id: None,
+    });
+
+    // Hard
+    let dmg_target = (avg_dmg as i32 + 3000).max(18000);
+    candidates.push(WeeklyCandidate {
+        metric: "hero_damage_total".to_string(),
+        challenge_type: "hard".to_string(),
+        description: format!("Deal {}+ total hero damage this week", dmg_target * 5),
+        target: dmg_target * 5,
+        target_games: None,
+        hero_id: None,
+    });
+
+    if avg_cs10.is_some() {
+        let cs_target = (avg_cs10.unwrap() as i32 + 8).max(55);
+        candidates.push(WeeklyCandidate {
+            metric: "cs_at_10_avg".to_string(),
+            challenge_type: "hard".to_string(),
+            description: format!("Average {}+ CS at 10 minutes across 5 games", cs_target),
+            target: cs_target,
+            target_games: Some(5),
+            hero_id: None,
+        });
+    }
+
+    candidates.push(WeeklyCandidate {
+        metric: "wins".to_string(),
+        challenge_type: "hard".to_string(),
+        description: "Win 8 games this week".to_string(),
+        target: 8,
+        target_games: None,
+        hero_id: None,
+    });
+
+    candidates
+}
+
+fn pick_3_diverse_options(candidates: Vec<WeeklyCandidate>, _reroll_gen: i32) -> Vec<WeeklyCandidate> {
+    use rand::seq::SliceRandom;
+    let mut rng = rand::thread_rng();
+
+    let mut easy_pool: Vec<WeeklyCandidate> = vec![];
+    let mut medium_pool: Vec<WeeklyCandidate> = vec![];
+    let mut hard_pool: Vec<WeeklyCandidate> = vec![];
+
+    for c in candidates {
+        match c.challenge_type.as_str() {
+            "easy" => easy_pool.push(c),
+            "medium" => medium_pool.push(c),
+            _ => hard_pool.push(c),
+        }
+    }
+
+    easy_pool.shuffle(&mut rng);
+    medium_pool.shuffle(&mut rng);
+    hard_pool.shuffle(&mut rng);
+
+    let mut result = vec![];
+    if let Some(e) = easy_pool.into_iter().next() { result.push(e); }
+    if let Some(m) = medium_pool.into_iter().next() { result.push(m); }
+    if let Some(h) = hard_pool.into_iter().next() { result.push(h); }
+
+    // If fewer than 3, pick any remaining
+    result
+}
+
+/// Get or generate the 3 weekly challenge options for the current week
+pub fn get_weekly_challenge_options(conn: &Connection) -> Result<Vec<ChallengeOption>, String> {
+    let week_start = get_week_start_date();
+
+    // Check existing options for this week
+    let mut stmt = conn.prepare(
+        "SELECT id, week_start_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, option_index, reroll_generation
+         FROM challenge_options WHERE week_start_date = ?1 ORDER BY option_index",
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let existing: Vec<ChallengeOption> = stmt
+        .query_map(params![week_start], row_to_challenge_option)
+        .map_err(|e| format!("Failed to query options: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect options: {}", e))?;
+
+    if !existing.is_empty() {
+        return Ok(existing);
+    }
+
+    // Generate new options
+    generate_and_save_weekly_options(conn, &week_start, 0)
+}
+
+fn generate_and_save_weekly_options(conn: &Connection, week_start: &str, reroll_gen: i32) -> Result<Vec<ChallengeOption>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let candidates = generate_weekly_candidates(conn);
+    let chosen = pick_3_diverse_options(candidates, reroll_gen);
+
+    // Delete existing options for this week before inserting
+    conn.execute(
+        "DELETE FROM challenge_options WHERE week_start_date = ?1",
+        params![week_start],
+    ).map_err(|e| format!("Failed to delete old options: {}", e))?;
+
+    for (i, c) in chosen.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO challenge_options
+             (week_start_date, challenge_type, challenge_description, challenge_target,
+              challenge_target_games, hero_id, metric, option_index, reroll_generation, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                week_start,
+                c.challenge_type,
+                c.description,
+                c.target,
+                c.target_games,
+                c.hero_id,
+                c.metric,
+                (i + 1) as i32,
+                reroll_gen,
+                now,
+            ],
+        ).map_err(|e| format!("Failed to insert option: {}", e))?;
+    }
+
+    // Re-read from DB to get proper IDs
+    let mut stmt = conn.prepare(
+        "SELECT id, week_start_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, option_index, reroll_generation
+         FROM challenge_options WHERE week_start_date = ?1 ORDER BY option_index",
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let result = stmt.query_map(params![week_start], row_to_challenge_option)
+        .map_err(|e| format!("Failed to query options: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect options: {}", e));
+    result
+}
+
+/// Reroll weekly challenge options (max 2 rerolls per week)
+pub fn reroll_weekly_challenges(conn: &Connection) -> Result<Vec<ChallengeOption>, String> {
+    let week_start = get_week_start_date();
+
+    // Check if there's already an accepted challenge for this week
+    let accepted: Result<i64, _> = conn.query_row(
+        "SELECT id FROM weekly_challenges WHERE week_start_date = ?1 AND accepted_at IS NOT NULL",
+        params![week_start],
+        |row| row.get(0),
+    );
+    if accepted.is_ok() {
+        return Err("Cannot reroll after accepting a challenge".to_string());
+    }
+
+    // Check current reroll count
+    let current_gen: i32 = conn.query_row(
+        "SELECT COALESCE(MAX(reroll_generation), 0) FROM challenge_options WHERE week_start_date = ?1",
+        params![week_start],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if current_gen >= 2 {
+        return Err("Maximum rerolls (2) used for this week".to_string());
+    }
+
+    generate_and_save_weekly_options(conn, &week_start, current_gen + 1)
+}
+
+/// Skip the weekly challenge (mark week as skipped, no options)
+pub fn skip_weekly_challenge(conn: &Connection) -> Result<(), String> {
+    let week_start = get_week_start_date();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO weekly_challenges
+         (week_start_date, challenge_type, challenge_description, challenge_target,
+          metric, status, accepted_at)
+         VALUES (?1, 'skipped', 'Skipped this week', 0, 'skipped', 'skipped', ?2)",
+        params![week_start, now],
+    ).map_err(|e| format!("Failed to skip challenge: {}", e))?;
+
+    Ok(())
+}
+
+/// Accept a weekly challenge option
+pub fn accept_weekly_challenge(conn: &Connection, option_id: i64) -> Result<WeeklyChallenge, String> {
+    let week_start = get_week_start_date();
+
+    // Check no challenge accepted yet
+    let existing: Result<i64, _> = conn.query_row(
+        "SELECT id FROM weekly_challenges WHERE week_start_date = ?1 AND status != 'skipped'",
+        params![week_start],
+        |row| row.get(0),
+    );
+    if existing.is_ok() {
+        return Err("A challenge has already been accepted for this week".to_string());
+    }
+
+    // Get the option
+    let option = conn.query_row(
+        "SELECT id, week_start_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, option_index, reroll_generation
+         FROM challenge_options WHERE id = ?1",
+        params![option_id],
+        row_to_challenge_option,
+    ).map_err(|e| format!("Option not found: {}", e))?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // Get current reroll count
+    let reroll_count: i32 = conn.query_row(
+        "SELECT COALESCE(MAX(reroll_generation), 0) FROM challenge_options WHERE week_start_date = ?1",
+        params![week_start],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    conn.execute(
+        "INSERT INTO weekly_challenges
+         (week_start_date, challenge_type, challenge_description, challenge_target,
+          challenge_target_games, hero_id, metric, status, accepted_at, reroll_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?8, ?9)",
+        params![
+            week_start,
+            option.challenge_type,
+            option.challenge_description,
+            option.challenge_target,
+            option.challenge_target_games,
+            option.hero_id,
+            option.metric,
+            now,
+            reroll_count,
+        ],
+    ).map_err(|e| format!("Failed to accept challenge: {}", e))?;
+
+    conn.query_row(
+        "SELECT id, week_start_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, status, accepted_at, completed_at, reroll_count
+         FROM weekly_challenges WHERE week_start_date = ?1 AND status = 'active'",
+        params![week_start],
+        row_to_weekly_challenge,
+    ).map_err(|e| format!("Failed to read back weekly challenge: {}", e))
+}
+
+/// Get the active weekly challenge for the current week (if accepted)
+pub fn get_active_weekly_challenge(conn: &Connection) -> Result<Option<WeeklyChallenge>, String> {
+    let week_start = get_week_start_date();
+
+    // Archive expired weekly challenges from previous weeks
+    archive_expired_weekly_challenges(conn)?;
+
+    match conn.query_row(
+        "SELECT id, week_start_date, challenge_type, challenge_description, challenge_target,
+                challenge_target_games, hero_id, metric, status, accepted_at, completed_at, reroll_count
+         FROM weekly_challenges WHERE week_start_date = ?1 AND status = 'active'",
+        params![week_start],
+        row_to_weekly_challenge,
+    ) {
+        Ok(c) => Ok(Some(c)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query weekly challenge: {}", e)),
+    }
+}
+
+/// Evaluate progress of the active weekly challenge
+pub fn get_weekly_challenge_progress(conn: &Connection) -> Result<Option<WeeklyChallengeProgress>, String> {
+    let challenge = match get_active_weekly_challenge(conn)? {
+        Some(c) => c,
+        None => return Ok(None),
+    };
+
+    // If already completed
+    if challenge.status == "completed" {
+        return Ok(Some(WeeklyChallengeProgress {
+            current_value: challenge.challenge_target,
+            target: challenge.challenge_target,
+            games_counted: 0,
+            days_remaining: days_remaining_in_week(),
+            completed: true,
+            challenge,
+        }));
+    }
+
+    let since = challenge.accepted_at.unwrap_or_else(|| {
+        // Fall back to week start midnight
+        let week_start = &challenge.week_start_date;
+        use chrono::{NaiveDate, NaiveTime, Local, TimeZone};
+        let date = NaiveDate::parse_from_str(week_start, "%Y-%m-%d").unwrap_or_else(|_| Local::now().date_naive());
+        let midnight = date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+        Local.from_local_datetime(&midnight).unwrap().timestamp()
+    });
+
+    let mut matches = get_matches_since(conn, since)?;
+
+    // Filter by hero if hero-specific
+    if let Some(hero_id) = challenge.hero_id {
+        matches.retain(|m| m.hero_id == hero_id);
+    }
+
+    let games_counted = matches.len() as i32;
+
+    let (current_value, target) = match challenge.metric.as_str() {
+        "wins" => {
+            let wins = matches.iter().filter(|m| match_is_win(m)).count() as i32;
+            (wins, challenge.challenge_target)
+        }
+        "games_played" => (games_counted, challenge.challenge_target),
+        "positive_kda_games" => {
+            let count = matches.iter().filter(|m| (m.kills + m.assists) > m.deaths).count() as i32;
+            (count, challenge.challenge_target)
+        }
+        "kills_total" => {
+            let total: i32 = matches.iter().map(|m| m.kills).sum();
+            (total, challenge.challenge_target)
+        }
+        "avg_gpm" => {
+            let required = challenge.challenge_target_games.unwrap_or(5);
+            if games_counted < required {
+                // Show current avg even if not enough games yet
+                let avg = if games_counted > 0 {
+                    (matches.iter().map(|m| m.gold_per_min as i64).sum::<i64>() / games_counted as i64) as i32
+                } else { 0 };
+                (avg, challenge.challenge_target)
+            } else {
+                let take = required as usize;
+                let avg = (matches.iter().take(take).map(|m| m.gold_per_min as i64).sum::<i64>() / take as i64) as i32;
+                (avg, challenge.challenge_target)
+            }
+        }
+        "hero_damage_total" => {
+            let total: i32 = matches.iter().map(|m| m.hero_damage).sum();
+            (total, challenge.challenge_target)
+        }
+        "low_deaths_games" => {
+            let threshold = challenge.challenge_target;
+            let count = matches.iter().filter(|m| m.deaths <= threshold).count() as i32;
+            let required = challenge.challenge_target_games.unwrap_or(4);
+            (count, required)
+        }
+        "cs_at_10_avg" => {
+            // Evaluate parsed matches only
+            let mut cs_values = vec![];
+            for m in matches.iter().filter(|m| m.parse_state == MatchState::Parsed) {
+                if let Ok(Some(cs)) = get_match_cs_at_minute(conn, m.match_id, 10) {
+                    cs_values.push(cs.last_hits);
+                }
+            }
+            let avg = if cs_values.is_empty() { 0 } else {
+                cs_values.iter().sum::<i32>() / cs_values.len() as i32
+            };
+            (avg, challenge.challenge_target)
+        }
+        _ => (0, challenge.challenge_target),
+    };
+
+    let completed = current_value >= target;
+
+    // Auto-complete
+    if completed && challenge.status == "active" {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE weekly_challenges SET status = 'completed', completed_at = ?1 WHERE id = ?2",
+            params![now, challenge.id],
+        ).map_err(|e| format!("Failed to mark weekly complete: {}", e))?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO challenge_history
+             (challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved)
+             VALUES ('weekly', ?1, ?2, 'completed', ?3, ?4)",
+            params![challenge.week_start_date, challenge.challenge_description, now, current_value],
+        ).map_err(|e| format!("Failed to archive weekly challenge: {}", e))?;
+    }
+
+    Ok(Some(WeeklyChallengeProgress {
+        challenge,
+        current_value,
+        target,
+        games_counted,
+        days_remaining: days_remaining_in_week(),
+        completed,
+    }))
+}
+
+/// Archive any active weekly challenges from past weeks as failed
+fn archive_expired_weekly_challenges(conn: &Connection) -> Result<(), String> {
+    let week_start = get_week_start_date();
+
+    let mut stmt = conn.prepare(
+        "SELECT id, week_start_date, challenge_description FROM weekly_challenges
+         WHERE status = 'active' AND week_start_date < ?1",
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let expired: Vec<(i64, String, String)> = stmt
+        .query_map(params![week_start], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })
+        .map_err(|e| format!("Failed to query expired weekly challenges: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect expired: {}", e))?;
+
+    for (id, wstart, desc) in &expired {
+        conn.execute(
+            "UPDATE weekly_challenges SET status = 'failed' WHERE id = ?1",
+            params![id],
+        ).map_err(|e| format!("Failed to update weekly status: {}", e))?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO challenge_history
+             (challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved)
+             VALUES ('weekly', ?1, ?2, 'failed', NULL, NULL)",
+            params![wstart, desc],
+        ).map_err(|e| format!("Failed to archive weekly challenge: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get challenge history (both daily and weekly)
+pub fn get_challenge_history(
+    conn: &Connection,
+    challenge_type_filter: Option<String>,
+    limit: i32,
+) -> Result<Vec<ChallengeHistoryItem>, String> {
+    let query = match challenge_type_filter.as_deref() {
+        Some("weekly") => {
+            "SELECT id, challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved
+             FROM challenge_history WHERE challenge_type = 'weekly'
+             ORDER BY period_start_date DESC LIMIT ?1"
+        }
+        Some("daily") => {
+            "SELECT id, challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved
+             FROM challenge_history WHERE challenge_type = 'daily'
+             ORDER BY period_start_date DESC LIMIT ?1"
+        }
+        _ => {
+            "SELECT id, challenge_type, period_start_date, challenge_description, status, completed_at, target_achieved
+             FROM challenge_history
+             ORDER BY period_start_date DESC LIMIT ?1"
+        }
+    };
+
+    let mut stmt = conn.prepare(query)
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let result = stmt.query_map(params![limit], row_to_history_item)
+        .map_err(|e| format!("Failed to query history: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect history: {}", e));
+    result
 }

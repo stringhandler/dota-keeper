@@ -14,6 +14,7 @@
   let dailyStreak = $state(0);
   let timeUntilMidnight = $state("");
   let midnightTimer = null;
+  let weeklyProgress = $state(null);
 
   const DAYS_TO_SHOW = 7;
 
@@ -32,6 +33,7 @@
     await loadHeroSuggestion();
     await loadItems();
     await loadDailyChallenge();
+    await loadWeeklyChallenge();
     updateMidnightCountdown();
     midnightTimer = setInterval(updateMidnightCountdown, 60000);
   });
@@ -59,6 +61,19 @@
     } catch (e) {
       console.error("Failed to load daily challenge:", e);
     }
+  }
+
+  async function loadWeeklyChallenge() {
+    try {
+      weeklyProgress = await invoke("get_weekly_challenge_progress_cmd");
+    } catch (e) {
+      console.error("Failed to load weekly challenge:", e);
+    }
+  }
+
+  function weeklyProgressPct(p) {
+    if (!p || p.target <= 0) return 0;
+    return Math.min(100, Math.round((p.current_value / p.target) * 100));
   }
 
   function getDailyProgressPct(progress) {
@@ -289,6 +304,39 @@
         </div>
       </div>
     {/if}
+
+    <div class="weekly-challenge-section">
+      <h2>🏆 Weekly Challenge</h2>
+      {#if weeklyProgress}
+        <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
+          <div class="weekly-card-body">
+            <div class="weekly-description">{weeklyProgress.challenge.challenge_description}</div>
+            <div class="weekly-progress-bar-wrap">
+              <div class="weekly-progress-bar">
+                <div
+                  class="weekly-progress-fill {weeklyProgress.completed ? 'done' : ''}"
+                  style="width: {weeklyProgressPct(weeklyProgress)}%"
+                ></div>
+              </div>
+              <span class="weekly-progress-label">
+                {weeklyProgress.current_value}/{weeklyProgress.target}
+              </span>
+            </div>
+            <div class="weekly-meta">
+              {#if weeklyProgress.completed}
+                <span class="weekly-complete-tag">Complete!</span>
+              {:else}
+                <span class="weekly-days">{weeklyProgress.days_remaining} days left</span>
+              {/if}
+            </div>
+          </div>
+        </a>
+      {:else}
+        <a href="/challenges" class="weekly-card empty">
+          <span class="weekly-empty-text">Choose this week's challenge →</span>
+        </a>
+      {/if}
+    </div>
 
     {#if heroSuggestion && !isSuggestionAdopted}
       <div class="suggestion-section">
@@ -676,6 +724,116 @@
 .daily-streak {
   color: #ffc107;
   font-weight: 600;
+}
+
+/* Weekly Challenge Widget */
+.weekly-challenge-section {
+  margin-top: 2rem;
+}
+
+.weekly-challenge-section h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  color: #d4af37;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.weekly-card {
+  display: block;
+  padding: 1.25rem 1.5rem;
+  border-radius: 6px;
+  border: 2px solid rgba(100, 100, 200, 0.4);
+  background: linear-gradient(135deg, rgba(25, 25, 45, 0.9) 0%, rgba(20, 20, 35, 0.95) 100%);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+
+.weekly-card:hover {
+  border-color: rgba(130, 130, 255, 0.6);
+}
+
+.weekly-card.completed {
+  border-color: rgba(96, 192, 64, 0.5);
+  background: linear-gradient(135deg, rgba(25, 40, 25, 0.9) 0%, rgba(20, 30, 20, 0.95) 100%);
+}
+
+.weekly-card.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  border-style: dashed;
+  border-color: rgba(100, 100, 200, 0.3);
+}
+
+.weekly-empty-text {
+  color: #a0a0d0;
+  font-size: 0.95rem;
+  font-style: italic;
+}
+
+.weekly-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.weekly-description {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.weekly-progress-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.weekly-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(40, 40, 55, 0.8);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(100, 100, 200, 0.3);
+}
+
+.weekly-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(130, 130, 255, 0.8), rgba(150, 150, 255, 1));
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.weekly-progress-fill.done {
+  background: linear-gradient(90deg, rgba(96, 192, 64, 0.8), rgba(96, 192, 64, 1));
+}
+
+.weekly-progress-label {
+  font-size: 0.85rem;
+  color: #a0a0a0;
+  white-space: nowrap;
+  min-width: 3rem;
+  text-align: right;
+}
+
+.weekly-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.weekly-days {
+  color: #808080;
+}
+
+.weekly-complete-tag {
+  color: #60c040;
+  font-weight: 700;
 }
 
 .suggestion-section {

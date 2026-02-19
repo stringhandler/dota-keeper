@@ -14,6 +14,10 @@ use database::{
     insert_item_timing, get_item_timings_for_match, NewItemTiming,
     get_or_generate_daily_challenge, get_daily_challenge_progress, get_daily_streak,
     DailyChallenge, DailyChallengeProgress,
+    get_weekly_challenge_options, reroll_weekly_challenges, skip_weekly_challenge,
+    accept_weekly_challenge, get_active_weekly_challenge, get_weekly_challenge_progress,
+    get_challenge_history,
+    ChallengeOption, WeeklyChallenge, WeeklyChallengeProgress, ChallengeHistoryItem,
 };
 use serde_json;
 use settings::Settings;
@@ -29,6 +33,19 @@ fn get_settings() -> Settings {
 fn save_steam_id(steam_id: String) -> Result<Settings, String> {
     let mut settings = Settings::load();
     settings.steam_id = Some(steam_id);
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Save suggestion difficulty setting
+#[tauri::command]
+fn save_suggestion_difficulty(
+    difficulty: String,
+    custom_percentage: Option<f64>,
+) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.suggestion_difficulty = difficulty;
+    settings.suggestion_custom_percentage = custom_percentage;
     settings.save()?;
     Ok(settings)
 }
@@ -678,6 +695,53 @@ fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     Ok((id64 - STEAM_ID64_BASE) as u32)
 }
 
+// ===== Weekly Challenge Commands =====
+
+#[tauri::command]
+fn get_weekly_challenge_options_cmd() -> Result<Vec<ChallengeOption>, String> {
+    let conn = init_db()?;
+    get_weekly_challenge_options(&conn)
+}
+
+#[tauri::command]
+fn reroll_weekly_challenges_cmd() -> Result<Vec<ChallengeOption>, String> {
+    let conn = init_db()?;
+    reroll_weekly_challenges(&conn)
+}
+
+#[tauri::command]
+fn skip_weekly_challenge_cmd() -> Result<(), String> {
+    let conn = init_db()?;
+    skip_weekly_challenge(&conn)
+}
+
+#[tauri::command]
+fn accept_weekly_challenge_cmd(option_id: i64) -> Result<WeeklyChallenge, String> {
+    let conn = init_db()?;
+    accept_weekly_challenge(&conn, option_id)
+}
+
+#[tauri::command]
+fn get_active_weekly_challenge_cmd() -> Result<Option<WeeklyChallenge>, String> {
+    let conn = init_db()?;
+    get_active_weekly_challenge(&conn)
+}
+
+#[tauri::command]
+fn get_weekly_challenge_progress_cmd() -> Result<Option<WeeklyChallengeProgress>, String> {
+    let conn = init_db()?;
+    get_weekly_challenge_progress(&conn)
+}
+
+#[tauri::command]
+fn get_challenge_history_cmd(
+    challenge_type: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<ChallengeHistoryItem>, String> {
+    let conn = init_db()?;
+    get_challenge_history(&conn, challenge_type, limit.unwrap_or(50))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -713,7 +777,15 @@ pub fn run() {
             get_match_cs,
             get_daily_challenge,
             get_daily_challenge_progress_cmd,
-            get_daily_streak_cmd
+            get_daily_streak_cmd,
+            save_suggestion_difficulty,
+            get_weekly_challenge_options_cmd,
+            reroll_weekly_challenges_cmd,
+            skip_weekly_challenge_cmd,
+            accept_weekly_challenge_cmd,
+            get_active_weekly_challenge_cmd,
+            get_weekly_challenge_progress_cmd,
+            get_challenge_history_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

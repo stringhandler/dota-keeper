@@ -22,11 +22,17 @@
   let formGameMode = $state("Ranked");
 
   // Get sorted hero list for dropdown
-  const heroList = Object.entries(heroes)
+  const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  let favoriteHeroIds = $state(new Set());
+  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroIds.has(h.id)));
+  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroIds.has(h.id)));
+
   onMount(async () => {
+    const favs = await invoke("get_favorite_heroes").catch(() => []);
+    favoriteHeroIds = new Set(favs);
     await loadGoals();
     await loadItems();
   });
@@ -246,9 +252,18 @@
           <label for="hero">Hero</label>
           <select id="hero" bind:value={formHeroId}>
             <option value="">Any Hero</option>
-            {#each heroList as hero}
-              <option value={hero.id}>{hero.name}</option>
-            {/each}
+            {#if favoriteHeroList.length > 0}
+              <optgroup label="⭐ Favorites">
+                {#each favoriteHeroList as hero}
+                  <option value={hero.id}>{hero.name}</option>
+                {/each}
+              </optgroup>
+            {/if}
+            <optgroup label="All Heroes">
+              {#each otherHeroList as hero}
+                <option value={hero.id}>{hero.name}</option>
+              {/each}
+            </optgroup>
           </select>
         </div>
 

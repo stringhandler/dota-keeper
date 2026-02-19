@@ -175,6 +175,10 @@
           <span class="nav-icon">🎯</span>
           <span class="nav-label">Goals</span>
         </a>
+        <a href="/challenges" class="nav-item" class:active={$page.url.pathname.startsWith('/challenges')}>
+          <span class="nav-icon">🏆</span>
+          <span class="nav-label">Challenges</span>
+        </a>
         <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Settings</span>

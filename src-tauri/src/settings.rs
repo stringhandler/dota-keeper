@@ -2,12 +2,43 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub steam_id: Option<String>,
+    #[serde(default = "Settings::default_difficulty")]
+    pub suggestion_difficulty: String,
+    #[serde(default)]
+    pub suggestion_custom_percentage: Option<f64>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            steam_id: None,
+            suggestion_difficulty: Self::default_difficulty(),
+            suggestion_custom_percentage: None,
+        }
+    }
 }
 
 impl Settings {
+    fn default_difficulty() -> String {
+        "Medium".to_string()
+    }
+
+    /// Returns the improvement factor range (min, max) based on difficulty
+    pub fn improvement_range(&self) -> (f64, f64) {
+        match self.suggestion_difficulty.as_str() {
+            "Easy" => (0.03, 0.05),
+            "Hard" => (0.10, 0.15),
+            "Custom" => {
+                let pct = self.suggestion_custom_percentage.unwrap_or(0.10);
+                (pct - 0.02, pct + 0.02)
+            }
+            _ => (0.05, 0.10), // Medium
+        }
+    }
+
     /// Get the path to the settings file in the AppData directory
     fn get_settings_path() -> Option<PathBuf> {
         dirs::data_dir().map(|mut path| {

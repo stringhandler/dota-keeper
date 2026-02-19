@@ -11,6 +11,20 @@
   let items = $state([]);
   let isLoading = $state(true);
   let error = $state("");
+  let editSuccess = $state("");
+  let favoriteHeroIds = $state(new Set());
+
+  // Edit state
+  let isEditing = $state(false);
+  let isSaving = $state(false);
+  let editHeroId = $state("");
+  let editMetric = $state("Networth");
+  let editTargetValue = $state("");
+  let editTargetTime = $state("");
+  let editItemId = $state("");
+  let editItemMinutes = $state("");
+  let editItemSeconds = $state("");
+  let editGameMode = $state("Ranked");
 
   // Filters
   let selectedHeroId = $state("");
@@ -18,9 +32,12 @@
   let endDate = $state("");
 
   // Get sorted hero list for dropdown
-  const heroList = Object.entries(heroes)
+  const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroIds.has(h.id)));
+  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroIds.has(h.id)));
 
   // Filtered data
   let filteredData = $derived(() => {
@@ -109,6 +126,8 @@
   });
 
   onMount(async () => {
+    const favs = await invoke("get_favorite_heroes").catch(() => []);
+    favoriteHeroIds = new Set(favs);
     await loadGoalData();
   });
 
@@ -196,6 +215,69 @@
     if (metric === "ItemTiming") return formatSeconds(value);
     return value;
   }
+
+  function startEdit() {
+    editHeroId = goal.hero_id !== null ? goal.hero_id.toString() : "";
+    editMetric = goal.metric;
+    editTargetValue = goal.target_value.toString();
+    editTargetTime = goal.target_time_minutes.toString();
+    editItemId = goal.item_id !== null ? goal.item_id.toString() : "";
+    if (goal.metric === "ItemTiming") {
+      editItemMinutes = Math.floor(goal.target_value / 60).toString();
+      editItemSeconds = (goal.target_value % 60).toString();
+    }
+    editGameMode = goal.game_mode;
+    isEditing = true;
+    editSuccess = "";
+    error = "";
+  }
+
+  function cancelEdit() {
+    isEditing = false;
+    error = "";
+  }
+
+  async function saveEdit() {
+    error = "";
+    if (editMetric === "ItemTiming") {
+      if (!editHeroId) { error = "Hero is required for Item Timing goals"; return; }
+      if (!editItemId) { error = "Item is required for Item Timing goals"; return; }
+    } else {
+      if (!editTargetValue || !editTargetTime) { error = "Please fill in all required fields"; return; }
+    }
+
+    const targetValue = editMetric === "ItemTiming"
+      ? (parseInt(editItemMinutes) || 0) * 60 + (parseInt(editItemSeconds) || 0)
+      : parseInt(editTargetValue);
+    const targetTime = editMetric === "ItemTiming" ? 0 : parseInt(editTargetTime);
+
+    if (isNaN(targetValue) || targetValue <= 0) { error = "Target value must be positive"; return; }
+    if (editMetric !== "ItemTiming" && (isNaN(targetTime) || targetTime <= 0)) { error = "Target time must be positive"; return; }
+
+    isSaving = true;
+    try {
+      await invoke("save_goal", {
+        goal: {
+          id: goal.id,
+          hero_id: editHeroId ? parseInt(editHeroId) : null,
+          metric: editMetric,
+          target_value: targetValue,
+          target_time_minutes: targetTime,
+          item_id: editItemId ? parseInt(editItemId) : null,
+          game_mode: editGameMode,
+          created_at: goal.created_at,
+        },
+      });
+      // Reload goal data so histogram reflects new target
+      await loadGoalData();
+      isEditing = false;
+      editSuccess = "Goal updated successfully.";
+    } catch (e) {
+      error = `Failed to save goal: ${e}`;
+    } finally {
+      isSaving = false;
+    }
+  }
 </script>
 
 {#if isLoading}
@@ -212,13 +294,110 @@
     <div class="page-header">
       <div class="header-content">
         <a href="/goals" class="back-link">← Back to Goals</a>
-        <h1>Goal Details</h1>
-        <p class="goal-description">
-          {#if goal.hero_id !== null}
-            <HeroIcon heroId={goal.hero_id} size="medium" showName={false} />
+        <div class="header-row">
+          <h1>Goal Details</h1>
+          {#if !isEditing}
+            <button class="edit-btn" onclick={startEdit}>✏️ Edit</button>
           {/if}
-          {formatGoalDescription(goal)}
-        </p>
+        </div>
+
+        {#if editSuccess && !isEditing}
+          <p class="edit-success">{editSuccess}</p>
+        {/if}
+
+        {#if isEditing}
+          <div class="edit-form">
+            {#if error}
+              <p class="form-error">{error}</p>
+            {/if}
+            <div class="form-row">
+              <label>
+                Hero
+                <select bind:value={editHeroId} class="form-select">
+                  <option value="">Any Hero</option>
+                  {#if favoriteHeroList.length > 0}
+                    <optgroup label="⭐ Favorites">
+                      {#each favoriteHeroList as hero}
+                        <option value={hero.id}>{hero.name}</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
+                  <optgroup label="All Heroes">
+                    {#each otherHeroList as hero}
+                      <option value={hero.id}>{hero.name}</option>
+                    {/each}
+                  </optgroup>
+                </select>
+              </label>
+              <label>
+                Metric
+                <select bind:value={editMetric} class="form-select">
+                  <option value="LastHits">Last Hits (CS)</option>
+                  <option value="Networth">Net Worth</option>
+                  <option value="Kills">Kills</option>
+                  <option value="Level">Level</option>
+                  <option value="ItemTiming">Item Timing</option>
+                </select>
+              </label>
+              <label>
+                Game Mode
+                <select bind:value={editGameMode} class="form-select">
+                  <option value="Ranked">Ranked</option>
+                  <option value="Turbo">Turbo</option>
+                </select>
+              </label>
+            </div>
+
+            {#if editMetric === "ItemTiming"}
+              <div class="form-row">
+                <label>
+                  Item
+                  <select bind:value={editItemId} class="form-select">
+                    <option value="">Select item...</option>
+                    {#each items as item}
+                      <option value={item.id}>{item.display_name}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label>
+                  Target Time
+                  <div class="time-inputs">
+                    <input type="number" min="0" bind:value={editItemMinutes} class="form-input small" placeholder="min" />
+                    :
+                    <input type="number" min="0" max="59" bind:value={editItemSeconds} class="form-input small" placeholder="sec" />
+                  </div>
+                </label>
+              </div>
+            {:else}
+              <div class="form-row">
+                <label>
+                  Target Value
+                  <input type="number" min="1" bind:value={editTargetValue} class="form-input" />
+                </label>
+                <label>
+                  By Minute
+                  <input type="number" min="1" bind:value={editTargetTime} class="form-input" />
+                </label>
+              </div>
+            {/if}
+
+            <div class="form-actions">
+              <button class="save-edit-btn" onclick={saveEdit} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+              <button class="cancel-edit-btn" onclick={cancelEdit} disabled={isSaving}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        {:else}
+          <p class="goal-description">
+            {#if goal.hero_id !== null}
+              <HeroIcon heroId={goal.hero_id} size="medium" showName={false} />
+            {/if}
+            {formatGoalDescription(goal)}
+          </p>
+        {/if}
       </div>
     </div>
 
@@ -231,9 +410,18 @@
             <label for="hero-filter">Hero</label>
             <select id="hero-filter" bind:value={selectedHeroId}>
               <option value="">All Heroes</option>
-              {#each heroList as hero}
-                <option value={hero.id}>{hero.name}</option>
-              {/each}
+              {#if favoriteHeroList.length > 0}
+                <optgroup label="⭐ Favorites">
+                  {#each favoriteHeroList as hero}
+                    <option value={hero.id}>{hero.name}</option>
+                  {/each}
+                </optgroup>
+              {/if}
+              <optgroup label="All Heroes">
+                {#each otherHeroList as hero}
+                  <option value={hero.id}>{hero.name}</option>
+                {/each}
+              </optgroup>
             </select>
           </div>
 
@@ -504,6 +692,132 @@
     margin: 0;
     font-size: 0.95rem;
     letter-spacing: 1px;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .edit-btn {
+    background: transparent;
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    color: #d4af37;
+    padding: 0.35rem 0.85rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .edit-btn:hover {
+    background: rgba(212, 175, 55, 0.15);
+    border-color: rgba(212, 175, 55, 0.8);
+  }
+
+  .edit-success {
+    color: #60c040;
+    font-size: 0.9rem;
+    margin: 0;
+  }
+
+  .edit-form {
+    margin-top: 0.75rem;
+    padding: 1.25rem;
+    background: rgba(20, 20, 30, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 6px;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .form-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    color: #a0a0a0;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .form-select,
+  .form-input {
+    background: rgba(30, 30, 40, 0.9);
+    color: #e0e0e0;
+    border: 1px solid rgba(139, 92, 46, 0.5);
+    border-radius: 3px;
+    padding: 0.4rem 0.6rem;
+    font-family: inherit;
+    font-size: 0.95rem;
+  }
+
+  .form-input.small {
+    width: 64px;
+    text-align: center;
+  }
+
+  .time-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #a0a0a0;
+  }
+
+  .form-error {
+    color: #ff6b6b;
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem 0;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .save-edit-btn {
+    background: linear-gradient(180deg, rgba(60, 100, 60, 0.9) 0%, rgba(40, 80, 40, 0.9) 100%);
+    border: 1px solid rgba(100, 180, 100, 0.5);
+    color: #e0e0e0;
+    padding: 0.5rem 1.25rem;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .save-edit-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(70, 120, 70, 1) 0%, rgba(50, 100, 50, 1) 100%);
+  }
+
+  .save-edit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .cancel-edit-btn {
+    background: transparent;
+    border: 1px solid rgba(139, 92, 46, 0.5);
+    color: #a0a0a0;
+    padding: 0.5rem 1.25rem;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .cancel-edit-btn:hover:not(:disabled) {
+    border-color: rgba(139, 92, 46, 0.8);
+    color: #e0e0e0;
   }
 
   .content-grid {

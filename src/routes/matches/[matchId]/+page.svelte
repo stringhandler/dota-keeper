@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { getHeroName } from "$lib/heroes.js";
@@ -96,8 +97,7 @@
 
   async function openInOpenDota(mid) {
     try {
-      const { open } = await import("@tauri-apps/plugin-opener");
-      await open(`https://www.opendota.com/matches/${mid}`);
+      await openUrl(`https://www.opendota.com/matches/${mid}`);
     } catch (e) {
       console.error("Failed to open OpenDota link:", e);
     }

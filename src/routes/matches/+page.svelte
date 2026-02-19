@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount, onDestroy } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
@@ -106,7 +107,20 @@
     try {
       matches = await invoke("refresh_matches");
     } catch (e) {
-      error = `Failed to refresh matches: ${e}`;
+      console.error("[refresh] error type:", typeof e);
+      console.error("[refresh] error value:", e);
+      console.error("[refresh] error JSON:", JSON.stringify(e));
+      console.error("[refresh] error string:", String(e));
+      const msg = String(e);
+      if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("429")) {
+        error = "OpenDota is temporarily unavailable — your cached matches are shown below.";
+      } else if (msg.includes("Failed to fetch") || msg.includes("connection") || msg.includes("network")) {
+        error = "Could not reach OpenDota. Check your internet connection.";
+      } else {
+        error = `Refresh failed: ${e}`;
+      }
+      // Fall back to local database so matches remain visible
+      await loadMatches();
     } finally {
       isRefreshing = false;
     }
@@ -176,8 +190,7 @@
 
   async function openInOpenDota(matchId) {
     try {
-      const { open } = await import("@tauri-apps/plugin-opener");
-      await open(`https://www.opendota.com/matches/${matchId}`);
+      await openUrl(`https://www.opendota.com/matches/${matchId}`);
     } catch (e) {
       console.error("Failed to open OpenDota link:", e);
     }
