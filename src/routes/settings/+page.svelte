@@ -1,5 +1,8 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { getVersion } from "@tauri-apps/api/app";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
 
   let databasePath = $state("");
@@ -13,11 +16,17 @@
   let suggestionDifficulty = $state("Medium");
   let customPercentage = $state(10);
   let isSavingDifficulty = $state(false);
+  let appVersion = $state("");
+  let checkingUpdate = $state(false);
+  let updateResult = $state(null);
+  let updateError = $state("");
+  let isInstalling = $state(false);
 
   onMount(async () => {
     await loadDatabasePath();
     await loadSteamId();
     await loadDifficulty();
+    await loadAppVersion();
   });
 
   async function loadDatabasePath() {
@@ -116,6 +125,45 @@
       error = `Failed to reparse matches: ${e}`;
     } finally {
       isReparsing = false;
+    }
+  }
+
+  async function loadAppVersion() {
+    try {
+      appVersion = await getVersion();
+    } catch (e) {
+      console.error("Failed to get app version:", e);
+    }
+  }
+
+  async function checkForUpdates() {
+    checkingUpdate = true;
+    updateResult = null;
+    updateError = "";
+    try {
+      const update = await check();
+      if (update?.available) {
+        updateResult = { available: true, version: update.version, update };
+      } else {
+        updateResult = { available: false };
+      }
+    } catch (e) {
+      updateError = String(e);
+    } finally {
+      checkingUpdate = false;
+    }
+  }
+
+  async function installUpdate() {
+    if (!updateResult?.available) return;
+    isInstalling = true;
+    updateError = "";
+    try {
+      await updateResult.update.downloadAndInstall();
+      await relaunch();
+    } catch (e) {
+      updateError = `Failed to install update: ${e}`;
+      isInstalling = false;
     }
   }
 
@@ -277,6 +325,48 @@
       >
         {isClearing ? 'Clearing...' : 'Clear All Matches'}
       </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Updates</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Application Updates</h3>
+        <p class="setting-description">
+          Manually check for a new version of Dota Keeper at any time.
+        </p>
+        {#if appVersion}
+          <p class="version-label">Current version: <span class="version-value">v{appVersion}</span></p>
+        {/if}
+        {#if updateError}
+          <p class="update-error">{updateError}</p>
+        {:else if updateResult !== null}
+          {#if updateResult.available}
+            <p class="update-available">Version {updateResult.version} is available!</p>
+          {:else}
+            <p class="update-current">You're on the latest version (v{appVersion})</p>
+          {/if}
+        {/if}
+      </div>
+      <div class="update-actions">
+        <button
+          class="check-update-btn"
+          onclick={checkForUpdates}
+          disabled={checkingUpdate || isInstalling}
+        >
+          {checkingUpdate ? 'Checking...' : 'Check for Updates'}
+        </button>
+        {#if updateResult?.available}
+          <button
+            class="install-update-btn"
+            onclick={installUpdate}
+            disabled={isInstalling}
+          >
+            {isInstalling ? 'Installing...' : 'Install & Restart'}
+          </button>
+        {/if}
+      </div>
     </div>
   </div>
 </div>
@@ -664,5 +754,118 @@
   background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.version-label {
+  margin: 0.5rem 0 0 0;
+  color: #808080;
+  font-size: 0.9rem;
+}
+
+.version-value {
+  color: #a0a0a0;
+  font-family: 'Courier New', monospace;
+}
+
+.update-error {
+  margin: 0.75rem 0 0 0;
+  color: #ff6b6b;
+  background-color: rgba(220, 53, 69, 0.2);
+  border: 1px solid rgba(220, 53, 69, 0.4);
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.update-available {
+  margin: 0.75rem 0 0 0;
+  color: #f0b840;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.update-current {
+  margin: 0.75rem 0 0 0;
+  color: #60c040;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.update-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.check-update-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(139, 92, 46, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.check-update-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(70, 95, 50, 0.9) 0%, rgba(50, 75, 40, 0.9) 100%);
+  border-color: rgba(139, 92, 46, 0.8);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 20px rgba(100, 255, 100, 0.2);
+  transform: translateY(-2px);
+}
+
+.check-update-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.install-update-btn {
+  border-radius: 3px;
+  border: 2px solid rgba(50, 200, 100, 0.6);
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: bold;
+  font-family: inherit;
+  color: #e0e0e0;
+  background: linear-gradient(180deg, rgba(40, 140, 70, 0.9) 0%, rgba(30, 110, 55, 0.9) 100%);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.install-update-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(50, 170, 85, 1) 0%, rgba(40, 140, 70, 1) 100%);
+  border-color: rgba(50, 200, 100, 0.8);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 20px rgba(50, 200, 100, 0.3);
+  transform: translateY(-2px);
+}
+
+.install-update-btn:disabled {
+  background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 600px) {
+  .update-actions {
+    align-items: stretch;
+  }
+
+  .check-update-btn,
+  .install-update-btn {
+    width: 100%;
+  }
 }
 </style>

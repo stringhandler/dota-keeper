@@ -20,7 +20,7 @@ Add anonymous usage analytics to understand how the app is being used. Enabled b
 ## Implementation
 
 ### Backend / Service
-- Use a lightweight, privacy-friendly analytics service (e.g. [Plausible](https://plausible.io), [PostHog](https://posthog.com) self-hosted, or a simple HTTP endpoint)
+- Use [PostHog](https://posthog.com) (cloud-hosted)
 - Events sent as anonymous HTTP POST with: `{ event, app_version, platform, timestamp }`
 
 ### Settings
