@@ -5,6 +5,22 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-02-19
+
+### Added
+- **Weekly Challenges**: New Challenges page (🏆 nav item) shows three weekly challenge options (easy/medium/hard). Accept one to track progress, reroll up to twice, or skip the week. Dashboard shows active challenge progress at a glance.
+- **Challenge History**: `/challenges/history` page lists all completed and failed challenges (daily + weekly) with filter tabs and grouped by date.
+- **Difficulty Levels for Goal Suggestions**: Settings now has an Easy/Medium/Hard/Custom difficulty selector that controls how aggressively suggestions push beyond current baseline.
+- **Edit Goal from Details Page**: Inline edit form on the goal details page — change hero, metric, target, or game mode without leaving the page.
+- **Favourite Heroes in Filters**: Hero dropdowns across Analysis, Goals, and goal edit forms now group favourited heroes at the top under a ⭐ Favourites section.
+
+### Fixed
+- **View on OpenDota**: Button now correctly opens the system browser (was silently failing due to incorrect import name)
+- **Updater permission**: Auto-update check was failing with a permissions error; `updater:default` capability now included
+- **Hero dropdown pre-selection in goal edit**: Opening the edit form now correctly pre-selects the goal's hero
+- **Game mode shown in goal description**: Goal details page now shows `(Ranked)` / `(Turbo)` in the goal description
+- **Refresh Matches error handling**: OpenDota API errors now show a friendly message and fall back to displaying cached local matches
+
 ## [0.1.9] - 2026-02-18
 
 ### Fixed
