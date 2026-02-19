@@ -201,14 +201,15 @@
   function formatGoalDescription(g) {
     if (!g) return "";
     const heroName = g.hero_id !== null ? getHeroName(g.hero_id) : "Any Hero";
+    const modeStr = g.game_mode ? ` (${g.game_mode})` : "";
     if (g.metric === "ItemTiming") {
       const itemName = g.item_id !== null ? getItemName(g.item_id) : "Unknown Item";
       const timeStr = formatSeconds(g.target_value);
-      return `${heroName}: ${itemName} by ${timeStr}`;
+      return `${heroName}: ${itemName} by ${timeStr}${modeStr}`;
     }
     const unit = getMetricUnit(g.metric);
     const valueStr = unit ? `${g.target_value} ${unit}` : `Level ${g.target_value}`;
-    return `${heroName}: ${valueStr} by ${g.target_time_minutes} min`;
+    return `${heroName}: ${valueStr} by ${g.target_time_minutes} min${modeStr}`;
   }
 
   function formatStatValue(value, metric) {
@@ -318,13 +319,13 @@
                   {#if favoriteHeroList.length > 0}
                     <optgroup label="⭐ Favorites">
                       {#each favoriteHeroList as hero}
-                        <option value={hero.id}>{hero.name}</option>
+                        <option value={String(hero.id)}>{hero.name}</option>
                       {/each}
                     </optgroup>
                   {/if}
                   <optgroup label="All Heroes">
                     {#each otherHeroList as hero}
-                      <option value={hero.id}>{hero.name}</option>
+                      <option value={String(hero.id)}>{hero.name}</option>
                     {/each}
                   </optgroup>
                 </select>
