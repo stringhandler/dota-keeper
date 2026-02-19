@@ -12,7 +12,6 @@
   let windowSize = $state(30);
   let selectedHeroId = $state(null);
   let selectedGameMode = $state(null);
-  let heroFilter = $state("all"); // "all" or "favorites"
 
   // Favorites
   let favoriteHeroes = $state(new Set());
@@ -20,7 +19,9 @@
   // Analysis data
   let analysis = $state(null);
 
-  // Game modes
+  // Goals (for insight generation)
+  let goals = $state([]);
+
   const gameModes = [
     { value: null, label: "All Modes" },
     { value: 22, label: "Ranked" },
@@ -29,7 +30,10 @@
   ];
 
   onMount(async () => {
-    await loadFavorites();
+    await Promise.all([
+      loadFavorites(),
+      loadGoals(),
+    ]);
     await loadAnalysis();
   });
 
@@ -42,23 +46,25 @@
     }
   }
 
+  async function loadGoals() {
+    try {
+      goals = await invoke("get_goals");
+    } catch (e) {
+      console.error("Failed to load goals for insight:", e);
+    }
+  }
+
   async function toggleFavorite(heroId) {
     try {
       const isFavorite = await invoke("toggle_favorite_hero", { heroId });
-
       if (isFavorite) {
         favoriteHeroes.add(heroId);
       } else {
         favoriteHeroes.delete(heroId);
       }
-
-      // Trigger reactivity
       favoriteHeroes = new Set(favoriteHeroes);
-
-      // Reload analysis to update sorting
       await loadAnalysis();
     } catch (e) {
-      console.error("Failed to toggle favorite:", e);
       error = `Failed to toggle favorite: ${e}`;
     }
   }
@@ -66,7 +72,6 @@
   async function loadAnalysis() {
     isLoading = true;
     error = "";
-
     try {
       analysis = await invoke("get_last_hits_analysis_data", {
         timeMinutes,
@@ -76,48 +81,40 @@
       });
     } catch (e) {
       error = `Failed to load analysis: ${e}`;
-      console.error("Failed to load analysis:", e);
     } finally {
       isLoading = false;
     }
   }
 
-  async function handleFilterChange() {
-    await loadAnalysis();
-  }
-
   function getChangePercentage() {
     if (!analysis || !analysis.previous_period) return null;
-
     const current = analysis.current_period.average;
     const previous = analysis.previous_period.average;
-
     if (previous === 0) return null;
-
     return ((current - previous) / previous) * 100;
-  }
-
-  function getChangeIndicator() {
-    const change = getChangePercentage();
-    if (change === null) return "";
-    if (change > 0) return "↗";
-    if (change < 0) return "↘";
-    return "→";
   }
 
   function getChangeClass() {
     const change = getChangePercentage();
-    if (change === null) return "";
+    if (change === null) return "stable";
     if (change > 2) return "improving";
     if (change < -2) return "declining";
     return "stable";
+  }
+
+  function getChangeIndicator() {
+    const change = getChangePercentage();
+    if (change === null) return "→";
+    if (change > 0) return "↗";
+    if (change < 0) return "↘";
+    return "→";
   }
 
   function formatPercentage(value) {
     return value >= 0 ? `+${value.toFixed(1)}%` : `${value.toFixed(1)}%`;
   }
 
-  // Hero list split into favorites and others (reactive)
+  // Sorted hero lists
   let allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ value: parseInt(id), label: name }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -125,205 +122,263 @@
   let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroes.has(h.value)));
   let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroes.has(h.value)));
 
-  // Filter and sort hero stats based on favorites
-  function getFilteredHeroStats() {
+  // Sorted hero stats: favorites first, then by average
+  function getSortedHeroStats() {
     if (!analysis || !analysis.per_hero_stats) return [];
+    return [...analysis.per_hero_stats].sort((a, b) => {
+      const aFav = favoriteHeroes.has(a.hero_id) ? 1 : 0;
+      const bFav = favoriteHeroes.has(b.hero_id) ? 1 : 0;
+      if (aFav !== bFav) return bFav - aFav;
+      return b.average - a.average;
+    });
+  }
 
-    let stats = [...analysis.per_hero_stats];
+  // Get the max average for bar scaling
+  function getMaxAverage() {
+    const stats = getSortedHeroStats();
+    if (stats.length === 0) return 1;
+    return Math.max(...stats.map(s => s.average));
+  }
 
-    // Apply filter
-    if (heroFilter === "favorites") {
-      stats = stats.filter(stat => favoriteHeroes.has(stat.hero_id));
+  // Generate insight text
+  function generateInsight() {
+    const stats = getSortedHeroStats();
+    if (stats.length === 0) return null;
+
+    // Check heroes against goals
+    for (const hs of stats) {
+      const heroGoal = goals.find(g =>
+        g.hero_id === hs.hero_id && g.metric === 'LastHits'
+      );
+      if (heroGoal) {
+        const heroName = getHeroName(hs.hero_id);
+        if (hs.average >= heroGoal.target_value) {
+          return `Your ${heroName} CS avg (${hs.average.toFixed(0)}) already beats your ${heroGoal.target_value} CS goal. Consider raising the target.`;
+        } else {
+          const diff = (heroGoal.target_value - hs.average).toFixed(0);
+          return `Focus ${heroName} farming — you're ${diff} CS below your ${heroGoal.target_value} goal on avg.`;
+        }
+      }
     }
 
-    // Sort: favorites first when showing all heroes
-    if (heroFilter === "all") {
-      stats.sort((a, b) => {
-        const aFav = favoriteHeroes.has(a.hero_id) ? 1 : 0;
-        const bFav = favoriteHeroes.has(b.hero_id) ? 1 : 0;
-
-        // Favorites first
-        if (aFav !== bFav) return bFav - aFav;
-
-        // Within same favorite status, sort by average (descending)
-        return b.average - a.average;
-      });
+    // Generic insight
+    const top = stats[0];
+    if (top) {
+      return `${getHeroName(top.hero_id)} is your strongest farming hero with ${top.average.toFixed(1)} avg CS @ ${timeMinutes} min.`;
     }
+    return null;
+  }
 
-    return stats;
+  // Top hero for trend card
+  function getTopHeroStat() {
+    const stats = getSortedHeroStats();
+    return stats.length > 0 ? stats[0] : null;
   }
 </script>
 
 <div class="analysis-content">
-  <div class="page-header">
-    <h1>Last Hits Analysis</h1>
-    <p class="subtitle">Track your farming efficiency over time</p>
-  </div>
+  <!-- HORIZONTAL FILTERS ROW -->
+  <div class="filters-row">
+    <div class="filter-group">
+      <div class="filter-label">Time Marker</div>
+      <select class="form-select" bind:value={timeMinutes} onchange={loadAnalysis}>
+        <option value={10}>10 minutes</option>
+        <option value={15}>15 minutes</option>
+        <option value={20}>20 minutes</option>
+      </select>
+    </div>
 
-  <div class="filters-section">
-    <h2>Filters</h2>
-    <div class="filters-grid">
-      <div class="filter-group">
-        <label for="time-minutes">Time Marker</label>
-        <select id="time-minutes" bind:value={timeMinutes} onchange={handleFilterChange}>
-          <option value={10}>10 minutes</option>
-        </select>
-      </div>
+    <div class="filter-group">
+      <div class="filter-label">Sample Size</div>
+      <select class="form-select" bind:value={windowSize} onchange={loadAnalysis}>
+        <option value={20}>20 games</option>
+        <option value={30}>30 games</option>
+        <option value={50}>50 games</option>
+      </select>
+    </div>
 
-      <div class="filter-group">
-        <label for="window-size">Window Size</label>
-        <select id="window-size" bind:value={windowSize} onchange={handleFilterChange}>
-          <option value={30}>30 games</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label for="hero-filter">Hero</label>
-        <select id="hero-filter" bind:value={selectedHeroId} onchange={handleFilterChange}>
-          <option value={null}>All Heroes</option>
-          {#if favoriteHeroList.length > 0}
-            <optgroup label="⭐ Favorites">
-              {#each favoriteHeroList as hero}
-                <option value={hero.value}>{hero.label}</option>
-              {/each}
-            </optgroup>
-          {/if}
-          <optgroup label="All Heroes">
-            {#each otherHeroList as hero}
+    <div class="filter-group">
+      <div class="filter-label">Hero</div>
+      <select class="form-select" bind:value={selectedHeroId} onchange={loadAnalysis}>
+        <option value={null}>All Heroes</option>
+        {#if favoriteHeroList.length > 0}
+          <optgroup label="⭐ Favorites">
+            {#each favoriteHeroList as hero}
               <option value={hero.value}>{hero.label}</option>
             {/each}
           </optgroup>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label for="mode-filter">Game Mode</label>
-        <select id="mode-filter" bind:value={selectedGameMode} onchange={handleFilterChange}>
-          {#each gameModes as mode}
-            <option value={mode.value}>{mode.label}</option>
+        {/if}
+        <optgroup label="All Heroes">
+          {#each otherHeroList as hero}
+            <option value={hero.value}>{hero.label}</option>
           {/each}
-        </select>
-      </div>
+        </optgroup>
+      </select>
+    </div>
 
-      <div class="filter-group">
-        <label for="hero-favorites-filter">Show</label>
-        <select id="hero-favorites-filter" bind:value={heroFilter}>
-          <option value="all">All Heroes</option>
-          <option value="favorites">Favorites Only</option>
-        </select>
-      </div>
+    <div class="filter-group">
+      <div class="filter-label">Game Mode</div>
+      <select class="form-select" bind:value={selectedGameMode} onchange={loadAnalysis}>
+        {#each gameModes as mode}
+          <option value={mode.value}>{mode.label}</option>
+        {/each}
+      </select>
     </div>
   </div>
 
   {#if isLoading}
-    <div class="loading">
-      <p>Loading...</p>
-    </div>
+    <div class="loading-state">Loading analysis...</div>
   {:else if error}
-    <p class="error">{error}</p>
-  {:else if analysis}
-    {#if analysis.current_period.count === 0}
-      <div class="no-data">
-        <p>No data available for the selected filters.</p>
-        <p class="hint">Make sure you have parsed matches with last hits data at {timeMinutes} minutes.</p>
-      </div>
-    {:else}
-      <div class="stats-section">
-        <h2>Current Period (Last {analysis.current_period.count} games)</h2>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Average LH</div>
-            <div class="stat-value">{analysis.current_period.average.toFixed(1)}</div>
-          </div>
+    <div class="error-banner">{error}</div>
+  {:else if !analysis || analysis.current_period.count === 0}
+    <div class="no-data">
+      <p>No data for the selected filters.</p>
+      <p class="hint">Make sure you have parsed matches with data at {timeMinutes} minutes.</p>
+    </div>
+  {:else}
+    {@const changeClass = getChangeClass()}
+    {@const changePct = getChangePercentage()}
+    {@const insight = generateInsight()}
+    {@const heroStats = getSortedHeroStats()}
+    {@const maxAvg = getMaxAverage()}
+    {@const topHero = getTopHeroStat()}
 
-          <div class="stat-card">
-            <div class="stat-label">Min</div>
-            <div class="stat-value">{analysis.current_period.min}</div>
-          </div>
+    <div class="analysis-grid">
 
-          <div class="stat-card">
-            <div class="stat-label">Max</div>
-            <div class="stat-value">{analysis.current_period.max}</div>
+      <!-- CARD 1: Main stat -->
+      <div class="analysis-card">
+        <div class="analysis-card-title">Last Hits @ {timeMinutes} min — Last {analysis.current_period.count} games</div>
+        <div class="big-stat">{analysis.current_period.average.toFixed(1)}</div>
+        <div class="trend-label {changeClass}">
+          {getChangeIndicator()}
+          {changeClass === 'improving' ? 'Improving' : changeClass === 'declining' ? 'Declining' : 'Stable'}
+        </div>
+        {#if analysis.previous_period && analysis.previous_period.count > 0}
+          {@const diff = analysis.current_period.average - analysis.previous_period.average}
+          <div class="change-chip" class:change-pos={diff >= 0} class:change-neg={diff < 0}>
+            {diff >= 0 ? '+' : ''}{diff.toFixed(1)} LH ({formatPercentage(changePct)}) vs prev {analysis.previous_period.count}
           </div>
-
-          <div class="stat-card">
-            <div class="stat-label">Games</div>
-            <div class="stat-value">{analysis.current_period.count}</div>
-          </div>
+        {/if}
+        <!-- Decorative sparkline -->
+        <div class="mini-chart">
+          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f0b429" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="#f0b429" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,40 L30,28 L70,48 L110,22 L150,40 L190,32 L230,55 L270,38 L300,42"
+                  fill="none" stroke="#f0b429" stroke-width="1.5"/>
+            <path d="M0,40 L30,28 L70,48 L110,22 L150,40 L190,32 L230,55 L270,38 L300,42 L300,80 L0,80Z"
+                  fill="url(#chartGrad)"/>
+          </svg>
         </div>
       </div>
 
-      {#if analysis.previous_period && analysis.previous_period.count > 0}
-        <div class="comparison-section">
-          <h2>Comparison: Last {analysis.current_period.count} vs Previous {analysis.previous_period.count}</h2>
-          <div class="comparison-grid">
-            <div class="comparison-row">
-              <div class="comparison-label">Current:</div>
-              <div class="comparison-value">{analysis.current_period.average.toFixed(1)} avg LH</div>
-            </div>
-
-            <div class="comparison-row">
-              <div class="comparison-label">Previous:</div>
-              <div class="comparison-value">{analysis.previous_period.average.toFixed(1)} avg LH</div>
-            </div>
-
-            <div class="comparison-row highlight">
-              <div class="comparison-label">Change:</div>
-              <div class="comparison-value {getChangeClass()}">
-                {(analysis.current_period.average - analysis.previous_period.average).toFixed(1)} LH
-                ({formatPercentage(getChangePercentage())})
-                <span class="indicator">{getChangeIndicator()}</span>
-                <span class="status-text">
-                  {#if getChangeClass() === 'improving'}
-                    IMPROVING
-                  {:else if getChangeClass() === 'declining'}
-                    DECLINING
-                  {:else}
-                    STABLE
-                  {/if}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      {#if analysis.per_hero_stats && analysis.per_hero_stats.length > 0}
-        <div class="hero-breakdown-section">
-          <h2>Per-Hero Breakdown</h2>
-          <div class="hero-list">
-            {#each getFilteredHeroStats() as heroStat}
-              <div class="hero-row-container">
-                <button
-                  class="favorite-btn"
-                  class:is-favorite={favoriteHeroes.has(heroStat.hero_id)}
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(heroStat.hero_id);
-                  }}
-                  title={favoriteHeroes.has(heroStat.hero_id) ? "Remove from favorites" : "Add to favorites"}
-                >
-                  {favoriteHeroes.has(heroStat.hero_id) ? '★' : '☆'}
-                </button>
-                <a href="/analysis/{heroStat.hero_id}" class="hero-row">
-                  <div class="hero-name">
-                    <HeroIcon heroId={heroStat.hero_id} size="small" />
-                  </div>
-                  <div class="hero-avg">{heroStat.average.toFixed(1)} avg</div>
-                  <div class="hero-count">({heroStat.count} games)</div>
-                  {#if heroStat.trend_percentage !== 0}
-                    <div class="hero-trend" class:positive={heroStat.trend_percentage > 0} class:negative={heroStat.trend_percentage < 0}>
-                      {heroStat.trend_percentage > 0 ? '↗' : '↘'} {Math.abs(heroStat.trend_percentage).toFixed(1)}%
-                    </div>
-                  {/if}
-                  <div class="hero-detail-btn">View Details →</div>
-                </a>
+      <!-- CARD 2: Hero breakdown -->
+      <div class="analysis-card">
+        <div class="analysis-card-title">By Hero — Avg LH @ {timeMinutes} min</div>
+        {#if heroStats.length === 0}
+          <p style="color:var(--text-muted);font-size:12px">No per-hero data available.</p>
+        {:else}
+          <div class="hero-breakdown">
+            {#each heroStats as hs}
+              <div class="hero-stat-row">
+                <div class="hero-stat-name">
+                  <button
+                    class="fav-btn"
+                    class:is-fav={favoriteHeroes.has(hs.hero_id)}
+                    onclick={() => toggleFavorite(hs.hero_id)}
+                    title={favoriteHeroes.has(hs.hero_id) ? "Remove from favorites" : "Add to favorites"}
+                  >{favoriteHeroes.has(hs.hero_id) ? '★' : '☆'}</button>
+                  <a href="/analysis/{hs.hero_id}" class="hero-link" title="View {getHeroName(hs.hero_id)} details">
+                    {getHeroName(hs.hero_id)}
+                  </a>
+                </div>
+                <div class="hero-stat-bar">
+                  <div class="hero-stat-fill" style="width:{Math.round((hs.average / maxAvg) * 100)}%"></div>
+                </div>
+                <div class="hero-stat-val">{hs.average.toFixed(1)}</div>
               </div>
             {/each}
           </div>
+          {#if insight}
+            <div class="insight-box">
+              <div class="insight-label">💡 Insight</div>
+              <div class="insight-text">{insight}</div>
+            </div>
+          {/if}
+        {/if}
+      </div>
+
+      <!-- CARD 3: Performance range -->
+      <div class="analysis-card">
+        <div class="analysis-card-title">Performance Range — {analysis.current_period.count} Games</div>
+        <div class="range-stats">
+          <div class="range-stat">
+            <div class="range-label">Avg</div>
+            <div class="range-value" style="color:var(--gold)">{analysis.current_period.average.toFixed(1)}</div>
+          </div>
+          <div class="range-stat">
+            <div class="range-label">Best</div>
+            <div class="range-value" style="color:var(--green)">{analysis.current_period.max}</div>
+          </div>
+          <div class="range-stat">
+            <div class="range-label">Worst</div>
+            <div class="range-value" style="color:var(--red)">{analysis.current_period.min}</div>
+          </div>
+        </div>
+        <div class="range-bar-wrap" style="margin-top:16px">
+          <div class="range-bar">
+            <div class="range-bar-fill-red" style="width:20%"></div>
+            <div class="range-bar-fill-gold" style="width:40%"></div>
+            <div class="range-bar-fill-green" style="width:40%"></div>
+            <div class="range-marker" style="left:calc({(analysis.current_period.max - analysis.current_period.min) > 0 ? Math.round(((analysis.current_period.average - analysis.current_period.min) / (analysis.current_period.max - analysis.current_period.min)) * 100) : 50}% - 1px)" title="Your average"></div>
+          </div>
+          <div class="range-labels">
+            <span>{analysis.current_period.min}</span>
+            <span>Avg: {analysis.current_period.average.toFixed(1)}</span>
+            <span>{analysis.current_period.max}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARD 4: Top hero trend -->
+      {#if topHero}
+        <div class="analysis-card">
+          <div class="analysis-card-title">{getHeroName(topHero.hero_id)} — Individual Trend</div>
+          <div class="big-stat" style="font-size:36px">{topHero.average.toFixed(1)}</div>
+          <div class="trend-label {topHero.trend_percentage > 2 ? 'improving' : topHero.trend_percentage < -2 ? 'declining' : 'stable'}">
+            {topHero.trend_percentage > 2 ? '↗ Improving' : topHero.trend_percentage < -2 ? '↘ Declining' : '→ Stable'}
+          </div>
+          <div class="mini-chart" style="margin-top:14px">
+            <svg viewBox="0 0 300 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGrad2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.2"/>
+                  <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,60 L50,35 L100,70 L150,45 L200,25 L250,40 L300,35"
+                    fill="none" stroke="#2dd4bf" stroke-width="1.5"/>
+              <path d="M0,60 L50,35 L100,70 L150,45 L200,25 L250,40 L300,35 L300,100 L0,100Z"
+                    fill="url(#chartGrad2)"/>
+            </svg>
+          </div>
+          <div class="hero-stat-meta">
+            {topHero.count} games
+            {#if topHero.trend_percentage !== 0}
+              · {topHero.trend_percentage > 0 ? '+' : ''}{topHero.trend_percentage.toFixed(1)}% trend
+            {/if}
+          </div>
+          <a href="/analysis/{topHero.hero_id}" class="btn btn-ghost" style="margin-top:12px;font-size:10px">
+            View Full Details →
+          </a>
         </div>
       {/if}
-    {/if}
+
+    </div>
   {/if}
 </div>
 
@@ -333,355 +388,183 @@
     margin: 0 auto;
   }
 
-  .loading {
+  /* ── FILTERS ROW ── */
+  .filters-row {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 3rem;
-    color: #d4af37;
-    font-size: 1rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
-    border-radius: 8px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-
-  .page-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-  }
-
-  .subtitle {
-    color: #a0a0a0;
-    margin: 0;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
-  }
-
-  .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-  }
-
-  .no-data {
-    padding: 3rem;
-    text-align: center;
-    color: #a0a0a0;
-    background: rgba(30, 30, 40, 0.5);
-    border: 2px solid rgba(139, 92, 46, 0.3);
-    border-radius: 8px;
-  }
-
-  .no-data p {
-    margin: 0.5rem 0;
-  }
-
-  .hint {
-    font-size: 0.9rem;
-    color: #808080;
-  }
-
-  .filters-section {
-    padding: 30px;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px);
-    background-size: 100%, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 8px;
-    margin-bottom: 2rem;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
-  .filters-section h2 {
-    margin: 0 0 1.5rem 0;
-    font-size: 1.2em;
-    color: #d4af37;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-  }
-
-  .filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    align-items: flex-end;
   }
 
   .filter-group {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 5px;
   }
 
-  .filter-group label {
-    font-weight: 600;
-    color: #d4af37;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.9em;
-  }
-
-  select {
-    padding: 12px;
-    background-color: rgba(30, 30, 40, 0.8);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 1em;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  select:focus {
-    border-color: rgba(139, 92, 46, 0.8);
-    outline: none;
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-  }
-
-  .stats-section,
-  .comparison-section,
-  .hero-breakdown-section {
-    padding: 30px;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px);
-    background-size: 100%, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 8px;
-    margin-bottom: 2rem;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
-  .stats-section h2,
-  .comparison-section h2,
-  .hero-breakdown-section h2 {
-    margin: 0 0 1.5rem 0;
-    font-size: 1.2em;
-    color: #d4af37;
-    text-transform: uppercase;
+  .filter-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     letter-spacing: 2px;
-    border-bottom: 2px solid rgba(139, 92, 46, 0.5);
-    padding-bottom: 15px;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
-  }
-
-  .stat-card {
-    padding: 25px;
-    background: rgba(30, 30, 40, 0.6);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 5px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  }
-
-  .stat-label {
-    font-size: 0.9rem;
-    color: #a0a0a0;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 0.5rem;
   }
 
-  .stat-value {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #d4af37;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-  }
-
-  .comparison-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .comparison-row {
+  /* ── 2-COLUMN GRID ── */
+  .analysis-grid {
     display: grid;
-    grid-template-columns: 150px 1fr;
-    align-items: center;
-    padding: 15px 20px;
-    background: rgba(30, 30, 40, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.5);
-    border-radius: 3px;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
   }
 
-  .comparison-row.highlight {
-    background: rgba(40, 40, 50, 0.6);
-    border-left-width: 4px;
-  }
-
-  .comparison-label {
+  /* ── CHANGE CHIP ── */
+  .change-chip {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
     font-weight: 600;
-    color: #a0a0a0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.9rem;
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin-top: 10px;
+    display: inline-block;
   }
 
-  .comparison-value {
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: #e0e0e0;
+  .change-neg {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.2);
   }
 
-  .comparison-value.improving {
-    color: #60c040;
+  .change-pos {
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--green);
+    border: 1px solid rgba(74, 222, 128, 0.2);
   }
 
-  .comparison-value.declining {
-    color: #ff6b6b;
+  /* ── MINI CHART ── */
+  .mini-chart {
+    height: 72px;
+    margin-top: 16px;
+    overflow: hidden;
   }
 
-  .comparison-value.stable {
-    color: #f0b840;
-  }
+  .mini-chart svg { width: 100%; height: 100%; }
 
-  .indicator {
-    margin-left: 0.5rem;
-    font-size: 1.2rem;
-  }
-
-  .status-text {
-    margin-left: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: bold;
-    letter-spacing: 1px;
-  }
-
-  .hero-list {
+  /* ── HERO BREAKDOWN ── */
+  .hero-breakdown {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 10px;
   }
 
-  .hero-row-container {
-    display: flex;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-
-  .favorite-btn {
+  .fav-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s;
     flex-shrink: 0;
-    width: 45px;
-    background: rgba(30, 30, 40, 0.6);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    color: #a0a0a0;
-    font-size: 1.5rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
-  .favorite-btn:hover {
-    background: rgba(40, 40, 50, 0.8);
-    border-color: #d4af37;
-    color: #d4af37;
-  }
+  .fav-btn:hover { color: var(--gold); }
+  .fav-btn.is-fav { color: var(--gold); }
 
-  .favorite-btn.is-favorite {
-    color: #d4af37;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-  }
-
-  .hero-row {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr auto auto auto auto;
-    gap: 1rem;
-    align-items: center;
-    padding: 15px 20px;
-    background: rgba(30, 30, 40, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.5);
-    border-radius: 3px;
+  .hero-link {
+    color: var(--text-secondary);
+    font-size: 12px;
+    transition: color 0.2s;
     text-decoration: none;
-    transition: all 0.3s ease;
-    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .hero-row:hover {
-    background: rgba(40, 40, 50, 0.6);
-    border-left-color: #d4af37;
-    transform: translateX(5px);
+  .hero-link:hover { color: var(--gold); }
+
+  /* Override hero-stat-name width since we have fav button + name */
+  :global(.hero-stat-name) {
+    width: 110px;
   }
 
-  .hero-name {
-    font-weight: 600;
-    color: #e0e0e0;
-    font-size: 1rem;
+  /* ── RANGE CARD ── */
+  .range-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 4px;
   }
 
-  .hero-avg {
-    font-size: 1.05rem;
-    font-weight: bold;
-    color: #d4af37;
+  .range-stat { display: flex; flex-direction: column; gap: 4px; }
+
+  .range-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
   }
 
-  .hero-count {
-    font-size: 0.9rem;
-    color: #a0a0a0;
+  .range-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
   }
 
-  .hero-trend {
-    font-size: 1rem;
-    font-weight: bold;
-    padding: 5px 12px;
-    border-radius: 3px;
+  .range-bar-wrap { }
+
+  .range-bar {
+    height: 24px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+    display: flex;
+    overflow: hidden;
+    position: relative;
   }
 
-  .hero-trend.positive {
-    color: #60c040;
-    background: rgba(96, 192, 64, 0.2);
+  .range-bar-fill-red { background: rgba(248, 113, 113, 0.4); }
+  .range-bar-fill-gold { background: rgba(240, 180, 41, 0.4); }
+  .range-bar-fill-green { background: rgba(74, 222, 128, 0.4); }
+
+  .range-marker {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    width: 2px;
+    background: white;
+    border-radius: 1px;
   }
 
-  .hero-trend.negative {
-    color: #ff6b6b;
-    background: rgba(255, 107, 107, 0.2);
+  .range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .hero-detail-btn {
-    font-size: 0.85rem;
-    color: #a0a0a0;
-    font-weight: 600;
-    transition: color 0.3s ease;
+  /* ── TREND CARD ── */
+  .hero-stat-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .hero-row:hover .hero-detail-btn {
-    color: #d4af37;
+  /* ── NO DATA ── */
+  .no-data {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 48px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
   }
+
+  .no-data p { margin-bottom: 8px; }
+  .hint { font-size: 12px; color: var(--text-muted); }
 </style>

@@ -13,15 +13,17 @@
   // Form state
   let editingGoal = $state(null);
   let formHeroId = $state("");
-  let formMetric = $state("Networth");
+  let formMetric = $state("LastHits");
   let formTargetValue = $state("");
-  let formTargetTime = $state("");
+  let formTargetTime = $state("10");
   let formItemId = $state("");
   let formItemMinutes = $state("");
   let formItemSeconds = $state("");
   let formGameMode = $state("Ranked");
 
-  // Get sorted hero list for dropdown
+  // Analysis data for contextual warnings
+  let analysisData = $state(null);
+
   const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -33,8 +35,7 @@
   onMount(async () => {
     const favs = await invoke("get_favorite_heroes").catch(() => []);
     favoriteHeroIds = new Set(favs);
-    await loadGoals();
-    await loadItems();
+    await Promise.all([loadGoals(), loadItems(), loadAnalysisForWarnings()]);
   });
 
   async function loadGoals() {
@@ -55,12 +56,41 @@
     }
   }
 
+  async function loadAnalysisForWarnings() {
+    try {
+      analysisData = await invoke("get_last_hits_analysis_data", {
+        timeMinutes: 10,
+        windowSize: 30,
+        heroId: null,
+        gameMode: null,
+      });
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  function getHeroAverage(heroId) {
+    if (!analysisData?.per_hero_stats) return null;
+    const stat = analysisData.per_hero_stats.find(s => s.hero_id === heroId);
+    return stat ? stat.average : null;
+  }
+
+  function getContextualWarning(goal) {
+    if (goal.metric !== 'LastHits' || goal.hero_id === null) return null;
+    const avg = getHeroAverage(goal.hero_id);
+    if (avg === null) return null;
+    if (avg >= goal.target_value) {
+      return `Your avg ${getHeroName(goal.hero_id)} CS is ${avg.toFixed(0)} — consider raising this goal`;
+    }
+    return null;
+  }
+
   function resetForm() {
     editingGoal = null;
     formHeroId = "";
-    formMetric = "Networth";
+    formMetric = "LastHits";
     formTargetValue = "";
-    formTargetTime = "";
+    formTargetTime = "10";
     formItemId = "";
     formItemMinutes = "";
     formItemSeconds = "";
@@ -74,74 +104,40 @@
     formTargetValue = goal.target_value.toString();
     formTargetTime = goal.target_time_minutes.toString();
     formItemId = goal.item_id !== null ? goal.item_id.toString() : "";
-
-    // For item timing goals, split seconds into minutes and seconds
     if (goal.metric === "ItemTiming" && goal.target_value) {
       formItemMinutes = Math.floor(goal.target_value / 60).toString();
       formItemSeconds = (goal.target_value % 60).toString();
     }
-
     formGameMode = goal.game_mode;
+    // Scroll to form
+    document.querySelector('.create-form')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     error = "";
 
-    // Validation for item timing goals
     if (formMetric === "ItemTiming") {
-      if (!formHeroId) {
-        error = "Hero selection is required for Item Timing goals";
-        return;
-      }
-      if (!formItemId) {
-        error = "Item selection is required for Item Timing goals";
-        return;
-      }
-      if (!formItemMinutes && formItemMinutes !== "0") {
-        error = "Target time (minutes) is required";
-        return;
-      }
-
-      // Convert minutes and seconds to total seconds
+      if (!formHeroId) { error = "Hero is required for Item Timing goals"; return; }
+      if (!formItemId) { error = "Item selection is required"; return; }
+      if (!formItemMinutes && formItemMinutes !== "0") { error = "Target time (minutes) is required"; return; }
       const minutes = parseInt(formItemMinutes) || 0;
       const seconds = parseInt(formItemSeconds) || 0;
-
-      if (minutes < 0 || seconds < 0 || seconds >= 60) {
-        error = "Invalid time values (seconds must be 0-59)";
-        return;
-      }
-
-      if (minutes === 0 && seconds === 0) {
-        error = "Target time must be greater than 0";
-        return;
-      }
+      if (minutes < 0 || seconds < 0 || seconds >= 60) { error = "Invalid time (seconds must be 0–59)"; return; }
+      if (minutes === 0 && seconds === 0) { error = "Target time must be > 0"; return; }
     } else {
-      // Normal validation for other goals
-      if (!formTargetValue || !formTargetTime) {
-        error = "Please fill in all required fields";
-        return;
-      }
+      if (!formTargetValue || !formTargetTime) { error = "Please fill in all required fields"; return; }
     }
 
-    // Calculate target value based on metric type
     const targetValue = formMetric === "ItemTiming"
       ? (parseInt(formItemMinutes) || 0) * 60 + (parseInt(formItemSeconds) || 0)
       : parseInt(formTargetValue);
     const targetTime = formMetric === "ItemTiming" ? 0 : parseInt(formTargetTime);
 
-    if (isNaN(targetValue) || targetValue <= 0) {
-      error = "Target value must be a positive number";
-      return;
-    }
-
-    if (formMetric !== "ItemTiming" && (isNaN(targetTime) || targetTime <= 0)) {
-      error = "Target time must be a positive number";
-      return;
-    }
+    if (isNaN(targetValue) || targetValue <= 0) { error = "Target value must be a positive number"; return; }
+    if (formMetric !== "ItemTiming" && (isNaN(targetTime) || targetTime <= 0)) { error = "Target time must be a positive number"; return; }
 
     isSaving = true;
-
     try {
       if (editingGoal) {
         await invoke("save_goal", {
@@ -168,7 +164,6 @@
           },
         });
       }
-
       resetForm();
       await loadGoals();
     } catch (e) {
@@ -179,10 +174,7 @@
   }
 
   async function deleteGoal(goalId) {
-    if (!confirm("Are you sure you want to delete this goal?")) {
-      return;
-    }
-
+    if (!confirm("Delete this goal?")) return;
     try {
       await invoke("remove_goal", { goalId });
       await loadGoals();
@@ -197,6 +189,7 @@
       case "Kills": return "Kills";
       case "LastHits": return "Last Hits";
       case "Level": return "Level";
+      case "ItemTiming": return "Item Timing";
       default: return metric;
     }
   }
@@ -206,7 +199,6 @@
       case "Networth": return "gold";
       case "Kills": return "kills";
       case "LastHits": return "CS";
-      case "Level": return "";
       default: return "";
     }
   }
@@ -218,39 +210,47 @@
 
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
-
     if (goal.metric === "ItemTiming") {
       const itemName = goal.item_id !== null ? getItemName(goal.item_id) : "Unknown Item";
       const minutes = Math.floor(goal.target_value / 60);
       const seconds = goal.target_value % 60;
       const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
-      return `${heroName}: ${itemName} by ${timeStr}`;
+      return `${heroName} — ${itemName} by ${timeStr}`;
     } else {
       const metricLabel = getMetricLabel(goal.metric);
       const unit = getMetricUnit(goal.metric);
       const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
-      return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+      return `${heroName} — ${valueStr} by ${goal.target_time_minutes} min`;
+    }
+  }
+
+  function getGoalTypeTag(metric) {
+    switch (metric) {
+      case "LastHits": return { label: 'CS Goal', cls: 'tag-cs' };
+      case "ItemTiming": return { label: 'Item Goal', cls: 'tag-item' };
+      case "Kills": return { label: 'Kill Goal', cls: 'tag-kill' };
+      case "Networth": return { label: 'NW Goal', cls: 'tag-nw' };
+      default: return { label: `${metric} Goal`, cls: '' };
     }
   }
 </script>
 
 <div class="goals-content">
-  <div class="page-header">
-    <h1>Goals</h1>
-    <p class="subtitle">Set performance targets for your games</p>
-  </div>
-
   {#if error}
-    <p class="error">{error}</p>
+    <div class="error-banner">{error}</div>
   {/if}
 
-  <div class="content">
-    <section class="form-section">
-      <h2>{editingGoal ? "Edit Goal" : "New Goal"}</h2>
-      <form class="goal-form" onsubmit={handleSubmit}>
-        <div class="form-group">
-          <label for="hero">Hero</label>
-          <select id="hero" bind:value={formHeroId}>
+  <!-- INLINE CREATE FORM -->
+  <div class="create-form">
+    <div class="create-form-title">
+      {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+    </div>
+
+    <form onsubmit={handleSubmit}>
+      <div class="form-row">
+        <div class="fg">
+          <div class="form-label">Hero</div>
+          <select class="form-select" bind:value={formHeroId}>
             <option value="">Any Hero</option>
             {#if favoriteHeroList.length > 0}
               <optgroup label="⭐ Favorites">
@@ -267,471 +267,258 @@
           </select>
         </div>
 
-        <div class="form-group">
-          <label for="metric">Metric</label>
-          <select id="metric" bind:value={formMetric}>
+        <div class="fg">
+          <div class="form-label">Metric</div>
+          <select class="form-select" bind:value={formMetric}>
+            <option value="LastHits">Last Hits</option>
             <option value="Networth">Net Worth</option>
             <option value="Kills">Kills</option>
-            <option value="LastHits">Last Hits</option>
             <option value="Level">Level</option>
             <option value="ItemTiming">Item Timing</option>
           </select>
         </div>
 
         {#if formMetric === "ItemTiming"}
-          <div class="form-group">
-            <label for="item">Item (required) <span class="required">*</span></label>
-            <select id="item" bind:value={formItemId} required>
-              <option value="">Select an item...</option>
+          <div class="fg">
+            <div class="form-label">Item <span class="req">*</span></div>
+            <select class="form-select" bind:value={formItemId} required>
+              <option value="">Select item...</option>
               {#each items as item}
                 <option value={item.id}>{item.display_name}</option>
               {/each}
             </select>
           </div>
-
-          <div class="form-group">
-            <label>Target Time <span class="required">*</span></label>
-            <div class="time-inputs">
-              <div class="time-input-group">
-                <input
-                  type="number"
-                  min="0"
-                  max="60"
-                  placeholder="9"
-                  bind:value={formItemMinutes}
-                />
-                <span class="time-label">minutes</span>
-              </div>
-              <span class="time-separator">:</span>
-              <div class="time-input-group">
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  placeholder="30"
-                  bind:value={formItemSeconds}
-                />
-                <span class="time-label">seconds</span>
-              </div>
-            </div>
-            <span class="help-text">Example: 9:30 for Armlet timing</span>
+          <div class="fg fg-narrow">
+            <div class="form-label">Minutes <span class="req">*</span></div>
+            <input class="form-input" type="number" min="0" max="60" placeholder="9" bind:value={formItemMinutes} />
+          </div>
+          <div class="fg fg-narrow">
+            <div class="form-label">Seconds</div>
+            <input class="form-input" type="number" min="0" max="59" placeholder="30" bind:value={formItemSeconds} />
           </div>
         {:else}
-          <div class="form-group">
-            <label for="target-value">
-              Target {getMetricLabel(formMetric)}
-              {#if getMetricUnit(formMetric)}
-                <span class="unit">({getMetricUnit(formMetric)})</span>
-              {/if}
-            </label>
-            <input
-              id="target-value"
-              type="number"
-              min="1"
-              placeholder={formMetric === "Level" ? "e.g., 6" : "e.g., 5000"}
-              bind:value={formTargetValue}
-            />
+          <div class="fg">
+            <div class="form-label">Target {getMetricLabel(formMetric)}</div>
+            <input class="form-input" type="number" min="1"
+              placeholder={formMetric === "Level" ? "e.g. 6" : "e.g. 50"}
+              bind:value={formTargetValue} />
           </div>
-
-          <div class="form-group">
-            <label for="target-time">Target Time (minutes)</label>
-            <input
-              id="target-time"
-              type="number"
-              min="1"
-              max="120"
-              placeholder="e.g., 10"
-              bind:value={formTargetTime}
-            />
+          <div class="fg fg-narrow">
+            <div class="form-label">By (min)</div>
+            <input class="form-input" type="number" min="1" max="120" placeholder="10" bind:value={formTargetTime} />
           </div>
         {/if}
 
-        <div class="form-group">
-          <label for="game-mode">Game Mode</label>
-          <select id="game-mode" bind:value={formGameMode}>
+        <div class="fg fg-narrow">
+          <div class="form-label">Mode</div>
+          <select class="form-select" bind:value={formGameMode}>
             <option value="Ranked">Ranked</option>
             <option value="Turbo">Turbo</option>
           </select>
         </div>
 
-        <div class="form-actions">
-          <button type="submit" class="save-btn" disabled={isSaving}>
-            {isSaving ? "Saving..." : editingGoal ? "Update Goal" : "Create Goal"}
+        <div class="fg fg-action">
+          <div class="form-label">&nbsp;</div>
+          <button type="submit" class="btn btn-primary" disabled={isSaving}>
+            {isSaving ? 'Saving...' : editingGoal ? 'Update' : 'Add Goal'}
           </button>
           {#if editingGoal}
-            <button type="button" class="cancel-btn" onclick={resetForm}>
-              Cancel
-            </button>
+            <button type="button" class="btn btn-ghost" onclick={resetForm}>Cancel</button>
           {/if}
         </div>
-      </form>
-    </section>
-
-    <section class="goals-section">
-      <h2>Your Goals</h2>
-      {#if isLoading}
-        <p class="loading-text">Loading goals...</p>
-      {:else if goals.length === 0}
-        <p class="no-goals">No goals yet. Create your first goal above.</p>
-      {:else}
-        <div class="goals-list">
-          {#each goals as goal}
-            <div class="goal-card">
-              <div class="goal-info">
-                <div class="goal-description">
-                  {#if goal.hero_id !== null}
-                    <HeroIcon heroId={goal.hero_id} size="small" showName={false} />
-                  {/if}
-                  {formatGoalDescription(goal)}
-                </div>
-                <div class="goal-mode">{goal.game_mode}</div>
-              </div>
-              <div class="goal-actions">
-                <a href="/goals/{goal.id}" class="view-btn">View Details</a>
-                <button class="edit-btn" onclick={() => editGoal(goal)}>Edit</button>
-                <button class="delete-btn" onclick={() => deleteGoal(goal.id)}>Delete</button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
+      </div>
+    </form>
   </div>
+
+  <!-- GOALS LIST -->
+  <div class="section-header">
+    <div class="section-title">Active Goals ({goals.length})</div>
+    <!-- Archive All: future feature placeholder -->
+    <button class="btn btn-ghost" title="Archive all goals (coming soon)" disabled>Archive All</button>
+  </div>
+
+  {#if isLoading}
+    <div class="loading-state">Loading goals...</div>
+  {:else if goals.length === 0}
+    <div class="no-goals">
+      No goals yet. Use the form above to create your first goal.
+    </div>
+  {:else}
+    <div class="goals-grid">
+      {#each goals as goal}
+        {@const warning = getContextualWarning(goal)}
+        {@const tag = getGoalTypeTag(goal.metric)}
+        <div class="goal-row" onclick={() => { window.location.href = `/goals/${goal.id}`; }}>
+          <div class="hero-avatar">
+            {#if goal.hero_id !== null}
+              <HeroIcon heroId={goal.hero_id} size="small" showName={false} />
+            {:else}
+              🌟
+            {/if}
+          </div>
+          <div class="goal-info">
+            <div class="goal-name">{formatGoalDescription(goal)}</div>
+            <div class="goal-progress-bar">
+              <div class="goal-fill" style="width:0%"></div>
+            </div>
+            <div class="goal-meta">
+              <span class="goal-tag {tag.cls}">{tag.label}</span>
+              <span>{goal.game_mode}</span>
+              {#if warning}
+                <span class="warning-tag">⚠ {warning}</span>
+              {/if}
+            </div>
+          </div>
+          <div class="goal-actions" onclick={(e) => e.stopPropagation()}>
+            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
+              Edit
+            </button>
+            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
+              onclick={() => deleteGoal(goal.id)}>
+              Delete
+            </button>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
   .goals-content {
-    max-width: 900px;
+    max-width: 1000px;
     margin: 0 auto;
   }
 
-  .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
+  /* ── CREATE FORM ── */
+  .create-form {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    padding: 22px 24px;
+    margin-bottom: 24px;
   }
 
-  .page-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-  }
-
-  .subtitle {
-    color: #a0a0a0;
-    margin: 0;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
-  }
-
-  .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .content {
-    display: grid;
-    gap: 2rem;
-  }
-
-  h2 {
-    font-size: 1.2em;
-    margin: 0 0 1.5rem 0;
-    color: #d4af37;
-    text-transform: uppercase;
+  .create-form-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
     letter-spacing: 2px;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
-    border-bottom: 2px solid rgba(139, 92, 46, 0.5);
-    padding-bottom: 10px;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    margin-bottom: 16px;
   }
 
-  .form-section {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 25px;
-    border-radius: 3px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  .form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
   }
 
-  .goal-form {
-    display: grid;
-    gap: 1.2rem;
-  }
-
-  .form-group {
+  .fg {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 5px;
+    flex: 1;
+    min-width: 120px;
   }
 
-  .form-group label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: #d4af37;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
+  .fg-narrow { flex: 0 0 80px; min-width: 80px; }
 
-  .form-group .unit {
-    font-weight: 400;
-    color: #a0a0a0;
-  }
-
-  .form-group .required {
-    color: #ff6b6b;
-    font-weight: bold;
-  }
-
-  .form-group .help-text {
-    font-size: 0.85rem;
-    color: #a0a0a0;
-    font-style: italic;
-    margin-top: 0.25rem;
-    display: block;
-  }
-
-  .time-inputs {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .time-input-group {
+  .fg-action {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 5px;
+    flex-shrink: 0;
   }
 
-  .time-input-group input {
-    width: 80px;
-  }
+  /* Align buttons with the inputs */
+  .fg-action .btn { align-self: flex-start; }
 
-  .time-label {
-    font-size: 0.75rem;
-    color: #a0a0a0;
-    text-align: center;
-  }
+  .fg-action > div { /* spacer label */ font-size: 10px; visibility: hidden; }
 
-  .time-separator {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #d4af37;
-    margin-bottom: 1.5rem;
-  }
-
-  input,
-  select {
-    border-radius: 3px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 12px 16px;
-    font-size: 1em;
-    font-family: inherit;
-    background-color: rgba(30, 30, 40, 0.8);
-    color: #e0e0e0;
-    transition: all 0.3s ease;
-  }
-
-  input:focus,
-  select:focus {
-    border-color: rgba(139, 92, 46, 0.8);
-    outline: none;
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-  }
-
-  .form-actions {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-
-  button {
-    border-radius: 3px;
-    border: 2px solid rgba(139, 92, 46, 0.6);
-    padding: 12px 24px;
-    font-size: 1em;
-    font-weight: bold;
-    font-family: inherit;
-    cursor: pointer;
+  .form-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.3s ease;
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.6),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
-  .save-btn {
-    background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
-    color: #e0e0e0;
-  }
+  .req { color: var(--red); }
 
-  .save-btn:hover {
-    background: linear-gradient(180deg, rgba(70, 95, 50, 0.9) 0%, rgba(50, 75, 40, 0.9) 100%);
-    border-color: rgba(139, 92, 46, 0.8);
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.8),
-      0 0 20px rgba(100, 255, 100, 0.2);
-    transform: translateY(-2px);
-  }
-
-  .save-btn:disabled {
-    background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .cancel-btn {
-    background: linear-gradient(180deg, rgba(60, 60, 70, 0.8) 0%, rgba(40, 40, 50, 0.8) 100%);
-    color: #e0e0e0;
-  }
-
-  .cancel-btn:hover {
-    background: linear-gradient(180deg, rgba(70, 70, 80, 0.9) 0%, rgba(50, 50, 60, 0.9) 100%);
-    transform: translateY(-2px);
-  }
-
-  .goals-section {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 25px;
-    border-radius: 3px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
-  .loading-text,
+  /* ── NO GOALS ── */
   .no-goals {
-    color: #a0a0a0;
-    font-style: italic;
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
   }
 
-  .goals-list {
+  /* ── GOALS GRID ── */
+  .goals-grid {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 10px;
   }
 
-  .goal-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.2rem;
-    background: linear-gradient(90deg, rgba(30, 30, 40, 0.6) 0%, rgba(25, 25, 35, 0.6) 100%);
-    border-radius: 3px;
-    border: 2px solid rgba(80, 80, 90, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.6);
-    transition: all 0.3s ease;
+  /* Override the goal-row grid to have 4 columns on goals page (no dots, add actions) */
+  :global(.goals-grid .goal-row) {
+    grid-template-columns: 40px 1fr auto;
   }
 
-  .goal-card:hover {
-    border-color: rgba(139, 92, 46, 0.6);
-    background: linear-gradient(90deg, rgba(35, 35, 45, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
-  }
-
-  .goal-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .goal-description {
-    font-weight: 600;
-    color: #e0e0e0;
-    font-size: 1em;
-  }
-
-  .goal-mode {
-    font-size: 0.85rem;
-    color: #a0a0a0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
+  /* Goal actions inside card */
   .goal-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
   }
 
-  .view-btn {
-    background: linear-gradient(180deg, rgba(40, 80, 100, 0.8) 0%, rgba(30, 60, 80, 0.8) 100%);
-    color: #e0e0e0;
-    padding: 10px 20px;
-    font-size: 0.9em;
-    border: 2px solid rgba(92, 139, 139, 0.6);
-    border-radius: 3px;
-    text-decoration: none;
-    display: inline-block;
-    font-weight: bold;
-    font-family: inherit;
-    cursor: pointer;
-    text-transform: uppercase;
+  /* Goal type tags */
+  .goal-tag {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     letter-spacing: 1px;
-    transition: all 0.3s ease;
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.6),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid;
   }
 
-  .view-btn:hover {
-    background: linear-gradient(180deg, rgba(50, 95, 120, 0.9) 0%, rgba(40, 75, 100, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(100, 150, 200, 0.3);
-    transform: translateY(-2px);
+  .tag-cs {
+    color: var(--teal);
+    border-color: rgba(45, 212, 191, 0.3);
+    background: rgba(45, 212, 191, 0.08);
   }
 
-  .edit-btn {
-    background: linear-gradient(180deg, rgba(100, 100, 40, 0.8) 0%, rgba(80, 80, 30, 0.8) 100%);
-    color: #e0e0e0;
-    padding: 10px 20px;
-    font-size: 0.9em;
-    border: 2px solid rgba(139, 92, 46, 0.6);
+  .tag-item {
+    color: var(--gold);
+    border-color: rgba(240, 180, 41, 0.3);
+    background: rgba(240, 180, 41, 0.08);
   }
 
-  .edit-btn:hover {
-    background: linear-gradient(180deg, rgba(120, 120, 50, 0.9) 0%, rgba(100, 100, 40, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
-    transform: translateY(-2px);
+  .tag-kill {
+    color: var(--red);
+    border-color: rgba(248, 113, 113, 0.3);
+    background: rgba(248, 113, 113, 0.08);
   }
 
-  .delete-btn {
-    background: linear-gradient(180deg, rgba(100, 40, 40, 0.8) 0%, rgba(80, 30, 30, 0.8) 100%);
-    color: #ff6b6b;
-    padding: 10px 20px;
-    font-size: 0.9em;
-    border: 2px solid rgba(139, 46, 46, 0.6);
+  .tag-nw {
+    color: var(--green);
+    border-color: rgba(74, 222, 128, 0.3);
+    background: rgba(74, 222, 128, 0.08);
   }
 
-  .delete-btn:hover {
-    background: linear-gradient(180deg, rgba(120, 50, 50, 0.9) 0%, rgba(100, 40, 40, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(255, 100, 100, 0.3);
-    transform: translateY(-2px);
+  /* Contextual warning */
+  .warning-tag {
+    color: var(--gold);
+    font-style: italic;
+    font-size: 10px;
   }
 </style>

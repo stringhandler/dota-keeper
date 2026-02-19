@@ -1,100 +1,473 @@
-/* Dota 2 Theme - Global Styles */
+/* DotaKeeper — Design System */
 
 :root {
-  font-family: 'Trebuchet MS', Arial, sans-serif;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 400;
-
-  color: #e0e0e0;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  --bg-base: #080c10;
+  --bg-card: #0d1318;
+  --bg-surface: #111820;
+  --bg-elevated: #16202a;
+  --border: rgba(255, 200, 80, 0.12);
+  --border-active: rgba(255, 200, 80, 0.4);
+  --gold: #f0b429;
+  --gold-dim: #a07820;
+  --gold-bright: #ffd166;
+  --teal: #2dd4bf;
+  --red: #f87171;
+  --green: #4ade80;
+  --text-primary: #e8dcc8;
+  --text-secondary: #8a7f6e;
+  --text-muted: #504840;
+  --glow: rgba(240, 180, 41, 0.15);
+  --glow-teal: rgba(45, 212, 191, 0.15);
+  --sidebar-w: 220px;
 }
 
-* {
+*, *::before, *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  margin: 0;
-  padding: 0;
-  background:
-    linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.9) 50%, rgba(15, 52, 96, 0.9) 100%),
-    repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,.1) 2px, rgba(0,0,0,.1) 4px),
-    repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,.05) 2px, rgba(0,0,0,.05) 4px),
-    radial-gradient(ellipse at 20% 30%, rgba(40, 40, 50, 0.4) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 70%, rgba(30, 30, 40, 0.4) 0%, transparent 50%),
-    linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  background-size: 100%, 4px 4px, 4px 4px, 100%, 100%, 100%;
-  background-attachment: fixed;
-  min-height: 100vh;
-  position: relative;
+  font-family: 'Barlow', 'Trebuchet MS', Arial, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image:
-    radial-gradient(circle at 15% 15%, rgba(80, 80, 90, 0.1) 0%, transparent 20%),
-    radial-gradient(circle at 85% 25%, rgba(60, 60, 70, 0.1) 0%, transparent 15%),
-    radial-gradient(circle at 45% 75%, rgba(70, 70, 80, 0.1) 0%, transparent 18%),
-    radial-gradient(circle at 75% 85%, rgba(50, 50, 60, 0.1) 0%, transparent 22%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-#root,
 #svelte {
-  position: relative;
-  z-index: 1;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
+  display: contents;
 }
 
-/* Typography */
-h1, h2, h3, h4, h5, h6 {
-  color: #d4af37;
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* Base */
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; }
+
+/* Shared form elements used across pages */
+.form-select,
+.form-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: 'Barlow', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  appearance: none;
+}
+
+.form-select:focus,
+.form-input:focus {
+  border-color: var(--border-active);
+}
+
+/* Shared button styles */
+.btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
+  font-size: 11px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: var(--gold);
+  color: #080c10;
+}
+
+.btn-primary:hover {
+  background: var(--gold-bright);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-ghost:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Shared error banner */
+.error-banner {
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+/* Shared loading */
+.loading-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  color: var(--text-secondary);
+  font-family: 'Barlow Condensed', sans-serif;
   letter-spacing: 2px;
-  text-shadow:
-    0 0 10px rgba(212, 175, 55, 0.3),
-    2px 2px 4px rgba(0, 0, 0, 0.8);
+  text-transform: uppercase;
+  font-size: 12px;
 }
 
-a {
-  color: #d4af37;
-  text-decoration: none;
-  transition: all 0.3s ease;
+/* Shared section header */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
-a:hover {
-  color: #e0c050;
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+.section-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
-/* Highlight color */
-.highlight {
-  color: #d4af37;
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+/* Shared goal row card (used on Dashboard & Goals page) */
+.goal-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Global button reset/base */
-button {
-  font-family: 'Trebuchet MS', Arial, sans-serif;
+.goal-row:hover {
+  border-color: var(--border-active);
+  background: var(--bg-elevated);
 }
 
-/* Code elements */
-code {
-  background-color: rgba(30, 30, 40, 0.8);
-  padding: 0.2rem 0.5rem;
+.hero-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.goal-info { min-width: 0; }
+
+.goal-name {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-progress-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.goal-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  transition: width 0.4s ease;
+}
+
+.goal-fill.success {
+  background: linear-gradient(90deg, #16a34a, var(--green));
+}
+
+.goal-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.goal-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 7-day hit/miss dots */
+.goal-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-family: 'Barlow Condensed', sans-serif;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.dot.hit {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--green);
+}
+
+.dot.miss {
+  background: var(--bg-surface);
+}
+
+.dot.empty {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+/* Mode tags */
+.mode-tag {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 2px 7px;
   border-radius: 3px;
-  font-family: 'Courier New', monospace;
-  border: 1px solid rgba(139, 92, 46, 0.3);
+  font-weight: 600;
+  display: inline-block;
+}
+
+.mode-turbo {
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--teal);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+}
+
+.mode-ranked {
+  background: rgba(240, 180, 41, 0.1);
+  color: var(--gold);
+  border: 1px solid rgba(240, 180, 41, 0.25);
+}
+
+.mode-other {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Goals chip (matches page) */
+.goals-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.goals-chip.has-goals {
+  background: rgba(240, 180, 41, 0.08);
+  border-color: rgba(240, 180, 41, 0.3);
+  color: var(--gold);
+}
+
+/* Filter chips */
+.filter-chip {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-chip.active {
+  background: rgba(240, 180, 41, 0.1);
+  border-color: rgba(240, 180, 41, 0.4);
+  color: var(--gold);
+}
+
+.filter-chip:hover:not(.active) {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+
+/* Analysis cards */
+.analysis-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.analysis-card-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+/* Trend labels */
+.trend-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+
+.trend-label.declining { color: var(--red); }
+.trend-label.stable { color: var(--teal); }
+.trend-label.improving { color: var(--green); }
+
+/* Insight callout */
+.insight-box {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(45, 212, 191, 0.06);
+  border: 1px solid rgba(45, 212, 191, 0.15);
+  border-radius: 6px;
+}
+
+.insight-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--teal);
+  font-family: 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.insight-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Stat card (analysis) */
+.big-stat {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+
+/* Hero stat bar row (analysis hero breakdown) */
+.hero-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-stat-name {
+  width: 100px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hero-stat-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hero-stat-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+}
+
+.hero-stat-val {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }

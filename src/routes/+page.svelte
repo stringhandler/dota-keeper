@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
+  import { goto } from "$app/navigation";
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
 
@@ -16,6 +17,10 @@
   let midnightTimer = null;
   let weeklyProgress = $state(null);
 
+  // Quick stats
+  let recentMatches = $state([]);
+  let analysisData = $state(null);
+
   const DAYS_TO_SHOW = 7;
 
   let isSuggestionAdopted = $derived(
@@ -28,12 +33,44 @@
     )
   );
 
+  // Quick stats derived
+  let winRate7d = $derived.by(() => {
+    const sevenDaysAgo = Date.now() / 1000 - 7 * 24 * 3600;
+    const recent = recentMatches.filter(m => m.start_time > sevenDaysAgo);
+    if (recent.length === 0) return null;
+    const wins = recent.filter(m => {
+      const isRadiant = m.player_slot < 128;
+      return (isRadiant && m.radiant_win) || (!isRadiant && !m.radiant_win);
+    });
+    return { rate: Math.round((wins.length / recent.length) * 100), count: recent.length };
+  });
+
+  let goalsHit7d = $derived.by(() => {
+    let total = 0, hit = 0;
+    for (const g of goalCalendar) {
+      for (const d of g.daily_progress) {
+        total += d.total;
+        hit += d.achieved;
+      }
+    }
+    return { hit, total };
+  });
+
+  let avgCS = $derived(
+    analysisData?.current_period?.count > 0
+      ? analysisData.current_period.average
+      : null
+  );
+
   onMount(async () => {
-    await loadGoalCalendar();
-    await loadHeroSuggestion();
-    await loadItems();
-    await loadDailyChallenge();
-    await loadWeeklyChallenge();
+    await Promise.all([
+      loadGoalCalendar(),
+      loadHeroSuggestion(),
+      loadItems(),
+      loadDailyChallenge(),
+      loadWeeklyChallenge(),
+      loadQuickStats(),
+    ]);
     updateMidnightCountdown();
     midnightTimer = setInterval(updateMidnightCountdown, 60000);
   });
@@ -50,6 +87,22 @@
     const hours = Math.floor(diffMs / 3600000);
     const mins = Math.floor((diffMs % 3600000) / 60000);
     timeUntilMidnight = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  }
+
+  async function loadQuickStats() {
+    try {
+      [recentMatches, analysisData] = await Promise.all([
+        invoke("get_matches"),
+        invoke("get_last_hits_analysis_data", {
+          timeMinutes: 10,
+          windowSize: 30,
+          heroId: null,
+          gameMode: null,
+        }),
+      ]);
+    } catch (e) {
+      console.error("Failed to load quick stats:", e);
+    }
   }
 
   async function loadDailyChallenge() {
@@ -85,9 +138,7 @@
     if (!progress) return "";
     const c = progress.challenge;
     let desc = c.challenge_description;
-    if (c.hero_id !== null) {
-      desc += ` (${getHeroName(c.hero_id)})`;
-    }
+    if (c.hero_id !== null) desc += ` (${getHeroName(c.hero_id)})`;
     return desc;
   }
 
@@ -143,7 +194,6 @@
       heroSuggestion = await invoke("refresh_hero_goal_suggestion");
     } catch (e) {
       error = `Failed to refresh suggestion: ${e}`;
-      console.error("Failed to refresh suggestion:", e);
     }
   }
 
@@ -174,208 +224,258 @@
 
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
-
     if (goal.metric === "ItemTiming") {
       const itemName = goal.item_id !== null ? getItemName(goal.item_id) : "Unknown Item";
       const minutes = Math.floor(goal.target_value / 60);
       const seconds = goal.target_value % 60;
       const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
-      return `${heroName}: ${itemName} by ${timeStr}`;
+      return `${heroName} — ${itemName} by ${timeStr}`;
     } else {
       const metricLabel = getMetricLabel(goal.metric);
       const unit = getMetricUnit(goal.metric);
       const valueStr = unit ? `${goal.target_value} ${unit}` : `Level ${goal.target_value}`;
-      return `${heroName}: ${valueStr} by ${goal.target_time_minutes} min`;
+      return `${heroName} — ${valueStr} by ${goal.target_time_minutes} min`;
     }
   }
 
-  function getProgressPercentage(day) {
-    if (day.total === 0) return 0;
-    return (day.achieved / day.total) * 100;
+  function getDotClass(day) {
+    if (day.total === 0) return 'empty';
+    return day.achieved > 0 ? 'hit' : 'miss';
+  }
+
+  function getDotContent(day) {
+    if (day.total === 0) return '';
+    return day.achieved > 0 ? '✓' : '✗';
+  }
+
+  function getHitRate(goalData) {
+    const total = goalData.daily_progress.reduce((s, d) => s + d.total, 0);
+    const hit = goalData.daily_progress.reduce((s, d) => s + d.achieved, 0);
+    if (total === 0) return 0;
+    return (hit / total) * 100;
+  }
+
+  function getTrendLabel(goalData) {
+    const days = goalData.daily_progress;
+    const recent = days.slice(-3);
+    const earlier = days.slice(0, 4);
+    const recentTotal = recent.reduce((s, d) => s + d.total, 0);
+    const earlierTotal = earlier.reduce((s, d) => s + d.total, 0);
+    if (recentTotal === 0 && earlierTotal === 0) return null;
+    const recentRate = recentTotal > 0
+      ? recent.reduce((s, d) => s + d.achieved, 0) / recentTotal
+      : 0;
+    const earlierRate = earlierTotal > 0
+      ? earlier.reduce((s, d) => s + d.achieved, 0) / earlierTotal
+      : 0;
+    if (recentRate > earlierRate + 0.15) return { label: 'Improving', cls: 'improving' };
+    if (recentRate < earlierRate - 0.15) return { label: 'Declining', cls: 'declining' };
+    return { label: 'Stable', cls: 'stable' };
   }
 
   function formatDayLabel(dateString) {
     const date = new Date(dateString + "T00:00:00Z");
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const diffTime = date.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
     if (diffDays === 0) return "Today";
     if (diffDays === -1) return "Yesterday";
-
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
 </script>
 
-<div class="dashboard-content">
+<div class="dashboard">
   {#if isLoading}
-    <div class="loading">
-      <p>Loading...</p>
-    </div>
+    <div class="loading-state">Loading...</div>
   {:else}
-    <div class="page-header">
-      <h1>Dashboard</h1>
-      <p class="subtitle">Track your Dota 2 progress and goals</p>
-    </div>
-
     {#if error}
-      <p class="error">{error}</p>
+      <div class="error-banner">{error}</div>
     {/if}
 
-    <div class="calendar-section">
-      <h2>Goal Progress - Last 7 Days</h2>
-      {#if goalCalendar.length === 0}
-        <p class="no-goals">No goals found. <a href="/goals">Create your first goal</a> to start tracking your progress.</p>
-      {:else}
-        <div class="calendar-wrapper">
-          <div class="calendar-header">
-            <div class="goal-label-header">Goal</div>
-            {#each goalCalendar[0]?.daily_progress || [] as day}
-              <div class="day-header">{formatDayLabel(day.date)}</div>
-            {/each}
-          </div>
-          {#each goalCalendar as goalData}
-            <div class="calendar-row">
-              <div class="goal-label">
-                <span class="goal-text">
-                  {#if goalData.goal.hero_id !== null}
-                    <HeroIcon heroId={goalData.goal.hero_id} size="small" showName={false} />
-                  {/if}
-                  {formatGoalDescription(goalData.goal)}
-                </span>
-                <a href="/goals/{goalData.goal.id}" class="details-btn">View Details</a>
-              </div>
-              {#each goalData.daily_progress as day}
-                <div class="day-cell" title="{day.achieved}/{day.total} matches">
-                  {#if day.total === 0}
-                    <div class="progress-bar empty"></div>
-                  {:else}
-                    <div class="progress-bar">
-                      <div
-                        class="progress-fill"
-                        style="height: {getProgressPercentage(day)}%"
-                      ></div>
-                    </div>
-                    <div class="day-stats">{day.achieved}/{day.total}</div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/each}
+    <!-- QUICK STATS STRIP -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Win Rate (7d)</div>
+        {#if winRate7d}
+          <div class="stat-value">{winRate7d.rate}<span class="stat-unit">%</span></div>
+          <div class="stat-sub">{winRate7d.count} games</div>
+        {:else}
+          <div class="stat-value stat-na">—</div>
+          <div class="stat-sub">No recent games</div>
+        {/if}
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Avg CS @ 10min</div>
+        {#if avgCS !== null}
+          <div class="stat-value">{avgCS.toFixed(1)}</div>
+          <div class="stat-sub">last {analysisData?.current_period?.count || 0} games</div>
+        {:else}
+          <div class="stat-value stat-na">—</div>
+          <div class="stat-sub">Parse matches to track</div>
+        {/if}
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Goals Hit (7d)</div>
+        {#if goalsHit7d.total > 0}
+          <div class="stat-value">{goalsHit7d.hit}<span class="stat-unit">/{goalsHit7d.total}</span></div>
+          <div class="stat-sub">{Math.round((goalsHit7d.hit / goalsHit7d.total) * 100)}% success rate</div>
+        {:else}
+          <div class="stat-value stat-na">—</div>
+          <div class="stat-sub">No goal attempts yet</div>
+        {/if}
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Active Goals</div>
+        <div class="stat-value">{goals.length}</div>
+        <div class="stat-sub">
+          {#if goals.length === 0}No goals set{:else}being tracked{/if}
         </div>
-      {/if}
+      </div>
     </div>
 
+    <!-- TODAY'S CHALLENGE -->
     {#if dailyProgress}
-      <div class="daily-challenge-section">
-        <h2>⚡ Today's Challenge</h2>
-        <div class="daily-card {dailyProgress.completed ? 'completed' : 'active'}">
-          <div class="daily-card-left">
-            {#if dailyProgress.challenge.hero_id !== null}
-              <HeroIcon heroId={dailyProgress.challenge.hero_id} size="small" showName={false} />
-            {:else}
-              <span class="daily-icon">{dailyProgress.completed ? '✅' : '⚡'}</span>
+      <div class="section-header">
+        <div class="section-title">⚡ Today's Challenge</div>
+        <div class="reset-text">Resets in {timeUntilMidnight}</div>
+      </div>
+      <div class="challenge-card" class:completed={dailyProgress.completed}>
+        <div class="challenge-icon">
+          {#if dailyProgress.challenge.hero_id !== null}
+            <HeroIcon heroId={dailyProgress.challenge.hero_id} size="small" showName={false} />
+          {:else}
+            {dailyProgress.completed ? '✅' : '⚔️'}
+          {/if}
+        </div>
+        <div class="challenge-info">
+          <div class="challenge-title">{formatDailyDescription(dailyProgress)}</div>
+          <div class="challenge-bar-wrap">
+            <div class="challenge-bar-fill" style="width: {getDailyProgressPct(dailyProgress)}%"></div>
+          </div>
+          <div class="challenge-meta">
+            <span>{dailyProgress.current_value} / {dailyProgress.target} completed</span>
+            {#if dailyProgress.completed}
+              <span class="complete-tag">✓ Complete!</span>
+            {:else if dailyStreak > 0}
+              <span class="streak-tag">🔥 {dailyStreak} day streak</span>
             {/if}
           </div>
-          <div class="daily-card-body">
-            <div class="daily-description">{formatDailyDescription(dailyProgress)}</div>
-            <div class="daily-progress-bar-wrap">
-              <div class="daily-progress-bar">
-                <div class="daily-progress-fill {dailyProgress.completed ? 'done' : ''}"
-                     style="width: {getDailyProgressPct(dailyProgress)}%"></div>
-              </div>
-              <span class="daily-progress-label">
-                {dailyProgress.current_value}/{dailyProgress.target}
-              </span>
-            </div>
-            <div class="daily-meta">
-              {#if dailyProgress.completed}
-                <span class="daily-complete-tag">Complete!</span>
-              {:else}
-                <span class="daily-reset">Resets in {timeUntilMidnight}</span>
-              {/if}
-              {#if dailyStreak > 0}
-                <span class="daily-streak">🔥 {dailyStreak} day streak</span>
-              {/if}
-            </div>
-          </div>
         </div>
+        <a href="/challenges" class="btn btn-ghost">View Stats</a>
       </div>
     {/if}
 
-    <div class="weekly-challenge-section">
-      <h2>🏆 Weekly Challenge</h2>
-      {#if weeklyProgress}
-        <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
-          <div class="weekly-card-body">
-            <div class="weekly-description">{weeklyProgress.challenge.challenge_description}</div>
-            <div class="weekly-progress-bar-wrap">
-              <div class="weekly-progress-bar">
-                <div
-                  class="weekly-progress-fill {weeklyProgress.completed ? 'done' : ''}"
-                  style="width: {weeklyProgressPct(weeklyProgress)}%"
-                ></div>
-              </div>
-              <span class="weekly-progress-label">
-                {weeklyProgress.current_value}/{weeklyProgress.target}
-              </span>
-            </div>
-            <div class="weekly-meta">
-              {#if weeklyProgress.completed}
-                <span class="weekly-complete-tag">Complete!</span>
-              {:else}
-                <span class="weekly-days">{weeklyProgress.days_remaining} days left</span>
-              {/if}
-            </div>
-          </div>
-        </a>
-      {:else}
-        <a href="/challenges" class="weekly-card empty">
-          <span class="weekly-empty-text">Choose this week's challenge →</span>
-        </a>
-      {/if}
+    <!-- GOAL PROGRESS -->
+    <div class="section-header" style="margin-top: 8px;">
+      <div class="section-title">Goal Progress — Last 7 Days</div>
+      <a href="/goals" class="btn btn-ghost">Manage Goals</a>
     </div>
 
+    {#if goalCalendar.length === 0}
+      <div class="empty-goals">
+        <p>No goals yet.</p>
+        <a href="/goals" class="btn btn-primary" style="margin-top:12px">Create your first goal →</a>
+      </div>
+    {:else}
+      <div class="goals-grid">
+        {#each goalCalendar as goalData}
+          {@const trend = getTrendLabel(goalData)}
+          {@const hitRate = getHitRate(goalData)}
+          <div class="goal-row" onclick={() => goto(`/goals/${goalData.goal.id}`)}>
+            <div class="hero-avatar">
+              {#if goalData.goal.hero_id !== null}
+                <HeroIcon heroId={goalData.goal.hero_id} size="small" showName={false} />
+              {:else}
+                🌟
+              {/if}
+            </div>
+            <div class="goal-info">
+              <div class="goal-name">{formatGoalDescription(goalData.goal)}</div>
+              <div class="goal-progress-bar">
+                <div class="goal-fill {hitRate >= 70 ? 'success' : ''}" style="width:{hitRate}%"></div>
+              </div>
+              <div class="goal-meta">
+                {#if trend}
+                  <span class="trend-{trend.cls}">{trend.label}</span>
+                {/if}
+                <span>{goalData.goal.metric === 'ItemTiming' ? 'Item Goal' : getMetricLabel(goalData.goal.metric) + ' Goal'}</span>
+                <span>{goalData.goal.game_mode}</span>
+              </div>
+            </div>
+            <div class="goal-dots">
+              {#each goalData.daily_progress as day}
+                <div class="dot {getDotClass(day)}" title="{formatDayLabel(day.date)}: {day.achieved}/{day.total}">
+                  {getDotContent(day)}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- WEEKLY CHALLENGE -->
+    <div class="section-header" style="margin-top: 28px;">
+      <div class="section-title">🏆 Weekly Challenge</div>
+    </div>
+    {#if weeklyProgress}
+      <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
+        <div class="weekly-desc">{weeklyProgress.challenge.challenge_description}</div>
+        <div class="weekly-bar-wrap">
+          <div class="weekly-bar">
+            <div class="weekly-fill {weeklyProgress.completed ? 'done' : ''}"
+                 style="width:{weeklyProgressPct(weeklyProgress)}%"></div>
+          </div>
+          <span class="weekly-label">{weeklyProgress.current_value}/{weeklyProgress.target}</span>
+        </div>
+        <div class="weekly-meta">
+          {#if weeklyProgress.completed}
+            <span class="complete-tag">✓ Complete!</span>
+          {:else}
+            <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
+          {/if}
+        </div>
+      </a>
+    {:else}
+      <a href="/challenges" class="weekly-card empty">
+        <span class="weekly-empty-text">Choose this week's challenge →</span>
+      </a>
+    {/if}
+
+    <!-- HERO SUGGESTION -->
     {#if heroSuggestion && !isSuggestionAdopted}
-      <div class="suggestion-section">
-        <h2>🎯 Suggested Goal This Week</h2>
-        <div class="suggestion-card">
-          <div class="hero-info">
-            <div class="hero-name">
-              <HeroIcon heroId={heroSuggestion.hero_id} size="medium" />
+      <div class="section-header" style="margin-top: 28px;">
+        <div class="section-title">🎯 Suggested Goal</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-hero">
+          <HeroIcon heroId={heroSuggestion.hero_id} size="medium" />
+        </div>
+        <div class="suggestion-info">
+          <div class="suggestion-hero-name">{getHeroName(heroSuggestion.hero_id)}</div>
+          <div class="suggestion-stats">
+            <div class="sug-stat">
+              <div class="sug-label">Current Avg</div>
+              <div class="sug-value">{Math.round(heroSuggestion.current_average)} CS</div>
             </div>
-            <div class="time-marker">At 10 Minutes</div>
-            <div class="suggestion-stats">
-              <div class="stat-item">
-                <span class="label">Current Average</span>
-                <span class="value">{Math.round(heroSuggestion.current_average)} CS</span>
-              </div>
-              <div class="stat-item">
-                <span class="label">Suggested Target</span>
-                <span class="value highlight">{heroSuggestion.suggested_last_hits} CS</span>
-              </div>
-              <div class="stat-item">
-                <span class="label">Improvement</span>
-                <span class="value improvement">
-                  +{heroSuggestion.suggested_last_hits - Math.round(heroSuggestion.current_average)} CS
-                  (+{Math.round(((heroSuggestion.suggested_last_hits - heroSuggestion.current_average) / heroSuggestion.current_average) * 100)}%)
-                </span>
-              </div>
+            <div class="sug-stat">
+              <div class="sug-label">Suggested</div>
+              <div class="sug-value gold">{heroSuggestion.suggested_last_hits} CS</div>
             </div>
-            <div class="games-info">
-              Based on your last {heroSuggestion.games_analyzed} games
+            <div class="sug-stat">
+              <div class="sug-label">Improvement</div>
+              <div class="sug-value green">+{heroSuggestion.suggested_last_hits - Math.round(heroSuggestion.current_average)} CS</div>
             </div>
           </div>
-          <div class="suggestion-actions">
-            <button class="refresh-btn" onclick={() => refreshSuggestion()}>
-              🔄 Refresh
-            </button>
-            <button class="accept-btn" onclick={() => acceptSuggestion(heroSuggestion)}>
-              Create Goal
-            </button>
-          </div>
+          <div class="sug-games">Based on {heroSuggestion.games_analyzed} games</div>
+        </div>
+        <div class="suggestion-actions">
+          <button class="btn btn-ghost" onclick={() => refreshSuggestion()}>🔄 Refresh</button>
+          <button class="btn btn-primary" onclick={() => acceptSuggestion(heroSuggestion)}>Create Goal</button>
         </div>
       </div>
     {/if}
@@ -383,586 +483,319 @@
 </div>
 
 <style>
-.dashboard-content {
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 3rem;
-  color: #d4af37;
-  font-size: 1rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-
-.page-header {
-  margin-bottom: 2rem;
-  padding: 25px 30px;
-  background:
-    linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-  background-size: 100%, 4px 4px;
-  border: 2px solid rgba(139, 92, 46, 0.5);
-  border-radius: 8px;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.page-header h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: 2em;
-  color: #d4af37;
-  text-shadow:
-    0 0 20px rgba(212, 175, 55, 0.5),
-    2px 2px 4px rgba(0, 0, 0, 0.8);
-  letter-spacing: 3px;
-  text-transform: uppercase;
-}
-
-.subtitle {
-  color: #a0a0a0;
-  margin: 0;
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-}
-
-.error {
-  color: #ff6b6b;
-  background-color: rgba(220, 53, 69, 0.2);
-  border: 1px solid rgba(220, 53, 69, 0.4);
-  border-radius: 3px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
-}
-
-.calendar-section {
-  padding: 30px;
-  background:
-    linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-    repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-    repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-  background-size: 100%, 6px 6px, 6px 6px;
-  border: 2px solid rgba(139, 92, 46, 0.4);
-  border-radius: 8px;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.calendar-section h2 {
-  margin-bottom: 1.5rem;
-  font-size: 1.5em;
-  color: #d4af37;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
-  border-bottom: 2px solid rgba(139, 92, 46, 0.5);
-  padding-bottom: 15px;
-}
-
-.no-goals {
-  color: #a0a0a0;
-  font-style: italic;
-}
-
-.no-goals a {
-  color: #d4af37;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.no-goals a:hover {
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-}
-
-.calendar-wrapper {
-  background:
-    linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-    repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-    repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-  background-size: 100%, 6px 6px, 6px 6px;
-  border: 2px solid rgba(139, 92, 46, 0.4);
-  border-radius: 3px;
-  padding: 1.5rem;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  overflow-x: auto;
-}
-
-.calendar-header {
-  display: grid;
-  grid-template-columns: minmax(250px, 1fr) repeat(7, 80px);
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 2px solid rgba(139, 92, 46, 0.4);
-}
-
-.goal-label-header {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #d4af37;
-  padding: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.day-header {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #d4af37;
-  text-align: center;
-  padding: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.calendar-row {
-  display: grid;
-  grid-template-columns: minmax(250px, 1fr) repeat(7, 80px);
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  align-items: center;
-  padding: 0.5rem;
-  background: rgba(30, 30, 40, 0.3);
-  border-radius: 3px;
-  border-left: 3px solid rgba(139, 92, 46, 0.5);
-}
-
-.goal-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  padding: 0.5rem;
-  color: #e0e0e0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.goal-text {
-  flex: 1;
-}
-
-.details-btn {
-  background: linear-gradient(180deg, rgba(40, 80, 100, 0.8) 0%, rgba(30, 60, 80, 0.8) 100%);
-  color: #e0e0e0;
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  border: 2px solid rgba(92, 139, 139, 0.6);
-  border-radius: 3px;
-  text-decoration: none;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
-}
-
-.details-btn:hover {
-  background: linear-gradient(180deg, rgba(50, 95, 120, 0.9) 0%, rgba(40, 75, 100, 0.9) 100%);
-  border-color: rgba(92, 139, 139, 0.8);
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.6),
-    0 0 15px rgba(100, 150, 200, 0.3);
-  transform: translateY(-1px);
-}
-
-.day-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.progress-bar {
-  width: 50px;
-  height: 50px;
-  background: rgba(40, 40, 50, 0.8);
-  border: 1px solid rgba(139, 92, 46, 0.4);
-  border-radius: 3px;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
-}
-
-.progress-bar.empty {
-  background-color: rgba(30, 30, 40, 0.5);
-  border: 2px dashed rgba(80, 80, 90, 0.4);
-}
-
-.progress-fill {
-  width: 100%;
-  background: linear-gradient(90deg, #60c040 0%, #80e060 50%, #60c040 100%);
-  box-shadow: 0 0 15px rgba(100, 255, 100, 0.5);
-  transition: height 0.5s ease;
-}
-
-.day-stats {
-  font-size: 0.75rem;
-  color: #b0b0b0;
-  font-weight: 600;
-}
-
-/* Daily Challenge Widget */
-.daily-challenge-section {
-  margin-top: 2rem;
-}
-
-.daily-challenge-section h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.2rem;
-  color: #d4af37;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-
-.daily-card {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
-  padding: 1.25rem 1.5rem;
-  border-radius: 6px;
-  border: 2px solid rgba(139, 92, 46, 0.4);
-  background: linear-gradient(135deg, rgba(25, 25, 35, 0.9) 0%, rgba(20, 20, 30, 0.95) 100%);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-  transition: border-color 0.3s ease;
-}
-
-.daily-card.completed {
-  border-color: rgba(96, 192, 64, 0.5);
-  background: linear-gradient(135deg, rgba(25, 40, 25, 0.9) 0%, rgba(20, 30, 20, 0.95) 100%);
-}
-
-.daily-card-left {
-  display: flex;
-  align-items: center;
-  padding-top: 2px;
-}
-
-.daily-icon {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-.daily-card-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.daily-description {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-.daily-progress-bar-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.daily-progress-bar {
-  flex: 1;
-  height: 8px;
-  background: rgba(40, 40, 55, 0.8);
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid rgba(139, 92, 46, 0.3);
-}
-
-.daily-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, rgba(212, 175, 55, 0.8), rgba(212, 175, 55, 1));
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-
-.daily-progress-fill.done {
-  background: linear-gradient(90deg, rgba(96, 192, 64, 0.8), rgba(96, 192, 64, 1));
-}
-
-.daily-progress-label {
-  font-size: 0.85rem;
-  color: #a0a0a0;
-  white-space: nowrap;
-  min-width: 3rem;
-  text-align: right;
-}
-
-.daily-meta {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  font-size: 0.85rem;
-}
-
-.daily-reset {
-  color: #808080;
-}
-
-.daily-complete-tag {
-  color: #60c040;
-  font-weight: 700;
-  text-shadow: 0 0 10px rgba(96, 192, 64, 0.4);
-}
-
-.daily-streak {
-  color: #ffc107;
-  font-weight: 600;
-}
-
-/* Weekly Challenge Widget */
-.weekly-challenge-section {
-  margin-top: 2rem;
-}
-
-.weekly-challenge-section h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.2rem;
-  color: #d4af37;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-
-.weekly-card {
-  display: block;
-  padding: 1.25rem 1.5rem;
-  border-radius: 6px;
-  border: 2px solid rgba(100, 100, 200, 0.4);
-  background: linear-gradient(135deg, rgba(25, 25, 45, 0.9) 0%, rgba(20, 20, 35, 0.95) 100%);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-  text-decoration: none;
-  transition: border-color 0.2s;
-}
-
-.weekly-card:hover {
-  border-color: rgba(130, 130, 255, 0.6);
-}
-
-.weekly-card.completed {
-  border-color: rgba(96, 192, 64, 0.5);
-  background: linear-gradient(135deg, rgba(25, 40, 25, 0.9) 0%, rgba(20, 30, 20, 0.95) 100%);
-}
-
-.weekly-card.empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 60px;
-  border-style: dashed;
-  border-color: rgba(100, 100, 200, 0.3);
-}
-
-.weekly-empty-text {
-  color: #a0a0d0;
-  font-size: 0.95rem;
-  font-style: italic;
-}
-
-.weekly-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.weekly-description {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-.weekly-progress-bar-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.weekly-progress-bar {
-  flex: 1;
-  height: 8px;
-  background: rgba(40, 40, 55, 0.8);
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid rgba(100, 100, 200, 0.3);
-}
-
-.weekly-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, rgba(130, 130, 255, 0.8), rgba(150, 150, 255, 1));
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-
-.weekly-progress-fill.done {
-  background: linear-gradient(90deg, rgba(96, 192, 64, 0.8), rgba(96, 192, 64, 1));
-}
-
-.weekly-progress-label {
-  font-size: 0.85rem;
-  color: #a0a0a0;
-  white-space: nowrap;
-  min-width: 3rem;
-  text-align: right;
-}
-
-.weekly-meta {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  font-size: 0.85rem;
-}
-
-.weekly-days {
-  color: #808080;
-}
-
-.weekly-complete-tag {
-  color: #60c040;
-  font-weight: 700;
-}
-
-.suggestion-section {
-  margin-top: 2rem;
-  padding: 30px;
-  background: linear-gradient(135deg, rgba(40, 30, 60, 0.8) 0%, rgba(30, 20, 50, 0.9) 100%);
-  border: 2px solid rgba(139, 92, 200, 0.4);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(138, 43, 226, 0.3);
-}
-
-.suggestion-section h2 {
-  margin-bottom: 1.5rem;
-  font-size: 1.5em;
-  color: #b89bdb;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px rgba(184, 155, 219, 0.5);
-}
-
-.suggestion-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  background: rgba(30, 25, 40, 0.8);
-  border-radius: 5px;
-  border-left: 4px solid #b89bdb;
-}
-
-.hero-name {
-  font-size: 1.8em;
-  font-weight: bold;
-  color: #d4af37;
-  margin-bottom: 0.5rem;
-}
-
-.time-marker {
-  font-size: 0.9rem;
-  color: #b89bdb;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  margin-bottom: 1rem;
-  font-weight: 600;
-}
-
-.suggestion-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-item .label {
-  font-size: 0.85rem;
-  color: #a0a0a0;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.stat-item .value {
-  font-size: 1.3rem;
-  font-weight: bold;
-  color: #e0e0e0;
-}
-
-.stat-item .highlight {
-  color: #b89bdb;
-  text-shadow: 0 0 10px rgba(184, 155, 219, 0.5);
-}
-
-.stat-item .improvement {
-  color: #60c040;
-}
-
-.games-info {
-  font-size: 0.85rem;
-  color: #a0a0a0;
-  font-style: italic;
-  margin-top: 0.5rem;
-}
-
-.suggestion-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-direction: column;
-}
-
-.refresh-btn {
-  background: linear-gradient(180deg, rgba(60, 60, 80, 0.8) 0%, rgba(40, 40, 60, 0.8) 100%);
-  color: #e0e0e0;
-  padding: 10px 20px;
-  border: 2px solid rgba(139, 139, 139, 0.6);
-  border-radius: 3px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 0.9rem;
-}
-
-.refresh-btn:hover {
-  background: linear-gradient(180deg, rgba(80, 80, 100, 0.9) 0%, rgba(60, 60, 80, 0.9) 100%);
-  box-shadow: 0 0 15px rgba(139, 139, 139, 0.5);
-  transform: translateY(-2px);
-}
-
-.accept-btn {
-  background: linear-gradient(180deg, rgba(100, 70, 140, 0.8) 0%, rgba(80, 50, 120, 0.8) 100%);
-  color: #e0e0e0;
-  padding: 12px 24px;
-  border: 2px solid rgba(184, 155, 219, 0.6);
-  border-radius: 3px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.accept-btn:hover {
-  background: linear-gradient(180deg, rgba(120, 90, 160, 0.9) 0%, rgba(100, 70, 140, 0.9) 100%);
-  box-shadow: 0 0 20px rgba(184, 155, 219, 0.5);
-  transform: translateY(-2px);
-}
+  .dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── QUICK STATS ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .stat-card:hover { border-color: var(--border-active); }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .stat-card:hover::before { opacity: 1; }
+
+  .stat-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .stat-value.stat-na { color: var(--text-muted); }
+
+  .stat-unit {
+    font-size: 18px;
+    color: var(--text-secondary);
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* ── TODAY'S CHALLENGE ── */
+  .challenge-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(240, 180, 41, 0.25);
+    border-radius: 8px;
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .challenge-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+
+  .challenge-card.completed {
+    border-color: rgba(74, 222, 128, 0.3);
+  }
+
+  .challenge-card.completed::before {
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+  }
+
+  .challenge-icon {
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+
+  .challenge-info { flex: 1; }
+
+  .challenge-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  .challenge-bar-wrap {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+
+  .challenge-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold-bright));
+    border-radius: 3px;
+    transition: width 0.8s ease;
+  }
+
+  .challenge-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 14px;
+  }
+
+  .reset-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .complete-tag {
+    color: var(--green);
+    font-weight: 600;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .streak-tag {
+    color: var(--gold);
+    font-weight: 600;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  /* ── GOALS GRID ── */
+  .goals-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  /* Inherit .goal-row, .hero-avatar, .goal-info, .goal-name, etc. from app.css */
+
+  .trend-improving { color: var(--green); }
+  .trend-declining { color: var(--red); }
+  .trend-stable { color: var(--teal); }
+
+  .empty-goals {
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── WEEKLY CHALLENGE ── */
+  .weekly-card {
+    display: block;
+    padding: 18px 22px;
+    border-radius: 8px;
+    border: 1px solid rgba(100, 100, 200, 0.3);
+    background: var(--bg-card);
+    text-decoration: none;
+    transition: border-color 0.2s;
+    margin-bottom: 8px;
+  }
+
+  .weekly-card:hover { border-color: rgba(130, 130, 255, 0.5); }
+  .weekly-card.completed { border-color: rgba(74, 222, 128, 0.3); }
+
+  .weekly-card.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    border-style: dashed;
+    border-color: rgba(100, 100, 200, 0.2);
+  }
+
+  .weekly-empty-text { color: var(--text-secondary); font-size: 13px; }
+
+  .weekly-desc {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+  }
+
+  .weekly-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  .weekly-bar {
+    flex: 1;
+    height: 5px;
+    background: rgba(40, 40, 70, 0.8);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .weekly-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(130, 130, 255, 0.8), rgba(150, 150, 255, 1));
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  .weekly-fill.done {
+    background: linear-gradient(90deg, #16a34a, var(--green));
+  }
+
+  .weekly-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 3rem;
+    text-align: right;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .weekly-meta { font-size: 11px; }
+
+  /* ── HERO SUGGESTION ── */
+  .suggestion-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(139, 92, 200, 0.3);
+    border-radius: 8px;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 8px;
+  }
+
+  .suggestion-hero { flex-shrink: 0; }
+
+  .suggestion-info { flex: 1; }
+
+  .suggestion-hero-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+
+  .suggestion-stats {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: 20px;
+    margin-bottom: 6px;
+  }
+
+  .sug-stat { display: flex; flex-direction: column; }
+
+  .sug-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .sug-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .sug-value.gold { color: var(--gold); }
+  .sug-value.green { color: var(--green); }
+
+  .sug-games {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .suggestion-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
 </style>

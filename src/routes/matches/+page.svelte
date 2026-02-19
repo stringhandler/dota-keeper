@@ -18,59 +18,54 @@
   let unlistenMatchStateChanged = null;
   let autoRefreshTimer = null;
 
+  // Filter
+  let activeFilter = $state('all');
+
   // Pagination
   let currentPage = $state(1);
   let pageSize = $state(10);
 
+  // Derived: unique heroes in matches list
+  let trackedHeroes = $derived.by(() => {
+    const heroMap = new Map();
+    for (const m of matches) {
+      if (!heroMap.has(m.hero_id)) {
+        heroMap.set(m.hero_id, getHeroName(m.hero_id));
+      }
+    }
+    return Array.from(heroMap.entries()).map(([id, name]) => ({ id, name }));
+  });
+
   onMount(async () => {
     await loadData();
 
-    // Listen for match state changes
     unlistenMatchStateChanged = await listen("match-state-changed", (event) => {
       const { match_id, state } = event.payload;
-
-      // Find and update the match in the list
       const matchIndex = matches.findIndex(m => m.match_id === match_id);
       if (matchIndex !== -1) {
         matches[matchIndex].parse_state = state;
-        // Force reactivity by creating a new array
         matches = [...matches];
       }
     });
 
-    // Set up auto-refresh timer (every 30 seconds)
     autoRefreshTimer = setInterval(async () => {
       await autoRefreshAndParse();
-    }, 30000); // 30 seconds
+    }, 30000);
   });
 
   onDestroy(() => {
-    // Clean up event listener
-    if (unlistenMatchStateChanged) {
-      unlistenMatchStateChanged();
-    }
-
-    // Clean up auto-refresh timer
-    if (autoRefreshTimer) {
-      clearInterval(autoRefreshTimer);
-    }
+    if (unlistenMatchStateChanged) unlistenMatchStateChanged();
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
   });
 
   async function autoRefreshAndParse() {
     try {
-      // Refresh matches silently (don't show loading state)
       const newMatches = await invoke("refresh_matches");
       matches = newMatches;
-
-      // Get the last 10 matches
       const recentMatches = matches.slice(0, 10);
-
-      // Auto-parse unparsed or failed matches
       for (const match of recentMatches) {
-        // Only parse if: Unparsed or Failed, and not currently parsing
         if ((match.parse_state === "Unparsed" || match.parse_state === "Failed") &&
             !parsingMatches.has(match.match_id)) {
-          // Don't await - let it run in background
           parseMatch(match.match_id).catch(err => {
             console.error(`Auto-parse failed for match ${match.match_id}:`, err);
           });
@@ -107,10 +102,6 @@
     try {
       matches = await invoke("refresh_matches");
     } catch (e) {
-      console.error("[refresh] error type:", typeof e);
-      console.error("[refresh] error value:", e);
-      console.error("[refresh] error JSON:", JSON.stringify(e));
-      console.error("[refresh] error string:", String(e));
       const msg = String(e);
       if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("429")) {
         error = "OpenDota is temporarily unavailable — your cached matches are shown below.";
@@ -119,7 +110,6 @@
       } else {
         error = `Refresh failed: ${e}`;
       }
-      // Fall back to local database so matches remain visible
       await loadMatches();
     } finally {
       isRefreshing = false;
@@ -133,12 +123,27 @@
   }
 
   function formatDate(timestamp) {
-    return new Date(timestamp * 1000).toLocaleDateString();
+    const d = new Date(timestamp * 1000);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
   function isWin(match) {
     const isRadiant = match.player_slot < 128;
     return (isRadiant && match.radiant_win) || (!isRadiant && !match.radiant_win);
+  }
+
+  function isTurbo(gameMode) {
+    return gameMode === 21 || gameMode === 23;
+  }
+
+  function isRanked(gameMode) {
+    return gameMode === 20 || gameMode === 22;
+  }
+
+  function getModeTag(gameMode) {
+    if (isTurbo(gameMode)) return { cls: 'mode-turbo', label: 'Turbo' };
+    if (isRanked(gameMode)) return { cls: 'mode-ranked', label: 'Ranked' };
+    return { cls: 'mode-other', label: getGameModeName(gameMode) };
   }
 
   async function showGoalDetails(match) {
@@ -180,9 +185,7 @@
     try {
       await navigator.clipboard.writeText(matchId.toString());
       copiedMatchId = matchId;
-      setTimeout(() => {
-        copiedMatchId = null;
-      }, 2000);
+      setTimeout(() => { copiedMatchId = null; }, 2000);
     } catch (e) {
       console.error("Failed to copy match ID:", e);
     }
@@ -200,35 +203,13 @@
     parsingMatches = new Set([...parsingMatches, matchId]);
     try {
       await invoke("parse_match", { matchId, steamId: currentSteamId });
-      // Reload matches to get updated state
       await loadMatches();
     } catch (e) {
       error = `Failed to parse match: ${e}`;
-      console.error("Failed to parse match:", e);
     } finally {
       const newSet = new Set(parsingMatches);
       newSet.delete(matchId);
       parsingMatches = newSet;
-    }
-  }
-
-  function getParseStateLabel(state) {
-    switch (state) {
-      case "Unparsed": return "Parse";
-      case "Parsing": return "Parsing...";
-      case "Parsed": return "Re-parse";
-      case "Failed": return "Retry";
-      default: return "Parse";
-    }
-  }
-
-  function getParseStateColor(state) {
-    switch (state) {
-      case "Unparsed": return "unparsed";
-      case "Parsing": return "parsing";
-      case "Parsed": return "parsed";
-      case "Failed": return "failed";
-      default: return "unparsed";
     }
   }
 
@@ -238,989 +219,676 @@
       case 1: return "All Pick";
       case 2: return "Captain's Mode";
       case 3: return "Random Draft";
-      case 4: return "Single Draft";
       case 5: return "All Random";
-      case 6: return "Intro";
-      case 7: return "Diretide";
-      case 8: return "Reverse CM";
-      case 9: return "Mid Only";
-      case 10: return "Least Played";
-      case 11: return "Limited Heroes";
-      case 12: return "Compendium";
-      case 13: return "Custom";
-      case 14: return "CD";
-      case 15: return "Balanced Draft";
-      case 16: return "Ability Draft";
-      case 18: return "AR/DM";
-      case 19: return "1v1 Mid";
       case 20: return "Ranked";
       case 21: return "Turbo";
-      case 22: return "Ranked All Pick";
+      case 22: return "Ranked";
       case 23: return "Turbo";
       default: return `Mode ${gameMode}`;
     }
   }
 
-  // Pagination computed values
+  // Filter logic
+  function setFilter(filter) {
+    activeFilter = filter;
+    currentPage = 1;
+  }
+
+  function getFilteredMatches() {
+    switch (activeFilter) {
+      case 'wins':
+        return matches.filter(m => isWin(m));
+      case 'losses':
+        return matches.filter(m => !isWin(m));
+      case 'ranked':
+        return matches.filter(m => isRanked(m.game_mode));
+      case 'turbo':
+        return matches.filter(m => isTurbo(m.game_mode));
+      default:
+        if (activeFilter.startsWith('hero-')) {
+          const heroId = parseInt(activeFilter.split('-')[1]);
+          return matches.filter(m => m.hero_id === heroId);
+        }
+        return matches;
+    }
+  }
+
+  // Pagination
   $effect(() => {
-    // Reset to page 1 when matches change
     if (matches.length > 0) {
-      const maxPage = Math.ceil(matches.length / pageSize);
-      if (currentPage > maxPage) {
-        currentPage = 1;
-      }
+      const maxPage = Math.ceil(getFilteredMatches().length / pageSize);
+      if (currentPage > maxPage) currentPage = 1;
     }
   });
 
   function getPaginatedMatches() {
+    const filtered = getFilteredMatches();
     const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return matches.slice(startIndex, endIndex);
+    return filtered.slice(startIndex, startIndex + pageSize);
   }
 
   function getTotalPages() {
-    return Math.ceil(matches.length / pageSize);
+    return Math.ceil(getFilteredMatches().length / pageSize);
   }
 
   function goToPage(page) {
     const totalPages = getTotalPages();
-    if (page >= 1 && page <= totalPages) {
-      currentPage = page;
-    }
-  }
-
-  function nextPage() {
-    goToPage(currentPage + 1);
-  }
-
-  function previousPage() {
-    goToPage(currentPage - 1);
-  }
-
-  function changePageSize(newSize) {
-    pageSize = newSize;
-    currentPage = 1;
+    if (page >= 1 && page <= totalPages) currentPage = page;
   }
 </script>
 
 <div class="matches-content">
-  <div class="page-header">
-    <div class="header-content">
-      <h1>Matches</h1>
-      <p class="subtitle">Your recent Dota 2 match history</p>
-    </div>
-    <button class="refresh-btn" onclick={handleRefresh} disabled={isRefreshing}>
-      {isRefreshing ? "Refreshing..." : "Refresh Matches"}
+  {#if error}
+    <div class="error-banner">{error}</div>
+  {/if}
+
+  <!-- FILTER BAR -->
+  <div class="match-filters">
+    <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>All</button>
+    <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>Wins</button>
+    <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>Losses</button>
+    <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>Ranked</button>
+    <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>Turbo</button>
+    {#each trackedHeroes as hero}
+      <button class="filter-chip" class:active={activeFilter === `hero-${hero.id}`} onclick={() => setFilter(`hero-${hero.id}`)}>
+        {hero.name}
+      </button>
+    {/each}
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" onclick={handleRefresh} disabled={isRefreshing}>
+      ↻ {isRefreshing ? 'Refreshing...' : 'Refresh Matches'}
     </button>
   </div>
 
-  {#if error}
-    <p class="error">{error}</p>
-  {/if}
-
   {#if isLoading}
-    <div class="loading">
-      <p>Loading matches...</p>
-    </div>
+    <div class="loading-state">Loading matches...</div>
+  {:else if matches.length === 0}
+    <div class="empty-state">No matches found. Click "Refresh Matches" to fetch your recent games.</div>
   {:else}
-    <div class="content">
-      {#if matches.length === 0}
-        <p class="no-matches">No matches found. Click "Refresh Matches" to fetch your recent games.</p>
-      {:else}
-        <div class="table-wrapper">
-          <table class="matches-table">
-            <thead>
-              <tr>
-                <th>Match ID</th>
-                <th>Date</th>
-                <th>Hero</th>
-                <th>Game Type</th>
-                <th>Result</th>
-                <th>Duration</th>
-                <th>K/D/A</th>
-                <th>GPM</th>
-                <th>XPM</th>
-                <th>Parse</th>
-                <th>Goals</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each getPaginatedMatches() as match}
-                <tr class={isWin(match) ? "win" : "loss"}>
-                  <td class="match-id-cell">
-                    <div class="match-id-content">
-                      <span class="match-id-text">{match.match_id}</span>
-                      <div class="match-id-actions">
-                        <a
-                          class="icon-btn details-btn"
-                          href="/matches/{match.match_id}"
-                          aria-label="View match details"
-                          title="View match details"
-                        >
-                          🔍
-                        </a>
-                        <button
-                          class="icon-btn copy-btn"
-                          onclick={() => copyMatchId(match.match_id)}
-                          aria-label="Copy match ID"
-                          title="Copy match ID"
-                        >
-                          {#if copiedMatchId === match.match_id}
-                            ✓
-                          {:else}
-                            📋
-                          {/if}
-                        </button>
-                        <button
-                          class="icon-btn opendota-btn"
-                          onclick={() => openInOpenDota(match.match_id)}
-                          aria-label="Open in OpenDota"
-                          title="Open in OpenDota"
-                        >
-                          🔗
-                        </button>
-                      </div>
-                    </div>
-                  </td>
-                  <td>{formatDate(match.start_time)}</td>
-                  <td>
-                    <HeroIcon heroId={match.hero_id} size="small" />
-                  </td>
-                  <td>{getGameModeName(match.game_mode)}</td>
-                  <td class="result">{isWin(match) ? "Won" : "Lost"}</td>
-                  <td>{formatDuration(match.duration)}</td>
-                  <td>{match.kills}/{match.deaths}/{match.assists}</td>
-                  <td>{match.gold_per_min}</td>
-                  <td>{match.xp_per_min}</td>
-                  <td>
-                    {#if match.parse_state === "Parsing"}
-                      <span class="parse-state {getParseStateColor(match.parse_state)}">
-                        {getParseStateLabel(match.parse_state)}
-                      </span>
-                    {:else}
-                      <button
-                        class="parse-btn {getParseStateColor(match.parse_state)}"
-                        onclick={() => parseMatch(match.match_id)}
-                        disabled={parsingMatches.has(match.match_id)}
-                      >
-                        {getParseStateLabel(match.parse_state)}
-                      </button>
-                    {/if}
-                  </td>
-                  <td>
-                    {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
-                      <span class="parsing-spinner" aria-label="Parsing in progress">⏳</span>
-                    {:else if match.parse_state === "Unparsed"}
-                      <span class="parse-needed" title="Parse match to see accurate goal evaluation">
-                        Parse needed
-                      </span>
-                    {:else if match.goals_applicable > 0}
-                      <button
-                        class="goals-btn"
-                        onclick={() => showGoalDetails(match)}
-                        aria-label="View goal details"
-                      >
-                        {match.goals_achieved}/{match.goals_applicable}
-                      </button>
-                    {:else}
-                      <span class="no-goals">-</span>
-                    {/if}
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+    {@const filteredCount = getFilteredMatches().length}
+    <div class="matches-table">
+      <div class="table-head">
+        <div class="th">Match ID</div>
+        <div class="th">Date</div>
+        <div class="th">Hero</div>
+        <div class="th">Mode</div>
+        <div class="th">Result</div>
+        <div class="th">K/D/A</div>
+        <div class="th">GPM</div>
+        <div class="th">XPM</div>
+        <div class="th">Goals</div>
+      </div>
 
-        <!-- Pagination Controls -->
-        <div class="pagination">
-          <div class="pagination-info">
-            Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, matches.length)} of {matches.length} matches
-          </div>
-
-          <div class="pagination-controls">
-            <button
-              class="pagination-btn"
-              onclick={previousPage}
-              disabled={currentPage === 1}
-              aria-label="Previous page"
-            >
-              ← Previous
-            </button>
-
-            <div class="page-numbers">
-              {#each Array.from({ length: getTotalPages() }, (_, i) => i + 1) as page}
-                {#if getTotalPages() <= 7 || page === 1 || page === getTotalPages() || (page >= currentPage - 1 && page <= currentPage + 1)}
-                  <button
-                    class="page-btn {page === currentPage ? 'active' : ''}"
-                    onclick={() => goToPage(page)}
-                  >
-                    {page}
-                  </button>
-                {:else if page === currentPage - 2 || page === currentPage + 2}
-                  <span class="page-ellipsis">...</span>
-                {/if}
-              {/each}
+      {#each getPaginatedMatches() as match}
+        <div class="match-row" onclick={() => showGoalDetails(match)}>
+          <!-- Match ID + actions -->
+          <div class="match-id-cell">
+            <span class="match-id-text">{match.match_id}</span>
+            <div class="match-id-actions">
+              <a
+                class="icon-btn"
+                href="/matches/{match.match_id}"
+                aria-label="View details"
+                title="View details"
+                onclick={(e) => e.stopPropagation()}
+              >🔍</a>
+              <button
+                class="icon-btn"
+                onclick={(e) => { e.stopPropagation(); copyMatchId(match.match_id); }}
+                aria-label="Copy ID"
+                title="Copy ID"
+              >{copiedMatchId === match.match_id ? '✓' : '📋'}</button>
+              <button
+                class="icon-btn"
+                onclick={(e) => { e.stopPropagation(); openInOpenDota(match.match_id); }}
+                aria-label="OpenDota"
+                title="Open in OpenDota"
+              >🔗</button>
             </div>
-
-            <button
-              class="pagination-btn"
-              onclick={nextPage}
-              disabled={currentPage === getTotalPages()}
-              aria-label="Next page"
-            >
-              Next →
-            </button>
           </div>
 
-          <div class="page-size-selector">
-            <label for="page-size">Per page:</label>
-            <select id="page-size" bind:value={pageSize} onchange={() => changePageSize(pageSize)}>
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+          <!-- Date -->
+          <div class="td-text">{formatDate(match.start_time)}</div>
+
+          <!-- Hero -->
+          <div class="match-hero">
+            <div class="hero-icon-wrap"><HeroIcon heroId={match.hero_id} size="small" showName={false} /></div>
+            <span>{getHeroName(match.hero_id)}</span>
+          </div>
+
+          <!-- Mode -->
+          <div>
+            <span class="mode-tag {getModeTag(match.game_mode).cls}">{getModeTag(match.game_mode).label}</span>
+          </div>
+
+          <!-- Result -->
+          <div class="{isWin(match) ? 'result-win' : 'result-loss'}">
+            {isWin(match) ? 'WON' : 'LOST'}
+          </div>
+
+          <!-- K/D/A -->
+          <div class="kda">{match.kills}/{match.deaths}/{match.assists}</div>
+
+          <!-- GPM -->
+          <div class="td-text">{match.gold_per_min}</div>
+
+          <!-- XPM -->
+          <div class="td-text">{match.xp_per_min}</div>
+
+          <!-- Goals chip -->
+          <div>
+            {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
+              <span class="parsing-spinner">⏳</span>
+            {:else if match.parse_state === "Unparsed"}
+              <button
+                class="parse-btn"
+                onclick={(e) => { e.stopPropagation(); parseMatch(match.match_id); }}
+                disabled={parsingMatches.has(match.match_id)}
+              >Parse</button>
+            {:else if match.goals_applicable > 0}
+              <span class="goals-chip" class:has-goals={match.goals_achieved > 0}>
+                {match.goals_achieved}/{match.goals_applicable}{match.goals_achieved > 0 ? ' ⚡' : ''}
+              </span>
+            {:else}
+              <span class="no-goals-text">—</span>
+            {/if}
           </div>
         </div>
-      {/if}
+      {/each}
     </div>
-  {/if}
 
-  {#if selectedMatch}
-    <div class="modal-overlay" onclick={closeGoalDetails}>
-      <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <h2>Goal Details</h2>
-          <button class="close-btn" onclick={closeGoalDetails} aria-label="Close">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="match-summary">
-            <p>
-              <strong>Hero:</strong>
-              <HeroIcon heroId={selectedMatch.hero_id} size="medium" />
-            </p>
-            <p><strong>Result:</strong> <span class={isWin(selectedMatch) ? "win-text" : "loss-text"}>{isWin(selectedMatch) ? "Won" : "Lost"}</span></p>
-            <p><strong>Duration:</strong> {formatDuration(selectedMatch.duration)}</p>
-          </div>
+    <!-- PAGINATION -->
+    <div class="pagination">
+      <div class="pagination-info">
+        Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, filteredCount)} of {filteredCount}
+        {#if activeFilter !== 'all'}<span class="filter-note">(filtered from {matches.length})</span>{/if}
+      </div>
 
-          {#if goalDetails.length === 0}
-            <p class="no-applicable-goals">No applicable goals for this match.</p>
-          {:else}
-            <div class="goals-list">
-              {#each goalDetails as evaluation}
-                <div class="goal-detail-card {evaluation.achieved ? 'achieved' : 'not-achieved'}">
-                  <div class="goal-status-indicator">
-                    {evaluation.achieved ? "✓" : "✗"}
-                  </div>
-                  <div class="goal-detail-info">
-                    <div class="goal-detail-title">
-                      {#if evaluation.goal.hero_id !== null}
-                        <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
-                        {getHeroName(evaluation.goal.hero_id)}
-                      {:else}
-                        Any Hero
-                      {/if}
-                      - {getMetricLabel(evaluation.goal.metric)}
-                    </div>
-                    <div class="goal-detail-target">
-                      Target: {evaluation.goal.target_value}
-                      {getMetricUnit(evaluation.goal.metric) || ""}
-                      by {evaluation.goal.target_time_minutes} min
-                    </div>
-                    <div class="goal-detail-actual">
-                      Actual: {evaluation.actual_value}
-                      {getMetricUnit(evaluation.goal.metric) || ""}
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
+      <div class="pagination-controls">
+        <button class="pagination-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>← Prev</button>
+
+        <div class="page-numbers">
+          {#each Array.from({ length: getTotalPages() }, (_, i) => i + 1) as p}
+            {#if getTotalPages() <= 7 || p === 1 || p === getTotalPages() || (p >= currentPage - 1 && p <= currentPage + 1)}
+              <button class="page-btn" class:active={p === currentPage} onclick={() => goToPage(p)}>{p}</button>
+            {:else if p === currentPage - 2 || p === currentPage + 2}
+              <span class="page-ellipsis">...</span>
+            {/if}
+          {/each}
         </div>
+
+        <button class="pagination-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === getTotalPages()}>Next →</button>
+      </div>
+
+      <div class="page-size-selector">
+        <label for="page-size">Per page:</label>
+        <select id="page-size" class="form-select" bind:value={pageSize} onchange={() => { currentPage = 1; }}>
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
       </div>
     </div>
   {/if}
 </div>
 
+<!-- GOAL DETAILS MODAL -->
+{#if selectedMatch}
+  <div class="modal-overlay" onclick={closeGoalDetails}>
+    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
+      <div class="modal-header">
+        <div class="modal-title">
+          <HeroIcon heroId={selectedMatch.hero_id} size="small" showName={false} />
+          Goal Details — Match {selectedMatch.match_id}
+        </div>
+        <button class="modal-close" onclick={closeGoalDetails}>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="match-summary">
+          <span class="{isWin(selectedMatch) ? 'result-win' : 'result-loss'}">{isWin(selectedMatch) ? 'WON' : 'LOST'}</span>
+          <span class="td-text">Duration: {formatDuration(selectedMatch.duration)}</span>
+          <span class="td-text">KDA: {selectedMatch.kills}/{selectedMatch.deaths}/{selectedMatch.assists}</span>
+        </div>
+
+        {#if goalDetails.length === 0}
+          <p class="no-applicable-goals">No applicable goals for this match.</p>
+        {:else}
+          <div class="goals-list">
+            {#each goalDetails as evaluation}
+              <div class="goal-eval-card" class:achieved={evaluation.achieved}>
+                <div class="eval-status">{evaluation.achieved ? "✓" : "✗"}</div>
+                <div class="eval-info">
+                  <div class="eval-title">
+                    {#if evaluation.goal.hero_id !== null}
+                      <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
+                      {getHeroName(evaluation.goal.hero_id)}
+                    {:else}
+                      Any Hero
+                    {/if}
+                    — {getMetricLabel(evaluation.goal.metric)}
+                  </div>
+                  <div class="eval-detail">
+                    Target: {evaluation.goal.target_value} {getMetricUnit(evaluation.goal.metric)} by {evaluation.goal.target_time_minutes} min
+                    · Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
-  .matches-content {
-    max-width: 1400px;
-    margin: 0 auto;
+  .matches-content { max-width: 1400px; margin: 0 auto; }
+
+  /* Filter bar */
+  .match-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
   }
 
-  .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
+  .empty-state {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .header-content {
-    flex: 1;
-  }
-
-  .page-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-  }
-
-  .subtitle {
-    color: #a0a0a0;
-    margin: 0;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
-  }
-
-  .refresh-btn {
-    border-radius: 3px;
-    border: 2px solid rgba(139, 92, 46, 0.6);
-    padding: 12px 24px;
-    font-size: 1em;
-    font-weight: bold;
-    font-family: inherit;
-    cursor: pointer;
-    background: linear-gradient(180deg, rgba(60, 100, 40, 0.8) 0%, rgba(40, 80, 30, 0.8) 100%);
-    color: #e0e0e0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.3s ease;
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.6),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-
-  .refresh-btn:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 120, 50, 0.9) 0%, rgba(50, 100, 40, 0.9) 100%);
-    border-color: rgba(139, 92, 46, 0.8);
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.8),
-      0 0 20px rgba(100, 255, 100, 0.3);
-    transform: translateY(-2px);
-  }
-
-  .refresh-btn:disabled {
-    background: linear-gradient(180deg, rgba(40, 40, 50, 0.8) 0%, rgba(30, 30, 40, 0.8) 100%);
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .loading {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 3rem;
-    color: #a0a0a0;
-    font-style: italic;
-  }
-
-  .content {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 25px;
-    border-radius: 3px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
-  .no-matches {
-    color: #a0a0a0;
-    font-style: italic;
+    padding: 48px;
     text-align: center;
-    padding: 2rem 0;
+    color: var(--text-secondary);
+    font-size: 13px;
   }
 
-  .table-wrapper {
-    overflow-x: auto;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
+  /* Table */
   .matches-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
   }
 
-  .matches-table th,
-  .matches-table td {
-    padding: 0.9rem 0.7rem;
-    text-align: left;
-    border-bottom: 1px solid rgba(139, 92, 46, 0.3);
-  }
-
-  .matches-table th {
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(25, 25, 35, 0.9) 100%);
-    font-weight: 600;
-    color: #d4af37;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.85rem;
-  }
-
-  .matches-table tr.win {
-    background-color: rgba(96, 192, 64, 0.1);
-  }
-
-  .matches-table tr.loss {
-    background-color: rgba(220, 53, 69, 0.1);
-  }
-
-  .matches-table tr.win .result {
-    color: #60c040;
-    font-weight: 600;
-    text-shadow: 0 0 10px rgba(96, 192, 64, 0.3);
-  }
-
-  .matches-table tr.loss .result {
-    color: #ff6b6b;
-    font-weight: 600;
-    text-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
-  }
-
-  .matches-table tbody tr {
-    transition: all 0.2s ease;
-  }
-
-  .matches-table tbody tr:hover {
-    background-color: rgba(40, 40, 50, 0.5);
-  }
-
-  .goals-btn {
-    background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
-    color: #e0e0e0;
-    padding: 6px 12px;
-    font-size: 0.9em;
-    border-radius: 3px;
-    cursor: pointer;
-    border: 2px solid rgba(139, 92, 46, 0.6);
-    font-weight: bold;
-    transition: all 0.3s ease;
-  }
-
-  .goals-btn:hover {
-    background: linear-gradient(180deg, rgba(70, 95, 50, 0.9) 0%, rgba(50, 75, 40, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(100, 255, 100, 0.3);
-    transform: translateY(-1px);
-  }
-
-  .no-goals {
-    color: #808080;
-  }
-
-  .parse-needed {
-    color: #ffc107;
-    font-size: 0.85rem;
-    font-style: italic;
-    text-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
-  }
-
-  .parsing-spinner {
-    display: inline-block;
-    font-size: 1em;
-    animation: spin 2s linear infinite;
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  .match-id-cell {
-    font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
-  }
-
-  .match-id-content {
-    display: flex;
+  .table-head,
+  .match-row {
+    display: grid;
+    grid-template-columns: 160px 80px 160px 80px 70px 90px 60px 60px 90px;
+    padding: 12px 20px;
     align-items: center;
-    gap: 0.5rem;
-    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .table-head {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .th {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .match-row {
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .match-row:last-child { border-bottom: none; }
+  .match-row:hover { background: var(--bg-elevated); }
+
+  /* Match ID cell */
+  .match-id-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .match-id-text {
-    white-space: nowrap;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-muted);
   }
 
   .match-id-actions {
     display: flex;
-    gap: 0.25rem;
+    gap: 4px;
   }
 
   .icon-btn {
-    background: rgba(30, 30, 40, 0.6);
-    border: 1px solid rgba(139, 92, 46, 0.4);
-    padding: 0.3em 0.5em;
-    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    padding: 2px 5px;
+    font-size: 11px;
     cursor: pointer;
     border-radius: 3px;
-    transition: all 0.2s ease;
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    transition: all 0.15s;
+    line-height: 1.4;
+    text-decoration: none;
+    color: inherit;
   }
 
   .icon-btn:hover {
-    background-color: rgba(60, 60, 70, 0.8);
-    border-color: rgba(139, 92, 46, 0.6);
-    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+    border-color: var(--border-active);
+    background: var(--bg-elevated);
   }
 
-  .details-btn {
-    min-width: 1.5rem;
-    text-decoration: none;
+  /* Hero cell */
+  .match-hero {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
   }
 
-  .copy-btn {
-    min-width: 1.5rem;
+  .match-hero span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .opendota-btn {
-    min-width: 1.5rem;
-  }
-
-  .parse-btn {
-    padding: 6px 14px;
-    font-size: 0.85em;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .parse-btn.unparsed {
-    background: linear-gradient(180deg, rgba(60, 60, 70, 0.8) 0%, rgba(40, 40, 50, 0.8) 100%);
-    border-color: rgba(100, 100, 110, 0.6);
-    color: #e0e0e0;
-  }
-
-  .parse-btn.unparsed:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 70, 80, 0.9) 0%, rgba(50, 50, 60, 0.9) 100%);
-    transform: translateY(-1px);
-  }
-
-  .parse-btn.failed {
-    background: linear-gradient(180deg, rgba(100, 40, 40, 0.8) 0%, rgba(80, 30, 30, 0.8) 100%);
-    border-color: rgba(139, 46, 46, 0.6);
-    color: #ff6b6b;
-  }
-
-  .parse-btn.failed:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(120, 50, 50, 0.9) 0%, rgba(100, 40, 40, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(255, 100, 100, 0.3);
-  }
-
-  .parse-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .parse-state {
-    padding: 6px 14px;
-    font-size: 0.85em;
-    border-radius: 3px;
-    font-weight: bold;
-    display: inline-block;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .parse-state.parsing {
-    color: #ffc107;
-    text-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
-  }
-
-  .parse-state.parsed {
-    color: #60c040;
-    text-shadow: 0 0 10px rgba(96, 192, 64, 0.5);
-  }
-
-  .parse-btn.parsed {
-    background: linear-gradient(180deg, rgba(60, 100, 40, 0.8) 0%, rgba(40, 80, 30, 0.8) 100%);
-    border-color: rgba(100, 200, 80, 0.6);
-    color: #e0e0e0;
-  }
-
-  .parse-btn.parsed:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 120, 50, 0.9) 0%, rgba(50, 100, 40, 0.9) 100%);
-    box-shadow: 0 0 15px rgba(100, 255, 100, 0.3);
-  }
-
-  .parse-state.failed {
-    color: #ff6b6b;
-    text-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
-  }
-
-  /* Modal styles */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    padding: 1rem;
-  }
-
-  .modal-content {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.98) 0%, rgba(20, 20, 30, 0.98) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
-    border-radius: 8px;
-    box-shadow:
-      0 8px 40px rgba(0, 0, 0, 0.9),
-      0 0 100px rgba(255, 100, 0, 0.2);
-    max-width: 700px;
-    width: 100%;
-    max-height: 85vh;
-    overflow-y: auto;
-  }
-
-  .modal-header {
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 2px solid rgba(139, 92, 46, 0.6);
-  }
-
-  .modal-header h2 {
-    margin: 0;
-    font-size: 1.5rem;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 2px;
-  }
-
-  .close-btn {
-    background: rgba(60, 60, 70, 0.6);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    font-size: 1.5rem;
-    line-height: 1;
-    cursor: pointer;
-    color: #d4af37;
-    padding: 0;
-    width: 2rem;
-    height: 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 3px;
-    transition: all 0.3s ease;
-  }
-
-  .close-btn:hover {
-    color: #e0c050;
-    background: rgba(70, 70, 80, 0.8);
-    border-color: rgba(139, 92, 46, 0.6);
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-  }
-
-  .modal-body {
-    padding: 1.5rem;
-  }
-
-  .match-summary {
-    background: rgba(30, 30, 40, 0.6);
-    border: 1px solid rgba(139, 92, 46, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.6);
-    padding: 1rem;
-    border-radius: 3px;
-    margin-bottom: 1.5rem;
-  }
-
-  .match-summary p {
-    margin: 0.5rem 0;
-    color: #e0e0e0;
-  }
-
-  .win-text {
-    color: #60c040;
-    font-weight: 600;
-    text-shadow: 0 0 10px rgba(96, 192, 64, 0.3);
-  }
-
-  .loss-text {
-    color: #ff6b6b;
-    font-weight: 600;
-    text-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
-  }
-
-  .no-applicable-goals {
-    color: #a0a0a0;
-    font-style: italic;
-    text-align: center;
-    padding: 2rem 0;
-  }
-
-  .goals-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .goal-detail-card {
-    display: flex;
-    gap: 1rem;
-    padding: 1.2rem;
-    border-radius: 3px;
-    border: 2px solid;
-    transition: all 0.3s ease;
-  }
-
-  .goal-detail-card.achieved {
-    background: linear-gradient(90deg, rgba(60, 100, 40, 0.3) 0%, rgba(40, 80, 30, 0.3) 100%);
-    border-color: rgba(100, 200, 80, 0.6);
-    border-left: 4px solid #60c040;
-  }
-
-  .goal-detail-card.not-achieved {
-    background: linear-gradient(90deg, rgba(100, 40, 40, 0.3) 0%, rgba(80, 30, 30, 0.3) 100%);
-    border-color: rgba(139, 46, 46, 0.6);
-    border-left: 4px solid #ff6b6b;
-  }
-
-  .goal-detail-card:hover {
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
-  }
-
-  .goal-status-indicator {
-    font-size: 1.2rem;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
+  .hero-icon-wrap {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    overflow: hidden;
     flex-shrink: 0;
   }
 
-  .goal-detail-card.achieved .goal-status-indicator {
-    color: #60c040;
-    background-color: rgba(96, 192, 64, 0.3);
-    box-shadow: 0 0 15px rgba(100, 255, 100, 0.3);
-  }
-
-  .goal-detail-card.not-achieved .goal-status-indicator {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.3);
-    box-shadow: 0 0 15px rgba(255, 100, 100, 0.3);
-  }
-
-  .goal-detail-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .goal-detail-title {
+  /* Result */
+  .result-win {
+    color: var(--green);
     font-weight: 600;
-    font-size: 0.95rem;
-    color: #e0e0e0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
   }
 
-  .goal-detail-target,
-  .goal-detail-actual {
-    font-size: 0.9rem;
-    color: #b0b0b0;
+  .result-loss {
+    color: var(--red);
+    font-weight: 600;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
   }
+
+  .kda {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .td-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .no-goals-text {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .parsing-spinner {
+    display: inline-block;
+    animation: spin 2s linear infinite;
+    font-size: 14px;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .parse-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .parse-btn:hover:not(:disabled) {
+    border-color: var(--border-active);
+    color: var(--gold);
+  }
+
+  .parse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Pagination */
   .pagination {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1.5rem;
-    padding: 20px;
-    margin-top: 20px;
-    background: rgba(30, 30, 40, 0.5);
-    border: 2px solid rgba(139, 92, 46, 0.3);
-    border-radius: 5px;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     flex-wrap: wrap;
   }
 
   .pagination-info {
-    color: #a0a0a0;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: 12px;
     white-space: nowrap;
   }
+
+  .filter-note { color: var(--text-muted); margin-left: 4px; }
 
   .pagination-controls {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 6px;
     flex: 1;
     justify-content: center;
   }
 
   .pagination-btn {
-    padding: 8px 16px;
-    background: linear-gradient(180deg, rgba(60, 60, 70, 0.8) 0%, rgba(40, 40, 50, 0.8) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 0.9rem;
+    padding: 6px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
     font-weight: 600;
+    letter-spacing: 1px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s;
     white-space: nowrap;
   }
 
   .pagination-btn:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 70, 80, 0.9) 0%, rgba(50, 50, 60, 0.9) 100%);
-    border-color: rgba(139, 92, 46, 0.6);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    border-color: var(--border-active);
+    color: var(--text-primary);
   }
 
-  .pagination-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .page-numbers {
-    display: flex;
-    gap: 0.25rem;
-    align-items: center;
-  }
+  .page-numbers { display: flex; gap: 4px; align-items: center; }
 
   .page-btn {
-    min-width: 2.5rem;
-    height: 2.5rem;
-    padding: 0.5rem;
-    background: rgba(30, 30, 40, 0.6);
-    border: 2px solid rgba(139, 92, 46, 0.3);
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 0.85rem;
-    font-weight: 600;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
   }
 
-  .page-btn:hover {
-    background: rgba(40, 40, 50, 0.8);
-    border-color: rgba(139, 92, 46, 0.5);
-    color: #d4af37;
-  }
+  .page-btn:hover { border-color: var(--border-active); color: var(--gold); }
 
   .page-btn.active {
-    background: linear-gradient(180deg, rgba(60, 80, 40, 0.8) 0%, rgba(40, 60, 30, 0.8) 100%);
-    border-color: #d4af37;
-    color: #d4af37;
-    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+    background: rgba(240, 180, 41, 0.12);
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--gold);
   }
 
-  .page-ellipsis {
-    color: #808080;
-    padding: 0 0.25rem;
-  }
+  .page-ellipsis { color: var(--text-muted); padding: 0 4px; font-size: 12px; }
 
   .page-size-selector {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     white-space: nowrap;
   }
 
   .page-size-selector label {
-    color: #a0a0a0;
-    font-size: 0.9rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .page-size-selector select {
-    padding: 8px 12px;
-    background-color: rgba(30, 30, 40, 0.8);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 0.9rem;
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+
+  .modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border-active);
+    border-radius: 10px;
+    max-width: 640px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .modal-close {
+    width: 30px;
+    height: 30px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s;
   }
 
-  .page-size-selector select:focus {
-    border-color: rgba(139, 92, 46, 0.8);
-    outline: none;
-    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+  .modal-close:hover { color: var(--text-primary); border-color: var(--border-active); }
+
+  .modal-body { padding: 20px 24px; }
+
+  .match-summary {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--bg-elevated);
+    border-radius: 6px;
+    font-size: 13px;
   }
 
-  @media (max-width: 768px) {
-    .pagination {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .pagination-info,
-    .pagination-controls,
-    .page-size-selector {
-      justify-content: center;
-    }
-
-    .page-numbers {
-      flex-wrap: wrap;
-    }
+  .no-applicable-goals {
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+    padding: 24px 0;
+    font-size: 13px;
   }
+
+  .goals-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .goal-eval-card {
+    display: flex;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 6px;
+    border: 1px solid;
+    align-items: flex-start;
+  }
+
+  .goal-eval-card.achieved {
+    background: rgba(74, 222, 128, 0.06);
+    border-color: rgba(74, 222, 128, 0.3);
+  }
+
+  .goal-eval-card:not(.achieved) {
+    background: rgba(248, 113, 113, 0.06);
+    border-color: rgba(248, 113, 113, 0.25);
+  }
+
+  .eval-status {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .goal-eval-card.achieved .eval-status { color: var(--green); background: rgba(74, 222, 128, 0.15); }
+  .goal-eval-card:not(.achieved) .eval-status { color: var(--red); background: rgba(248, 113, 113, 0.15); }
+
+  .eval-info { flex: 1; }
+
+  .eval-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .eval-detail { font-size: 12px; color: var(--text-secondary); }
 </style>
