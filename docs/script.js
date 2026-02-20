@@ -21,8 +21,8 @@ async function loadLatestRelease() {
         data.assets.forEach(asset => {
             const name = asset.name.toLowerCase();
 
-            // Windows .msi.zip
-            if (name.endsWith('.msi.zip')) {
+            // Windows .msi (NOT .msi.zip)
+            if (name.endsWith('.msi')) {
                 const windowsBtn = document.querySelector('#dl-windows');
                 if (windowsBtn) {
                     windowsBtn.href = asset.browser_download_url;
@@ -35,7 +35,7 @@ async function loadLatestRelease() {
                     linuxBtn.href = asset.browser_download_url;
                 }
             }
-            // macOS Apple Silicon (aarch64)
+            // macOS Apple Silicon (aarch64) - check before x64 to avoid conflicts
             else if (name.includes('aarch64') && name.endsWith('.app.tar.gz')) {
                 const macosArmBtn = document.querySelector('#dl-macos-arm');
                 if (macosArmBtn) {
