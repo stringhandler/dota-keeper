@@ -1,23 +1,23 @@
 {
-  "version": "0.2.0",
-  "notes": "Release v0.2.0",
-  "pub_date": "2026-02-20T08:02:55Z",
+  "version": "0.2.1",
+  "notes": "Release v0.2.1",
+  "pub_date": "2026-02-20T20:24:38Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2wrWEl5WnNBeDNsVG9PaFUwcTAyRWsvQmNSc0FwZjlSOG9XWlVPTXpjcVIzME8xclRrNmNnc3Z4KytWNk5maWpYZUQ4blhNL0FteWo1Q2Rqc2ZWZmdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNTc0NTEyCWZpbGU6ZG90YS1rZWVwZXJfMC4yLjBfeDY0X2VuLVVTLm1zaQpKZ2NBdDFlcHAxQzBqTDVuVTBLaXBCbUNYbFBPejgzOWpEYjdYVzBDOUhTZ3IyZFNyTFFnd2VoVFFqUXMxMU5MRFJ0SS8rYXRkcUxjMVpxTndvMHhBUT09Cg==",
-      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.0/dota-keeper_0.2.0_x64_en-US.msi.zip"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2tUcHdreVhIZHJqQUMzZDV0bXBVODNYYmdmY281UDNxVlJWSVNLd2NSYUtWZDZXVmpUK29vVjNpbC91UEdJc0d2YjlQcWVtVnhqQXdOVWZTUkZqSkE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE5MDU3CWZpbGU6ZG90YS1rZWVwZXJfMC4yLjFfeDY0X2VuLVVTLm1zaQorY0dDNkU2ODNKTlZMWSsrNXh2WkFPZCtybGZsMEduNDJMeDdPSmJUa3BCQUVMbHhrL2tNZlluSW93dHU4b1kreHZHTVZjRzBlUk9YNXdzMXpPbGdEUT09Cg==",
+      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.1/dota-keeper_0.2.1_x64_en-US.msi.zip"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3BhNUZqTUpYMU5UaUowbFNSK1JDZnU1VmJZZExUMGxMb200bFU2RXVEQk9aM3QrYkE1T0t1ZlQ1TFBIUTF6NGl4Qk80OGFjTGs2UFBKSnd5L0hhblFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNTc0NDQxCWZpbGU6ZG90YS1rZWVwZXJfMC4yLjBfYW1kNjQuZGViCnFJMWg5R0g0czRGNGFBM0JBT3o2bWc1TEY3T1VEMGV1MEVISE95M1o5b0FoRmpNc0JqRzlFUVI5MXkwdVRxc3ZyOXhNNjBHRlA0NlRaclVYSUo3aEJnPT0K",
-      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.0/dota-keeper_0.2.0_amd64.AppImage.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2daWHVaRzc5ZC9IM3BhUUtFRWE3eS9YVWNQblpQaXFtcGI0OW9HVTh6VVoyMlM0dit1SEZZZkJ5OGUydzRoTC9YZUdUQVRxVnFHb1ZDQ1FCSlhGaWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE5MDA0CWZpbGU6ZG90YS1rZWVwZXJfMC4yLjFfYW1kNjQuZGViCnJLVkF6RVNlRllBYXhKWXBPS2hKSHhtZ1phcFdKc0xFditBLzAzWVpVOGJGcWVjUkVwL2VzSm5CcTZNVDI5WWVFbmFVUTIzZTZjSVgwazRmTUw3ZkJRPT0K",
+      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.1/dota-keeper_0.2.1_amd64.AppImage.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2kzK0tQSFRQNHY5ZzA4NTdRandMelltemJlZllzaFZqK0Y0amFhM2E4SWc3ZEpJRi9sMDJwWE9VVmhZY09WNkpjZXVTeU8vWEN1VXAwWitlSXhlZFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNTc0NTUxCWZpbGU6ZG90YS1rZWVwZXIuYXBwLnRhci5negpBdTM4MFpRMmRlNCtSaG9lenR5NVdKUW9TRkdpT0NDZFNBclRMM1MxR2ZlK3BvbUYrcWsvMWtwYVVpdVJsU0xDRitmZFIzLytJYzJwZWpBaDhDVk9EQT09Cg==",
-      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.0/dota-keeper_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3A1Rkx0QWpXd3ZieTRiVStkZjlHdDRKWkdIalZ5Z1J6bE5xcGpGUHhlY0RXOVBJQTUzMGhEOUFIaEt1UGVMMU5SdkRwaGxObFNEK2VjbUhvL0Q1U3dBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE4ODIyCWZpbGU6ZG90YS1rZWVwZXIuYXBwLnRhci5negpURzR6WDU5RUVCVTNtNlp1UXE5Q3hKK1FzUGZJTk9DMW85d2tBQmg5dU9HNkFBMjZ0cFpNV1BjbmxIWGpTMXhwQUJySStBN0NNL0I5M0NUendtVlNEZz09Cg==",
+      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.1/dota-keeper_x64.app.tar.gz"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2dMVkFMV0VFbkI5dUUrNzNYbnkwUGZLOVFQYVIvUEg5WVVQVElKQWdkOWJ4UnVHMjBuTE1qbnlQU00zYXVNakNUTlRYUlZNWHUxVDc3RzNEczdqVVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNTc0MzQ4CWZpbGU6ZG90YS1rZWVwZXIuYXBwLnRhci5negpZNEgzQVMwb0U0dXFwOEpiUktneWVoWDI2UGRiRUFGR2tEVU1nb3ltbHJ3UjNualZ0SkM3L2VVSDdTZFZYc2dXNVd0ZFAxQm5GSFpRMEtFbmlYUkRCdz09Cg==",
-      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.0/dota-keeper_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3JnclZ3aGlHSHR3T3pJRVIrUWZwbG1HYjkvalZDU01KVnZ5d1JpWnBSYnJuQUhuc0dRZ3ZSVWVOYUVhWXhXUzFuV1FiYy91QVRKNkdwVFg5SjNhMGdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE4OTkzCWZpbGU6ZG90YS1rZWVwZXIuYXBwLnRhci5negpMVnd6N1Z6dmZFUXpyTDBNd1J2aXo4T3BLbklCSExJWWhSdWpnN1ZwVFJVdXRmWTNIc0RqeUdYR1ZrMjB5L2VQTXhIL3BaN2pDTENNa1U3QWhmT1ZEZz09Cg==",
+      "url": "https://github.com/stringhandler/dota-goals/releases/download/v0.2.1/dota-keeper_aarch64.app.tar.gz"
     }
   }
 }
