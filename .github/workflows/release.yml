@@ -177,19 +177,19 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "${WIN_SIG}",
-                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi.zip"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi.zip"
               },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
-                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_${VERSION}_amd64.AppImage.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_amd64.AppImage.tar.gz"
               },
               "darwin-x86_64": {
                 "signature": "${MACOS_X64_SIG}",
-                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_x64.app.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_x64.app.tar.gz"
               },
               "darwin-aarch64": {
                 "signature": "${MACOS_ARM_SIG}",
-                "url": "https://github.com/stringhandler/dota-goals/releases/download/v${VERSION}/dota-keeper_aarch64.app.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_aarch64.app.tar.gz"
               }
             }
           }
