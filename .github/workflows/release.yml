@@ -177,7 +177,7 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "${WIN_SIG}",
-                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi.zip"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi"
               },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
