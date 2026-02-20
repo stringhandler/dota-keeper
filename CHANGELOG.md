@@ -5,6 +5,21 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-20
+
+### Changed
+- **Complete UI Redesign**: New tactical dark theme with refined color palette (dark blue-grey base, gold accents, teal highlights)
+- **New Typography**: Upgraded to Google Fonts — Rajdhani (headings), Barlow Condensed (labels/buttons), Barlow (body text)
+- **Redesigned Layout**: 220px sidebar with streamlined navigation, new topbar with page titles and quick actions, fixed-height layout with scrollable content area
+- **Dashboard Overhaul**: Added quick stats strip (Win Rate 7d, Avg CS @ 10min, Goals Hit 7d, Active Goals), goal cards with 7-dot hit/miss indicators, clickable goal rows
+- **Matches Page**: Added filter chips (All/Wins/Losses/Ranked/Turbo/per-hero), mode tags, goals achievement chips, streamlined table layout
+- **Analysis Page**: 2-column card grid layout, horizontal filters, contextual insights based on goals, decorative sparkline visualizations
+- **Goals Page**: Inline horizontal create form, goal cards with inline Edit/Delete buttons, contextual warnings when player average exceeds goal target
+- **Sidebar Updates**: Rank pill display at bottom, gold active state indicators, refreshed navigation icons
+
+### Fixed
+- Svelte 5 `{@const}` placement errors in analysis and matches pages
+
 ## [0.1.10] - 2026-02-19
 
 ### Added
