@@ -4,6 +4,7 @@
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
+  import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
 
   let databasePath = $state("");
   let isLoading = $state(true);
@@ -16,6 +17,8 @@
   let suggestionDifficulty = $state("Medium");
   let customPercentage = $state(10);
   let isSavingDifficulty = $state(false);
+  let analyticsConsent = $state("NotYet");
+  let isSavingAnalytics = $state(false);
   let appVersion = $state("");
   let checkingUpdate = $state(false);
   let updateResult = $state(null);
@@ -26,7 +29,11 @@
     await loadDatabasePath();
     await loadSteamId();
     await loadDifficulty();
+    await loadAnalytics();
     await loadAppVersion();
+
+    // Track page view
+    trackPageView("Settings");
   });
 
   async function loadDatabasePath() {
@@ -60,6 +67,15 @@
     }
   }
 
+  async function loadAnalytics() {
+    try {
+      const settings = await invoke("get_settings");
+      analyticsConsent = settings.analytics_consent ?? "NotYet";
+    } catch (e) {
+      console.error("Failed to load analytics setting:", e);
+    }
+  }
+
   async function saveDifficulty() {
     error = "";
     successMessage = "";
@@ -75,6 +91,30 @@
       error = `Failed to save difficulty: ${e}`;
     } finally {
       isSavingDifficulty = false;
+    }
+  }
+
+  async function saveAnalytics(consent) {
+    error = "";
+    successMessage = "";
+    isSavingAnalytics = true;
+    try {
+      await invoke("save_analytics_consent", { consent });
+      analyticsConsent = consent;
+      // Update the analytics module's cached state
+      updateAnalyticsConsent(consent);
+
+      if (consent === "Accepted") {
+        successMessage = "Analytics enabled. Thank you for helping improve Dota Keeper!";
+      } else if (consent === "Declined") {
+        successMessage = "Analytics disabled. No data will be sent.";
+      } else {
+        successMessage = "Analytics preference reset.";
+      }
+    } catch (e) {
+      error = `Failed to save analytics setting: ${e}`;
+    } finally {
+      isSavingAnalytics = false;
     }
   }
 
@@ -265,6 +305,48 @@
       >
         {isSavingDifficulty ? "Saving..." : "Save"}
       </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Privacy</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Anonymous Analytics</h3>
+        <p class="setting-description">
+          Help improve Dota Keeper by sending anonymous usage data. We track page views, feature usage, and errors to understand how the app is used.
+        </p>
+        <p class="setting-description" style="margin-top: 0.5rem;">
+          <strong>What we collect:</strong> App version, platform, page views, feature usage events (e.g. "goal created", "challenge accepted").
+        </p>
+        <p class="setting-description" style="margin-top: 0.5rem;">
+          <strong>What we DON'T collect:</strong> Steam ID, match IDs, hero choices, goal descriptions, or any personally identifiable information.
+        </p>
+        <div class="analytics-options" style="margin-top: 1rem;">
+          <label class="radio-label">
+            <input
+              type="radio"
+              name="analytics"
+              value="Accepted"
+              checked={analyticsConsent === "Accepted"}
+              onchange={() => saveAnalytics("Accepted")}
+              disabled={isSavingAnalytics}
+            />
+            <span>Accept — Help improve Dota Keeper</span>
+          </label>
+          <label class="radio-label">
+            <input
+              type="radio"
+              name="analytics"
+              value="Declined"
+              checked={analyticsConsent === "Declined"}
+              onchange={() => saveAnalytics("Declined")}
+              disabled={isSavingAnalytics}
+            />
+            <span>Decline — Don't send usage data</span>
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -867,5 +949,43 @@
   .install-update-btn {
     width: 100%;
   }
+}
+
+.analytics-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.radio-label:hover {
+  background: rgba(240, 180, 41, 0.05);
+}
+
+.radio-label input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #d4af37;
+}
+
+.radio-label input[type="radio"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.radio-label span {
+  font-weight: 500;
 }
 </style>

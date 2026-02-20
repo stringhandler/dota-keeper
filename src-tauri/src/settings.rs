@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum AnalyticsConsent {
+    Accepted,
+    Declined,
+    NotYet,
+}
+
+impl Default for AnalyticsConsent {
+    fn default() -> Self {
+        AnalyticsConsent::NotYet
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub steam_id: Option<String>,
@@ -9,6 +22,8 @@ pub struct Settings {
     pub suggestion_difficulty: String,
     #[serde(default)]
     pub suggestion_custom_percentage: Option<f64>,
+    #[serde(default)]
+    pub analytics_consent: AnalyticsConsent,
 }
 
 impl Default for Settings {
@@ -17,6 +32,7 @@ impl Default for Settings {
             steam_id: None,
             suggestion_difficulty: Self::default_difficulty(),
             suggestion_custom_percentage: None,
+            analytics_consent: AnalyticsConsent::default(),
         }
     }
 }

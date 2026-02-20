@@ -5,6 +5,7 @@
   import { onMount, onDestroy } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import { trackPageView } from "$lib/analytics.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -51,6 +52,9 @@
     autoRefreshTimer = setInterval(async () => {
       await autoRefreshAndParse();
     }, 30000);
+
+    // Track page view
+    trackPageView("Matches");
   });
 
   onDestroy(() => {

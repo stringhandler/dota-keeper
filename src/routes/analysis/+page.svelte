@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { getHeroName, heroes } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import { trackPageView } from "$lib/analytics.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -35,6 +36,9 @@
       loadGoals(),
     ]);
     await loadAnalysis();
+
+    // Track page view
+    trackPageView("Analysis");
   });
 
   async function loadFavorites() {

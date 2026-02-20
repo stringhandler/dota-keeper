@@ -5,6 +5,8 @@
   import { goto } from "$app/navigation";
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
+  import { getAnalyticsConsent } from "$lib/analytics.js";
+  import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import '../app.css';
 
   let isLoading = $state(true);
@@ -16,10 +18,17 @@
   let updateVersion = $state("");
   let isUpdating = $state(false);
   let dailyProgress = $state(null);
+  let showConsentModal = $state(false);
 
   onMount(async () => {
     await loadSettings();
     await checkForUpdates();
+
+    // Check analytics consent on every startup
+    const consent = await getAnalyticsConsent();
+    if (consent === "NotYet") {
+      showConsentModal = true;
+    }
   });
 
   async function loadSettings() {
@@ -256,6 +265,11 @@
       </div>
     </div>
   </div>
+{/if}
+
+<!-- Analytics Consent Modal -->
+{#if showConsentModal}
+  <AnalyticsConsentModal onClose={() => showConsentModal = false} />
 {/if}
 
 <style>

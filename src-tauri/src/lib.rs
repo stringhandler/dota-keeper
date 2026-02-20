@@ -2,6 +2,7 @@ mod database;
 mod opendota;
 mod settings;
 mod items;
+mod analytics;
 
 use database::{
     clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
@@ -20,7 +21,7 @@ use database::{
     ChallengeOption, WeeklyChallenge, WeeklyChallengeProgress, ChallengeHistoryItem,
 };
 use serde_json;
-use settings::Settings;
+use settings::{Settings, AnalyticsConsent};
 use tauri::Emitter;
 /// Get the current settings
 #[tauri::command]
@@ -48,6 +49,30 @@ fn save_suggestion_difficulty(
     settings.suggestion_custom_percentage = custom_percentage;
     settings.save()?;
     Ok(settings)
+}
+
+/// Update analytics consent setting
+#[tauri::command]
+fn save_analytics_consent(consent: String) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.analytics_consent = match consent.as_str() {
+        "Accepted" => AnalyticsConsent::Accepted,
+        "Declined" => AnalyticsConsent::Declined,
+        _ => AnalyticsConsent::NotYet,
+    };
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Track an analytics event (async, fails silently)
+#[tauri::command]
+async fn track_event(
+    event: String,
+    properties: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let settings = Settings::load();
+    let is_accepted = settings.analytics_consent == AnalyticsConsent::Accepted;
+    analytics::track_event(event, properties, is_accepted).await
 }
 
 /// Clear the Steam ID (logout)
@@ -779,6 +804,8 @@ pub fn run() {
             get_daily_challenge_progress_cmd,
             get_daily_streak_cmd,
             save_suggestion_difficulty,
+            save_analytics_consent,
+            track_event,
             get_weekly_challenge_options_cmd,
             reroll_weekly_challenges_cmd,
             skip_weekly_challenge_cmd,

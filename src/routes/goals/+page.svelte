@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { heroes, getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import { trackPageView, trackEvent } from "$lib/analytics.js";
 
   let goals = $state([]);
   let isLoading = $state(true);
@@ -36,6 +37,9 @@
     const favs = await invoke("get_favorite_heroes").catch(() => []);
     favoriteHeroIds = new Set(favs);
     await Promise.all([loadGoals(), loadItems(), loadAnalysisForWarnings()]);
+
+    // Track page view
+    trackPageView("Goals");
   });
 
   async function loadGoals() {
@@ -152,6 +156,7 @@
             created_at: editingGoal.created_at,
           },
         });
+        trackEvent("goal_updated", { metric: formMetric, game_mode: formGameMode });
       } else {
         await invoke("create_goal", {
           goal: {
@@ -163,6 +168,7 @@
             game_mode: formGameMode,
           },
         });
+        trackEvent("goal_created", { metric: formMetric, game_mode: formGameMode });
       }
       resetForm();
       await loadGoals();
