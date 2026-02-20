@@ -5,7 +5,7 @@
   "platforms": {
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2tUcHdreVhIZHJqQUMzZDV0bXBVODNYYmdmY281UDNxVlJWSVNLd2NSYUtWZDZXVmpUK29vVjNpbC91UEdJc0d2YjlQcWVtVnhqQXdOVWZTUkZqSkE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE5MDU3CWZpbGU6ZG90YS1rZWVwZXJfMC4yLjFfeDY0X2VuLVVTLm1zaQorY0dDNkU2ODNKTlZMWSsrNXh2WkFPZCtybGZsMEduNDJMeDdPSmJUa3BCQUVMbHhrL2tNZlluSW93dHU4b1kreHZHTVZjRzBlUk9YNXdzMXpPbGdEUT09Cg==",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.1/dota-keeper_0.2.1_x64_en-US.msi.zip"
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.1/dota-keeper_0.2.1_x64_en-US.msi"
     },
     "linux-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2daWHVaRzc5ZC9IM3BhUUtFRWE3eS9YVWNQblpQaXFtcGI0OW9HVTh6VVoyMlM0dit1SEZZZkJ5OGUydzRoTC9YZUdUQVRxVnFHb1ZDQ1FCSlhGaWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxNjE5MDA0CWZpbGU6ZG90YS1rZWVwZXJfMC4yLjFfYW1kNjQuZGViCnJLVkF6RVNlRllBYXhKWXBPS2hKSHhtZ1phcFdKc0xFditBLzAzWVpVOGJGcWVjUkVwL2VzSm5CcTZNVDI5WWVFbmFVUTIzZTZjSVgwazRmTUw3ZkJRPT0K",
