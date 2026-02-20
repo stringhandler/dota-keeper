@@ -66,6 +66,23 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
+      - name: Extract changelog for this version
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Extract the section for this version from CHANGELOG.md
+          # Finds content between ## [VERSION] and the next ## [
+          CHANGELOG=$(awk "/## \[${VERSION}\]/{flag=1; next} /## \[/{flag=0} flag" CHANGELOG.md)
+
+          # Output to GitHub Actions in multiline format
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "Extracted changelog:"
+          echo "$CHANGELOG"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +92,7 @@ jobs:
         with:
           tagName: v${{ steps.version.outputs.VERSION }}
           releaseName: 'Dota Keeper v${{ steps.version.outputs.VERSION }}'
-          releaseBody: 'See the assets below to download this release.'
+          releaseBody: ${{ steps.changelog.outputs.CHANGELOG }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
