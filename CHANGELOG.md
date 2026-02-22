@@ -5,6 +5,20 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-02-22
+
+### Changed
+- **Match Details Redesign**: Enhanced match details page with improved layout and visual presentation
+- **Goal Details Redesign**: Refreshed goal details page for better readability and user experience
+- **Challenges Redesign**: Updated challenges page with new design and improved navigation
+- **UI Updates**: Various user interface improvements across multiple pages
+
+### Added
+- **Logout in Settings**: Added logout functionality in settings page
+- **Enhanced Analytics**: Improved PostHog tracking for better insights
+- **New Icons**: Updated iconography throughout the application
+- **Contributing Guidelines**: Added contribution documentation for developers
+
 ## [0.2.2] - 2026-02-20
 
 ### Fixed
