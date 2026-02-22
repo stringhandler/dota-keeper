@@ -74,6 +74,15 @@ fn save_analytics_consent(consent: String) -> Result<Settings, String> {
     Ok(settings)
 }
 
+/// Identify the user in analytics (should be called once on app start)
+#[tauri::command]
+async fn identify_analytics_user() -> Result<(), String> {
+    let settings = Settings::load();
+    let is_accepted = settings.analytics_consent == AnalyticsConsent::Accepted;
+    let installation_id = settings.installation_id.clone();
+    analytics::identify_user(is_accepted, installation_id).await
+}
+
 /// Track an analytics event (async, fails silently)
 #[tauri::command]
 async fn track_event(
@@ -817,6 +826,7 @@ pub fn run() {
             get_daily_streak_cmd,
             save_suggestion_difficulty,
             save_analytics_consent,
+            identify_analytics_user,
             track_event,
             get_weekly_challenge_options_cmd,
             reroll_weekly_challenges_cmd,

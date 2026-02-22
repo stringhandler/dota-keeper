@@ -5,7 +5,7 @@
   import { goto } from "$app/navigation";
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
-  import { getAnalyticsConsent } from "$lib/analytics.js";
+  import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import '../app.css';
 
@@ -28,6 +28,9 @@
     const consent = await getAnalyticsConsent();
     if (consent === "NotYet") {
       showConsentModal = true;
+    } else if (consent === "Accepted") {
+      // Identify user for analytics once on app start
+      await identifyUser();
     }
   });
 

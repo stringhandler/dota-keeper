@@ -64,7 +64,15 @@ export async function trackEvent(event, properties = null) {
  * @param {string} pageName - Name of the page (e.g. "Dashboard", "Goals")
  */
 export async function trackPageView(pageName) {
-  await trackEvent("page_view", { page: pageName });
+  // Get the current URL path
+  const pathname = window.location.pathname;
+  const url = window.location.href;
+
+  await trackEvent("$pageview", {
+    page: pageName,
+    $current_url: url,
+    $pathname: pathname,
+  });
 }
 
 /**
@@ -75,4 +83,27 @@ export async function trackPageView(pageName) {
 export function updateAnalyticsConsent(consent) {
   analyticsConsent = consent;
   settingsLoaded = true;
+}
+
+/**
+ * Identify the user in analytics
+ * Should be called once when the app starts
+ */
+export async function identifyUser() {
+  // Lazy-load settings on first call
+  if (!settingsLoaded) {
+    await loadSettings();
+  }
+
+  // Only identify if user has explicitly accepted
+  if (analyticsConsent !== "Accepted") {
+    return;
+  }
+
+  try {
+    await invoke("identify_analytics_user");
+  } catch (e) {
+    // Fail silently - analytics should never break the UI
+    console.error("Analytics identification failed:", e);
+  }
 }

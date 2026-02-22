@@ -1,6 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { updateAnalyticsConsent } from "$lib/analytics.js";
+  import { updateAnalyticsConsent, identifyUser } from "$lib/analytics.js";
 
   let { onClose = () => {} } = $props();
   let isSaving = $state(false);
@@ -10,6 +10,12 @@
     try {
       await invoke("save_analytics_consent", { consent });
       updateAnalyticsConsent(consent);
+
+      // If user accepted, identify them in analytics
+      if (consent === "Accepted") {
+        await identifyUser();
+      }
+
       onClose();
     } catch (e) {
       console.error("Failed to save consent:", e);
