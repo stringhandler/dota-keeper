@@ -491,14 +491,14 @@
                 y1={y}
                 x2="950"
                 y2={y}
-                stroke="rgba(139, 92, 46, 0.2)"
+                stroke="rgba(255, 200, 80, 0.1)"
                 stroke-width="1"
               />
               <text
                 x="70"
                 y={y + 5}
                 text-anchor="end"
-                fill="#a0a0a0"
+                fill="var(--text-muted)"
                 font-size="12"
               >
                 {value}
@@ -516,7 +516,7 @@
                 y1="50"
                 x2={targetX}
                 y2="350"
-                stroke="#d4af37"
+                stroke="var(--gold)"
                 stroke-width="3"
                 stroke-dasharray="5,5"
               />
@@ -524,7 +524,7 @@
                 x={targetX}
                 y="40"
                 text-anchor="middle"
-                fill="#d4af37"
+                fill="var(--gold)"
                 font-size="14"
                 font-weight="bold"
               >
@@ -546,8 +546,8 @@
                 y={350 - failedHeight}
                 width={barWidth - 5}
                 height={failedHeight}
-                fill="rgba(220, 53, 69, 0.6)"
-                stroke="rgba(220, 53, 69, 0.8)"
+                fill="rgba(248, 113, 113, 0.5)"
+                stroke="rgba(248, 113, 113, 0.7)"
                 stroke-width="1"
               />
 
@@ -557,8 +557,8 @@
                 y={350 - barHeight}
                 width={barWidth - 5}
                 height={achievedHeight}
-                fill="rgba(96, 192, 64, 0.6)"
-                stroke="rgba(96, 192, 64, 0.8)"
+                fill="rgba(74, 222, 128, 0.5)"
+                stroke="rgba(74, 222, 128, 0.7)"
                 stroke-width="1"
               />
 
@@ -567,7 +567,7 @@
                 x={x + barWidth / 2 - 2.5}
                 y="370"
                 text-anchor="middle"
-                fill="#a0a0a0"
+                fill="var(--text-muted)"
                 font-size="10"
               >
                 {goal.metric === "ItemTiming" ? formatSeconds(bin.start) : bin.start}
@@ -579,9 +579,9 @@
               x="500"
               y="395"
               text-anchor="middle"
-              fill="#d4af37"
-              font-size="14"
-              font-weight="bold"
+              fill="var(--text-secondary)"
+              font-size="13"
+              font-weight="600"
             >
               {goal.metric === "ItemTiming"
                 ? `${goal.item_id !== null ? getItemName(goal.item_id) : "Item"} Timing (M:SS)`
@@ -591,9 +591,9 @@
               x="30"
               y="200"
               text-anchor="middle"
-              fill="#d4af37"
-              font-size="14"
-              font-weight="bold"
+              fill="var(--text-secondary)"
+              font-size="13"
+              font-weight="600"
               transform="rotate(-90 30 200)"
             >
               Number of Matches
@@ -628,135 +628,149 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 3rem;
-    gap: 1rem;
+    padding: 48px;
+    gap: 16px;
   }
 
   .loading p {
-    color: #a0a0a0;
-    font-style: italic;
+    color: var(--text-muted);
+    font-size: 13px;
   }
 
   .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 13px;
   }
 
   .back-link {
-    color: #d4af37;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
     text-decoration: none;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
+    transition: color 0.2s;
+    display: inline-block;
+    margin-bottom: 12px;
   }
 
   .back-link:hover {
-    color: #e0c050;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+    color: var(--gold);
   }
 
   .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    padding: 24px 28px;
+    margin-bottom: 28px;
   }
 
   .header-content {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 12px;
   }
 
   .page-header h1 {
-    margin: 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-primary);
     text-transform: uppercase;
+    margin: 0;
   }
 
   .goal-description {
-    color: #a0a0a0;
+    font-size: 14px;
+    color: var(--text-secondary);
     margin: 0;
-    font-size: 0.95rem;
-    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .header-row {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 12px;
   }
 
   .edit-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
     background: transparent;
-    border: 1px solid rgba(212, 175, 55, 0.5);
-    color: #d4af37;
-    padding: 0.35rem 0.85rem;
-    border-radius: 3px;
-    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .edit-btn:hover {
-    background: rgba(212, 175, 55, 0.15);
-    border-color: rgba(212, 175, 55, 0.8);
+    border-color: var(--border-active);
+    color: var(--text-primary);
   }
 
   .edit-success {
-    color: #60c040;
-    font-size: 0.9rem;
+    color: var(--green);
+    font-size: 13px;
     margin: 0;
   }
 
   .edit-form {
-    margin-top: 0.75rem;
-    padding: 1.25rem;
-    background: rgba(20, 20, 30, 0.8);
-    border: 1px solid rgba(212, 175, 55, 0.4);
+    margin-top: 16px;
+    padding: 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     border-radius: 6px;
   }
 
   .form-row {
     display: flex;
-    gap: 1.25rem;
+    gap: 16px;
     flex-wrap: wrap;
-    margin-bottom: 0.75rem;
+    margin-bottom: 12px;
   }
 
   .form-row label {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
-    color: #a0a0a0;
-    font-size: 0.85rem;
+    gap: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   .form-select,
   .form-input {
-    background: rgba(30, 30, 40, 0.9);
-    color: #e0e0e0;
-    border: 1px solid rgba(139, 92, 46, 0.5);
-    border-radius: 3px;
-    padding: 0.4rem 0.6rem;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-select:focus,
+  .form-input:focus {
+    border-color: var(--border-active);
   }
 
   .form-input.small {
@@ -767,194 +781,200 @@
   .time-inputs {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    color: #a0a0a0;
+    gap: 6px;
+    color: var(--text-secondary);
   }
 
   .form-error {
-    color: #ff6b6b;
-    font-size: 0.9rem;
-    margin: 0 0 0.75rem 0;
+    color: var(--red);
+    font-size: 13px;
+    margin: 0 0 12px 0;
   }
 
   .form-actions {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 1rem;
+    gap: 10px;
+    margin-top: 16px;
   }
 
   .save-edit-btn {
-    background: linear-gradient(180deg, rgba(60, 100, 60, 0.9) 0%, rgba(40, 80, 40, 0.9) 100%);
-    border: 1px solid rgba(100, 180, 100, 0.5);
-    color: #e0e0e0;
-    padding: 0.5rem 1.25rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.95rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    background: var(--gold);
+    color: #080c10;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .save-edit-btn:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 120, 70, 1) 0%, rgba(50, 100, 50, 1) 100%);
+    background: var(--gold-bright);
+    transform: translateY(-1px);
   }
 
   .save-edit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none !important;
   }
 
   .cancel-edit-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
     background: transparent;
-    border: 1px solid rgba(139, 92, 46, 0.5);
-    color: #a0a0a0;
-    padding: 0.5rem 1.25rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .cancel-edit-btn:hover:not(:disabled) {
-    border-color: rgba(139, 92, 46, 0.8);
-    color: #e0e0e0;
+    border-color: var(--border-active);
+    color: var(--text-primary);
   }
 
   .content-grid {
     display: grid;
     grid-template-columns: 1fr 2fr;
-    gap: 2rem;
-    margin-bottom: 2rem;
+    gap: 24px;
+    margin-bottom: 24px;
   }
 
   section {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px),
-      repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.05) 3px, rgba(0, 0, 0, 0.05) 6px);
-    background-size: 100%, 6px 6px, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 25px;
-    border-radius: 3px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+
+  section:hover {
+    border-color: var(--border-active);
   }
 
   h2 {
-    font-size: 1.2em;
-    margin: 0 0 1.5rem 0;
-    color: #d4af37;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-primary);
     text-transform: uppercase;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
-    border-bottom: 2px solid rgba(139, 92, 46, 0.5);
-    padding-bottom: 10px;
+    margin: 0 0 20px 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
   }
 
   .filters-form {
     display: flex;
     flex-direction: column;
-    gap: 1.2rem;
+    gap: 16px;
   }
 
   .form-group {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 8px;
   }
 
   .form-group label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
     font-weight: 600;
-    font-size: 0.9rem;
-    color: #d4af37;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
   }
 
   input,
   select {
-    border-radius: 3px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    padding: 12px 16px;
-    font-size: 1em;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
     font-family: inherit;
-    background-color: rgba(30, 30, 40, 0.8);
-    color: #e0e0e0;
-    transition: all 0.3s ease;
+    outline: none;
+    transition: border-color 0.2s;
   }
 
   input:focus,
   select:focus {
-    border-color: rgba(139, 92, 46, 0.8);
-    outline: none;
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+    border-color: var(--border-active);
   }
 
   .reset-btn {
-    border-radius: 3px;
-    border: 2px solid rgba(139, 92, 46, 0.6);
-    padding: 12px 24px;
-    font-size: 1em;
-    font-weight: bold;
-    font-family: inherit;
-    cursor: pointer;
-    background: linear-gradient(180deg, rgba(60, 60, 70, 0.8) 0%, rgba(40, 40, 50, 0.8) 100%);
-    color: #e0e0e0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.3s ease;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
   }
 
   .reset-btn:hover {
-    background: linear-gradient(180deg, rgba(70, 70, 80, 0.9) 0%, rgba(50, 50, 60, 0.9) 100%);
-    border-color: rgba(139, 92, 46, 0.8);
-    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
-    transform: translateY(-2px);
+    border-color: var(--border-active);
+    color: var(--text-primary);
   }
 
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    gap: 12px;
   }
 
   .stat-card {
-    background: rgba(30, 30, 40, 0.6);
-    border: 2px solid rgba(80, 80, 90, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.6);
-    padding: 1rem;
-    border-radius: 3px;
-    transition: all 0.3s ease;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    padding: 16px;
+    border-radius: 6px;
+    transition: border-color 0.2s;
   }
 
   .stat-card:hover {
-    border-color: rgba(139, 92, 46, 0.6);
-    background: rgba(35, 35, 45, 0.8);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+    border-color: var(--border-active);
   }
 
   .stat-card.success {
-    border-left-color: rgba(96, 192, 64, 0.8);
+    border-left-color: var(--green);
   }
 
   .stat-card.failure {
-    border-left-color: rgba(220, 53, 69, 0.8);
+    border-left-color: var(--red);
   }
 
   .stat-label {
-    font-size: 0.85rem;
-    color: #a0a0a0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
   }
 
   .stat-value {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .histogram-section {
@@ -962,16 +982,16 @@
   }
 
   .no-data {
-    color: #a0a0a0;
-    font-style: italic;
+    color: var(--text-muted);
     text-align: center;
-    padding: 2rem 0;
+    padding: 32px 0;
+    font-size: 13px;
   }
 
   .histogram-container {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 16px;
   }
 
   .histogram {
@@ -983,34 +1003,34 @@
   .legend {
     display: flex;
     justify-content: center;
-    gap: 2rem;
-    padding: 1rem;
+    gap: 32px;
+    padding: 16px;
   }
 
   .legend-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
   }
 
   .legend-color {
     width: 20px;
     height: 20px;
-    border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    border: 1px solid var(--border);
   }
 
   .legend-color.achieved {
-    background: rgba(96, 192, 64, 0.6);
+    background: rgba(74, 222, 128, 0.6);
   }
 
   .legend-color.failed {
-    background: rgba(220, 53, 69, 0.6);
+    background: rgba(248, 113, 113, 0.6);
   }
 
   .legend-item span {
-    color: #e0e0e0;
-    font-size: 0.9rem;
+    font-size: 13px;
+    color: var(--text-secondary);
   }
 
   @media (max-width: 768px) {
