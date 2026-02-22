@@ -236,7 +236,6 @@
             <div class="rank-value">N/A</div>
           </div>
         </div>
-        <button class="logout-btn" onclick={handleLogout}>Logout</button>
       </div>
     </aside>
 
@@ -536,26 +535,6 @@
     font-weight: 700;
     color: var(--text-primary);
     font-size: 14px;
-  }
-
-  .logout-btn {
-    width: 100%;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
-    color: var(--text-muted);
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .logout-btn:hover {
-    border-color: var(--border-active);
-    color: var(--text-secondary);
   }
 
   /* ── MAIN AREA ── */
