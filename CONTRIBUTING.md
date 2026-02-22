@@ -196,6 +196,14 @@ git push origin main --tags
 - Add comments for complex logic
 - Use descriptive names for variables and functions
 
+## Generating icons
+
+Run
+```
+cargo tauri icon .\assets\dotakeeper-icon-black.png
+```
+
+
 ## Testing
 
 ### Frontend Testing
