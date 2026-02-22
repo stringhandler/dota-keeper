@@ -4,6 +4,16 @@ mod settings;
 mod items;
 mod analytics;
 
+use std::sync::OnceLock;
+use uuid;
+
+// Global session ID - generated once per app launch
+static SESSION_ID: OnceLock<String> = OnceLock::new();
+
+fn get_session_id() -> String {
+    SESSION_ID.get_or_init(|| uuid::Uuid::new_v4().to_string()).clone()
+}
+
 use database::{
     clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
@@ -72,7 +82,9 @@ async fn track_event(
 ) -> Result<(), String> {
     let settings = Settings::load();
     let is_accepted = settings.analytics_consent == AnalyticsConsent::Accepted;
-    analytics::track_event(event, properties, is_accepted).await
+    let installation_id = settings.installation_id.clone();
+    let session_id = get_session_id();
+    analytics::track_event(event, properties, is_accepted, installation_id, session_id).await
 }
 
 /// Clear the Steam ID (logout)

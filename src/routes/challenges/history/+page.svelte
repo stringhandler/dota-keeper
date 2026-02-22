@@ -113,178 +113,187 @@
 
 <style>
   .history-content {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
   }
 
   .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    margin-bottom: 28px;
   }
 
   .back-link {
     display: inline-block;
-    color: #d4af37;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
     text-decoration: none;
-    font-size: 0.9rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 12px;
     transition: color 0.2s;
   }
 
   .back-link:hover {
-    color: #e0c050;
+    color: var(--gold);
   }
 
   .page-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow: 0 0 20px rgba(212, 175, 55, 0.5), 2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-primary);
     text-transform: uppercase;
+    margin: 0 0 6px 0;
   }
 
   .subtitle {
-    color: #a0a0a0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
     margin: 0;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
   }
 
   .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
   }
 
   .loading, .empty {
-    color: #a0a0a0;
+    color: var(--text-muted);
     text-align: center;
-    padding: 3rem;
-    font-style: italic;
+    padding: 48px;
+    font-size: 13px;
   }
 
   .filter-tabs {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
+    gap: 8px;
+    margin-bottom: 20px;
   }
 
   .tab {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
     background: transparent;
-    border: 1px solid rgba(139, 92, 46, 0.4);
-    color: #808080;
-    padding: 0.4rem 1rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   .tab:hover {
-    color: #d4af37;
-    border-color: rgba(212, 175, 55, 0.5);
+    color: var(--text-primary);
+    border-color: var(--border-active);
   }
 
   .tab.active {
-    background: rgba(212, 175, 55, 0.15);
-    border-color: rgba(212, 175, 55, 0.6);
-    color: #d4af37;
+    background: rgba(240, 180, 41, 0.1);
+    border-color: var(--gold);
+    color: var(--gold);
   }
 
   .group {
-    margin-bottom: 2rem;
+    margin-bottom: 28px;
   }
 
   .group-label {
-    font-size: 0.85rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: #606060;
-    margin: 0 0 0.75rem 0;
-    border-bottom: 1px solid rgba(139, 92, 46, 0.2);
-    padding-bottom: 0.5rem;
+    color: var(--text-muted);
+    margin: 0 0 12px 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
   }
 
   .history-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1rem;
-    padding: 0.9rem 1.25rem;
-    margin-bottom: 0.5rem;
-    background: rgba(20, 20, 30, 0.7);
-    border: 1px solid rgba(139, 92, 46, 0.3);
-    border-left: 3px solid rgba(139, 92, 46, 0.4);
-    border-radius: 4px;
+    gap: 16px;
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 6px;
     transition: border-color 0.2s;
   }
 
+  .history-item:hover {
+    border-color: var(--border-active);
+  }
+
   .history-item.completed {
-    border-left-color: rgba(96, 192, 64, 0.7);
+    border-left-color: var(--green);
   }
 
   .history-item.failed {
-    border-left-color: rgba(255, 107, 107, 0.5);
+    border-left-color: var(--red);
   }
 
   .item-left {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 12px;
     flex: 1;
   }
 
   .item-type-badge {
-    font-size: 0.7rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 0.2rem 0.5rem;
+    letter-spacing: 1.5px;
+    padding: 4px 8px;
     border-radius: 3px;
-    background: rgba(139, 92, 46, 0.2);
-    color: #a0a0a0;
+    background: rgba(240, 180, 41, 0.1);
+    color: var(--gold);
     white-space: nowrap;
-    border: 1px solid rgba(139, 92, 46, 0.3);
+    border: 1px solid rgba(240, 180, 41, 0.2);
   }
 
   .item-type-badge.weekly {
-    background: rgba(100, 100, 200, 0.2);
-    border-color: rgba(100, 100, 200, 0.3);
-    color: #a0a0ff;
+    background: rgba(100, 130, 255, 0.1);
+    border-color: rgba(100, 130, 255, 0.2);
+    color: #8090ff;
   }
 
   .item-description {
     margin: 0;
-    color: #c0c0c0;
-    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-size: 14px;
   }
 
   .item-right {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 12px;
     white-space: nowrap;
   }
 
   .status-icon {
-    font-size: 1.1rem;
+    font-size: 16px;
   }
 
   .completed-date {
-    font-size: 0.8rem;
-    color: #606060;
+    font-size: 11px;
+    color: var(--text-muted);
   }
 </style>

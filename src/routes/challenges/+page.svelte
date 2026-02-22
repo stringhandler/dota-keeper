@@ -221,67 +221,67 @@
 
 <style>
   .challenges-content {
-    max-width: 900px;
+    max-width: 1000px;
     margin: 0 auto;
   }
 
   .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    margin-bottom: 28px;
     position: relative;
   }
 
   .page-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow: 0 0 20px rgba(212, 175, 55, 0.5), 2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-primary);
     text-transform: uppercase;
+    margin: 0 0 6px 0;
   }
 
   .subtitle {
-    color: #a0a0a0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
     margin: 0;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
   }
 
   .history-link {
     position: absolute;
-    top: 25px;
-    right: 30px;
-    color: #d4af37;
+    top: 0;
+    right: 0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
     text-decoration: none;
-    font-size: 0.9rem;
     transition: color 0.2s;
   }
 
   .history-link:hover {
-    color: #e0c050;
+    color: var(--gold);
   }
 
   .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
   }
 
   .loading, .no-data {
-    color: #a0a0a0;
+    color: var(--text-muted);
     text-align: center;
-    padding: 3rem;
-    font-style: italic;
+    padding: 48px;
+    font-size: 13px;
   }
 
   /* Options view */
@@ -289,38 +289,44 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 20px;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 16px;
   }
 
   .options-intro {
-    color: #a0a0a0;
+    color: var(--text-secondary);
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 13px;
   }
 
   .reroll-row {
     display: flex;
-    gap: 0.75rem;
+    gap: 10px;
+  }
+
+  .reroll-btn,
+  .skip-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 8px 16px;
   }
 
   .reroll-btn {
-    background: linear-gradient(180deg, rgba(60, 80, 100, 0.8) 0%, rgba(40, 60, 80, 0.8) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.6);
-    color: #e0e0e0;
-    padding: 0.5rem 1.25rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-weight: bold;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
 
   .reroll-btn:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 95, 120, 0.9) 0%, rgba(50, 75, 100, 0.9) 100%);
-    border-color: rgba(139, 92, 46, 0.9);
+    border-color: var(--border-active);
+    color: var(--text-primary);
   }
 
   .reroll-btn:disabled {
@@ -330,19 +336,13 @@
 
   .skip-btn {
     background: transparent;
-    border: 1px solid rgba(139, 92, 46, 0.4);
-    color: #808080;
-    padding: 0.5rem 1rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.2s;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
   }
 
   .skip-btn:hover:not(:disabled) {
-    color: #a0a0a0;
-    border-color: rgba(139, 92, 46, 0.6);
+    color: var(--text-secondary);
+    border-color: var(--border-active);
   }
 
   .skip-btn:disabled {
@@ -352,24 +352,23 @@
 
   .options-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
   }
 
   .option-card {
-    padding: 1.5rem;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.4);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 12px;
     transition: border-color 0.2s;
   }
 
   .option-card:hover {
-    border-color: rgba(212, 175, 55, 0.5);
+    border-color: var(--border-active);
   }
 
   .option-top {
@@ -379,165 +378,178 @@
   }
 
   .option-difficulty {
-    font-weight: bold;
-    font-size: 0.85rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
   }
 
   .option-type {
-    font-size: 0.8rem;
-    color: #606060;
-    text-transform: capitalize;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
   }
 
   .option-description {
-    color: #e0e0e0;
-    font-size: 1rem;
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
     margin: 0;
     line-height: 1.4;
   }
 
   .option-hero, .option-games {
-    font-size: 0.85rem;
-    color: #a0a0a0;
+    font-size: 12px;
+    color: var(--text-secondary);
     margin: 0;
   }
 
   .accept-btn {
     margin-top: auto;
-    background: linear-gradient(180deg, rgba(60, 100, 60, 0.9) 0%, rgba(40, 80, 40, 0.9) 100%);
-    border: 1px solid rgba(100, 200, 100, 0.4);
-    color: #e0e0e0;
-    padding: 0.6rem 1.25rem;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.95rem;
-    font-weight: bold;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    background: var(--gold);
+    color: #080c10;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
-    text-transform: uppercase;
-    letter-spacing: 1px;
   }
 
   .accept-btn:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(70, 120, 70, 1) 0%, rgba(50, 100, 50, 1) 100%);
-    border-color: rgba(100, 220, 100, 0.6);
+    background: var(--gold-bright);
+    transform: translateY(-1px);
   }
 
   .accept-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none !important;
   }
 
   /* Active challenge view */
   .active-challenge {
-    padding: 2rem;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.5);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
+    padding: 28px;
   }
 
   .active-header {
-    margin-bottom: 2rem;
+    margin-bottom: 24px;
   }
 
   .difficulty-badge {
-    font-size: 0.8rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 2px;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: inline-block;
   }
 
   .active-header h2 {
-    font-size: 1.4rem;
-    color: #e0e0e0;
-    margin: 0 0 0.5rem 0;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
   }
 
   .hero-label {
-    color: #a0a0a0;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: 13px;
     margin: 0;
   }
 
   .progress-section {
-    margin-bottom: 2rem;
+    margin-bottom: 28px;
   }
 
   .progress-numbers {
-    font-size: 2rem;
-    font-weight: bold;
-    margin-bottom: 0.75rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 12px;
   }
 
   .progress-numbers .current {
-    color: #d4af37;
+    color: var(--gold);
   }
 
   .progress-numbers .separator {
-    color: #606060;
-    margin: 0 0.25rem;
+    color: var(--text-muted);
+    margin: 0 4px;
   }
 
   .progress-numbers .target {
-    color: #808080;
+    color: var(--text-secondary);
   }
 
   .progress-bar-container {
-    height: 12px;
-    background: rgba(30, 30, 40, 0.8);
-    border-radius: 6px;
-    border: 1px solid rgba(139, 92, 46, 0.3);
+    height: 8px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    border: 1px solid var(--border);
     overflow: hidden;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
   }
 
   .progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, rgba(212, 175, 55, 0.8) 0%, rgba(212, 175, 55, 1) 100%);
-    border-radius: 6px;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold-bright));
+    border-radius: 4px;
     transition: width 0.5s ease;
   }
 
   .progress-bar.completed {
-    background: linear-gradient(90deg, rgba(96, 192, 64, 0.8) 0%, rgba(96, 192, 64, 1) 100%);
+    background: linear-gradient(90deg, #16a34a, var(--green));
   }
 
   .progress-label {
-    color: #a0a0a0;
-    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-size: 12px;
     margin: 0;
   }
 
   .meta-row {
     display: flex;
-    gap: 2rem;
+    gap: 32px;
     flex-wrap: wrap;
   }
 
   .meta-item {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 4px;
   }
 
   .meta-label {
-    font-size: 0.75rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #606060;
+    letter-spacing: 2px;
+    color: var(--text-muted);
   }
 
   .meta-value {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #d4af37;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .text-green {
-    color: #60c040 !important;
+    color: var(--green) !important;
   }
 </style>

@@ -20,22 +20,25 @@ mod release {
         event_name: String,
         properties: Option<serde_json::Value>,
         analytics_enabled: bool,
+        installation_id: String,
+        session_id: String,
     ) -> Result<(), String> {
         // Respect opt-out
         if !analytics_enabled {
             return Ok(());
         }
 
-        // Generate a random distinct_id for anonymous tracking
-        // This is generated per-session and not persisted
-        let distinct_id = uuid::Uuid::new_v4().to_string();
+        // Use installation_id as the distinct_id for stable user tracking
+        let distinct_id = installation_id;
 
         let mut props = properties.unwrap_or_else(|| json!({}));
 
-        // Add platform and app version
+        // Add platform, app version, and session tracking
         if let Some(obj) = props.as_object_mut() {
             obj.insert("platform".to_string(), json!(std::env::consts::OS));
             obj.insert("app_version".to_string(), json!(env!("CARGO_PKG_VERSION")));
+            // PostHog uses $session_id for session tracking
+            obj.insert("$session_id".to_string(), json!(session_id));
         }
 
         let payload = json!({
@@ -44,6 +47,11 @@ mod release {
             "properties": props,
             "distinct_id": distinct_id,
             "timestamp": chrono::Utc::now().to_rfc3339(),
+            // Set person properties for better user identification
+            "$set": {
+                "platform": std::env::consts::OS,
+                "app_version": env!("CARGO_PKG_VERSION"),
+            }
         });
 
         // Send async, fail silently
@@ -66,6 +74,8 @@ mod debug {
         _event_name: String,
         _properties: Option<serde_json::Value>,
         _analytics_enabled: bool,
+        _installation_id: String,
+        _session_id: String,
     ) -> Result<(), String> {
         // No-op in debug builds
         Ok(())

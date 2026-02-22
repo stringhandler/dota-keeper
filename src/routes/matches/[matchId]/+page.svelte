@@ -105,10 +105,10 @@
 
   // Chart config derived from csData
   const goalLineColors = [
-    "rgba(255, 100, 100, 0.85)",
-    "rgba(100, 180, 255, 0.85)",
-    "rgba(180, 100, 255, 0.85)",
-    "rgba(100, 230, 150, 0.85)",
+    "rgba(248, 113, 113, 0.8)", // red
+    "rgba(100, 180, 255, 0.8)", // blue
+    "rgba(180, 100, 255, 0.8)", // purple
+    "rgba(74, 222, 128, 0.8)", // green
   ];
 
   let chartConfig = $derived(() => {
@@ -154,8 +154,8 @@
           {
             label: "Last Hits",
             data: lhValues,
-            borderColor: "#d4af37",
-            backgroundColor: "rgba(212, 175, 55, 0.15)",
+            borderColor: "#f0b429",
+            backgroundColor: "rgba(240, 180, 41, 0.15)",
             borderWidth: 2,
             pointRadius: 2,
             pointHoverRadius: 5,
@@ -165,8 +165,8 @@
           {
             label: "Denies",
             data: dnValues,
-            borderColor: "#8b5e3c",
-            backgroundColor: "rgba(139, 94, 60, 0.1)",
+            borderColor: "rgba(163, 163, 163, 0.8)",
+            backgroundColor: "rgba(163, 163, 163, 0.1)",
             borderWidth: 2,
             pointRadius: 2,
             pointHoverRadius: 5,
@@ -185,26 +185,26 @@
         },
         plugins: {
           legend: {
-            labels: { color: "#e0e0e0" },
+            labels: { color: "#c0c0c0" },
           },
           tooltip: {
-            backgroundColor: "rgba(20, 20, 30, 0.95)",
-            borderColor: "rgba(139, 92, 46, 0.5)",
+            backgroundColor: "rgba(18, 20, 28, 0.95)",
+            borderColor: "rgba(240, 180, 41, 0.3)",
             borderWidth: 1,
-            titleColor: "#d4af37",
+            titleColor: "#f0b429",
             bodyColor: "#e0e0e0",
           },
         },
         scales: {
           x: {
-            ticks: { color: "#a0a0a0", maxTicksLimit: 15 },
-            grid: { color: "rgba(139, 92, 46, 0.15)" },
-            title: { display: true, text: "Game Time", color: "#808080" },
+            ticks: { color: "#9ca3af", maxTicksLimit: 15 },
+            grid: { color: "rgba(255, 200, 80, 0.08)" },
+            title: { display: true, text: "Game Time", color: "#9ca3af" },
           },
           y: {
-            ticks: { color: "#a0a0a0" },
-            grid: { color: "rgba(139, 92, 46, 0.15)" },
-            title: { display: true, text: "Count", color: "#808080" },
+            ticks: { color: "#9ca3af" },
+            grid: { color: "rgba(255, 200, 80, 0.08)" },
+            title: { display: true, text: "Count", color: "#9ca3af" },
             beginAtZero: true,
           },
         },
@@ -377,31 +377,30 @@
     align-items: center;
     gap: 1.5rem;
     padding: 20px 25px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   }
 
   .back-btn {
-    color: #a0a0a0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
     text-decoration: none;
-    font-size: 0.9rem;
-    padding: 8px 14px;
-    border: 1px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    transition: all 0.2s ease;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.2s;
     white-space: nowrap;
-    background: rgba(30, 30, 40, 0.6);
+    background: transparent;
   }
 
   .back-btn:hover {
-    color: #d4af37;
-    border-color: rgba(139, 92, 46, 0.7);
-    background: rgba(40, 40, 55, 0.8);
+    color: var(--text-primary);
+    border-color: var(--border-active);
   }
 
   .header-title {
@@ -409,56 +408,60 @@
   }
 
   .page-header h1 {
-    margin: 0 0 0.2rem 0;
-    font-size: 1.8em;
-    color: #d4af37;
-    text-shadow: 0 0 20px rgba(212, 175, 55, 0.5), 2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-primary);
     text-transform: uppercase;
+    margin: 0 0 6px 0;
   }
 
   .subtitle {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
     margin: 0;
-    color: #808080;
-    font-size: 0.85rem;
-    font-family: 'Courier New', monospace;
   }
 
   .opendota-btn {
-    padding: 10px 18px;
-    font-size: 0.9em;
-    font-weight: bold;
-    font-family: inherit;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    background: var(--gold);
+    color: #080c10;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
     cursor: pointer;
-    background: linear-gradient(180deg, rgba(40, 55, 80, 0.8) 0%, rgba(30, 45, 65, 0.8) 100%);
-    color: #e0e0e0;
-    border: 2px solid rgba(80, 120, 180, 0.5);
-    border-radius: 3px;
-    letter-spacing: 0.5px;
-    transition: all 0.3s ease;
+    transition: all 0.2s;
     white-space: nowrap;
   }
 
   .opendota-btn:hover {
-    border-color: rgba(100, 150, 220, 0.7);
-    box-shadow: 0 0 15px rgba(80, 120, 200, 0.3);
+    background: var(--gold-bright);
     transform: translateY(-1px);
   }
 
   .loading {
-    display: flex;
-    justify-content: center;
-    padding: 3rem;
-    color: #a0a0a0;
-    font-style: italic;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 48px;
+    font-size: 13px;
   }
 
   .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
+    color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
   }
 
   /* Overview grid */
@@ -469,12 +472,10 @@
   }
 
   .overview-card {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.9) 0%, rgba(20, 20, 30, 0.95) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   }
 
   .hero-card {
@@ -490,34 +491,35 @@
   }
 
   .hero-name {
-    font-size: 1.2rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
     font-weight: 700;
-    color: #e0e0e0;
+    color: var(--text-primary);
     letter-spacing: 1px;
   }
 
   .result-badge {
+    font-family: 'Barlow Condensed', sans-serif;
     display: inline-block;
-    padding: 4px 14px;
-    font-size: 0.85rem;
+    padding: 4px 12px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 2px;
-    border-radius: 3px;
+    border-radius: 4px;
     text-align: center;
+    text-transform: uppercase;
   }
 
   .result-badge.win {
-    background: rgba(96, 192, 64, 0.2);
-    color: #60c040;
-    border: 1px solid rgba(96, 192, 64, 0.5);
-    text-shadow: 0 0 10px rgba(96, 192, 64, 0.4);
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--green);
+    border: 1px solid rgba(74, 222, 128, 0.3);
   }
 
   .result-badge.loss {
-    background: rgba(220, 53, 69, 0.2);
-    color: #ff6b6b;
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    text-shadow: 0 0 10px rgba(255, 107, 107, 0.4);
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.3);
   }
 
   .meta-card {
@@ -533,16 +535,19 @@
   }
 
   .meta-label {
-    color: #808080;
-    font-size: 0.85rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     min-width: 90px;
   }
 
   .meta-value {
-    color: #e0e0e0;
-    font-size: 0.95rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
   }
 
   .parse-parsed { color: #60c040; }
@@ -552,11 +557,13 @@
 
   /* Stats */
   .section-title {
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
-    color: #d4af37;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 2px;
+    color: var(--text-muted);
+    margin: 0 0 16px 0;
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -565,12 +572,10 @@
   .stats-section,
   .chart-section,
   .goals-section {
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.9) 0%, rgba(20, 20, 30, 0.95) 100%);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   }
 
   .stats-grid {
@@ -580,63 +585,71 @@
   }
 
   .stat-card {
-    background: rgba(30, 30, 42, 0.7);
-    border: 1px solid rgba(139, 92, 46, 0.3);
-    border-radius: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
     padding: 1rem 0.75rem;
     text-align: center;
+    transition: border-color 0.2s;
+  }
+
+  .stat-card:hover {
+    border-color: var(--border-active);
   }
 
   .stat-value {
-    font-size: 1.4rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 20px;
     font-weight: 700;
-    color: #e0e0e0;
+    color: var(--text-primary);
     margin-bottom: 0.3rem;
   }
 
   .stat-label {
-    font-size: 0.75rem;
-    color: #808080;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
   }
 
   .kda {
-    font-size: 1.2rem;
+    font-size: 18px;
   }
 
-  .kda .kills { color: #60c040; }
-  .kda .deaths { color: #ff6b6b; }
-  .kda .assists { color: #ffc107; }
+  .kda .kills { color: var(--green); }
+  .kda .deaths { color: var(--red); }
+  .kda .assists { color: var(--gold); }
 
   /* Chart */
   .chart-container {
-    border: 1px solid rgba(139, 92, 46, 0.2);
-    border-radius: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
     padding: 0.5rem;
-    background: rgba(15, 15, 25, 0.5);
+    background: var(--bg-elevated);
   }
 
   .no-data-box {
     text-align: center;
     padding: 2.5rem;
-    color: #808080;
-    font-style: italic;
-    border: 1px dashed rgba(139, 92, 46, 0.3);
-    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
   }
 
   .no-data-hint {
-    font-size: 0.85rem;
+    font-size: 12px;
     margin-top: 0.5rem;
-    color: #606060;
+    color: var(--text-muted);
   }
 
   /* Goals */
   .goals-summary {
-    font-size: 0.9rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
     font-weight: 600;
-    color: #a0a0a0;
+    color: var(--text-secondary);
     letter-spacing: 0;
     text-transform: none;
   }
@@ -650,38 +663,39 @@
   .goal-card {
     display: flex;
     gap: 1rem;
-    padding: 1rem 1.2rem;
-    border-radius: 4px;
-    border: 2px solid;
+    padding: 14px 18px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: border-color 0.2s;
+  }
+
+  .goal-card:hover {
+    border-color: var(--border-active);
   }
 
   .goal-card.achieved {
-    background: linear-gradient(90deg, rgba(60, 100, 40, 0.25) 0%, rgba(40, 80, 30, 0.2) 100%);
-    border-color: rgba(96, 192, 64, 0.5);
-    border-left: 4px solid #60c040;
+    border-left: 3px solid var(--green);
   }
 
   .goal-card.not-achieved {
-    background: linear-gradient(90deg, rgba(100, 40, 40, 0.25) 0%, rgba(80, 30, 30, 0.2) 100%);
-    border-color: rgba(220, 53, 69, 0.4);
-    border-left: 4px solid #ff6b6b;
+    border-left: 3px solid var(--red);
   }
 
   .goal-status {
-    font-size: 1.1rem;
+    font-size: 16px;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.8rem;
-    height: 1.8rem;
-    border-radius: 50%;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     align-self: center;
   }
 
-  .goal-card.achieved .goal-status { color: #60c040; }
-  .goal-card.not-achieved .goal-status { color: #ff6b6b; }
+  .goal-card.achieved .goal-status { color: var(--green); }
+  .goal-card.not-achieved .goal-status { color: var(--red); }
 
   .goal-info {
     display: flex;
@@ -690,9 +704,10 @@
   }
 
   .goal-title {
+    font-family: 'Rajdhani', sans-serif;
     font-weight: 600;
-    color: #e0e0e0;
-    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-size: 14px;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -701,18 +716,18 @@
   .goal-numbers {
     display: flex;
     gap: 1.5rem;
-    font-size: 0.85rem;
+    font-size: 12px;
   }
 
-  .goal-target { color: #a0a0a0; }
-  .goal-actual { color: #c0c0c0; }
+  .goal-target { color: var(--text-muted); }
+  .goal-actual { color: var(--text-secondary); }
 
   .no-goals-text {
-    color: #808080;
-    font-style: italic;
+    color: var(--text-muted);
     text-align: center;
     padding: 1.5rem 0;
     margin: 0;
+    font-size: 13px;
   }
 
   @media (max-width: 700px) {
