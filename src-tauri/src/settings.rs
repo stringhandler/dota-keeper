@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum AnalyticsConsent {
@@ -24,6 +25,9 @@ pub struct Settings {
     pub suggestion_custom_percentage: Option<f64>,
     #[serde(default)]
     pub analytics_consent: AnalyticsConsent,
+    /// Unique installation ID for analytics tracking (generated once, persisted forever)
+    #[serde(default = "Settings::generate_installation_id")]
+    pub installation_id: String,
 }
 
 impl Default for Settings {
@@ -33,6 +37,7 @@ impl Default for Settings {
             suggestion_difficulty: Self::default_difficulty(),
             suggestion_custom_percentage: None,
             analytics_consent: AnalyticsConsent::default(),
+            installation_id: Self::generate_installation_id(),
         }
     }
 }
@@ -40,6 +45,11 @@ impl Default for Settings {
 impl Settings {
     fn default_difficulty() -> String {
         "Medium".to_string()
+    }
+
+    /// Generate a unique installation ID (UUID v4)
+    fn generate_installation_id() -> String {
+        uuid::Uuid::new_v4().to_string()
     }
 
     /// Returns the improvement factor range (min, max) based on difficulty
