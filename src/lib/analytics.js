@@ -38,7 +38,7 @@ export async function getAnalyticsConsent() {
 /**
  * Track an analytics event
  * @param {string} event - Event name (e.g. "page_view", "goal_created")
- * @param {object} properties - Optional event properties (no PII!)
+ * @param {object|null} properties - Optional event properties (no PII!)
  */
 export async function trackEvent(event, properties = null) {
   // Lazy-load settings on first call
@@ -64,14 +64,17 @@ export async function trackEvent(event, properties = null) {
  * @param {string} pageName - Name of the page (e.g. "Dashboard", "Goals")
  */
 export async function trackPageView(pageName) {
-  // Get the current URL path
   const pathname = window.location.pathname;
   const url = window.location.href;
+  const host = window.location.host;
+  const title = document.title || pageName;
 
   await trackEvent("$pageview", {
     page: pageName,
     $current_url: url,
     $pathname: pathname,
+    $host: host,
+    $title: title,
   });
 }
 

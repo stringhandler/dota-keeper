@@ -74,18 +74,35 @@ impl Settings {
         })
     }
 
-    /// Load settings from the JSON file, or return default if not found
+    /// Load settings from the JSON file, or return default if not found.
+    /// If `installation_id` is missing from the file, generates one and saves it immediately
+    /// so the same ID is used on all subsequent loads.
     pub fn load() -> Self {
         let Some(path) = Self::get_settings_path() else {
             return Self::default();
         };
 
         if !path.exists() {
-            return Self::default();
+            let settings = Self::default();
+            let _ = settings.save();
+            return settings;
         }
 
         match fs::read_to_string(&path) {
-            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+            Ok(contents) => {
+                // Check whether installation_id was absent before serde fills it in with a fresh UUID.
+                let missing_installation_id = serde_json::from_str::<serde_json::Value>(&contents)
+                    .map(|v| v.get("installation_id").is_none())
+                    .unwrap_or(false);
+
+                let settings: Self = serde_json::from_str(&contents).unwrap_or_default();
+
+                if missing_installation_id {
+                    let _ = settings.save();
+                }
+
+                settings
+            }
             Err(_) => Self::default(),
         }
     }
