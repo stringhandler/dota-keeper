@@ -11,6 +11,7 @@
   let match = $state(null);
   let csData = $state([]);
   let goalDetails = $state([]);
+  let items = $state([]);
   let isLoading = $state(true);
   let error = $state("");
 
@@ -20,15 +21,17 @@
 
   async function loadData() {
     try {
-      const [allMatches, cs, goals] = await Promise.all([
+      const [allMatches, cs, goals, allItems] = await Promise.all([
         invoke("get_matches"),
         invoke("get_match_cs", { matchId }),
         invoke("evaluate_goals_for_match", { matchId }),
+        invoke("get_all_items"),
       ]);
 
       match = allMatches.find((m) => m.match_id === matchId) ?? null;
       csData = cs;
       goalDetails = goals;
+      items = allItems;
 
       if (!match) {
         error = "Match not found.";
@@ -82,6 +85,7 @@
       case "Kills": return "Kills";
       case "LastHits": return "Last Hits";
       case "Level": return "Level";
+      case "ItemTiming": return "Item Timing";
       default: return metric;
     }
   }
@@ -93,6 +97,17 @@
       case "LastHits": return "CS";
       default: return "";
     }
+  }
+
+  function formatSeconds(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  function getItemName(itemId) {
+    const item = items.find(i => i.id === itemId);
+    return item ? item.display_name : `Item ${itemId}`;
   }
 
   async function openInOpenDota(mid) {
@@ -343,11 +358,20 @@
                   {:else}
                     Any Hero —
                   {/if}
-                  {getMetricLabel(evaluation.goal.metric)}
+                  {#if evaluation.goal.metric === "ItemTiming"}
+                    {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} (Item Timing)
+                  {:else}
+                    {getMetricLabel(evaluation.goal.metric)}
+                  {/if}
                 </div>
                 <div class="goal-numbers">
-                  <span class="goal-target">Target: {evaluation.goal.target_value} {getMetricUnit(evaluation.goal.metric)} by {evaluation.goal.target_time_minutes}m</span>
-                  <span class="goal-actual">Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}</span>
+                  {#if evaluation.goal.metric === "ItemTiming"}
+                    <span class="goal-target">Target: by {formatSeconds(evaluation.goal.target_value)}</span>
+                    <span class="goal-actual">Actual: {formatSeconds(evaluation.actual_value)}</span>
+                  {:else}
+                    <span class="goal-target">Target: {evaluation.goal.target_value} {getMetricUnit(evaluation.goal.metric)} by {evaluation.goal.target_time_minutes}m</span>
+                    <span class="goal-actual">Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}</span>
+                  {/if}
                 </div>
               </div>
             </div>

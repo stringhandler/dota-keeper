@@ -10,6 +10,7 @@
   let isLoading = $state(true);
   let error = $state("");
   let matches = $state([]);
+  let items = $state([]);
   let isRefreshing = $state(false);
   let selectedMatch = $state(null);
   let goalDetails = $state([]);
@@ -82,8 +83,12 @@
 
   async function loadData() {
     try {
-      const settings = await invoke("get_settings");
+      const [settings, allItems] = await Promise.all([
+        invoke("get_settings"),
+        invoke("get_all_items"),
+      ]);
       currentSteamId = settings.steam_id || "";
+      items = allItems;
       await loadMatches();
     } catch (e) {
       error = `Failed to load data: ${e}`;
@@ -171,6 +176,7 @@
       case "Kills": return "Kills";
       case "LastHits": return "Last Hits";
       case "Level": return "Level";
+      case "ItemTiming": return "Item Timing";
       default: return metric;
     }
   }
@@ -183,6 +189,17 @@
       case "Level": return "";
       default: return "";
     }
+  }
+
+  function formatSeconds(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  function getItemName(itemId) {
+    const item = items.find(i => i.id === itemId);
+    return item ? item.display_name : `Item ${itemId}`;
   }
 
   async function copyMatchId(matchId) {
@@ -470,11 +487,20 @@
                     {:else}
                       Any Hero
                     {/if}
-                    — {getMetricLabel(evaluation.goal.metric)}
+                    {#if evaluation.goal.metric === "ItemTiming"}
+                      — {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} (Item Timing)
+                    {:else}
+                      — {getMetricLabel(evaluation.goal.metric)}
+                    {/if}
                   </div>
                   <div class="eval-detail">
-                    Target: {evaluation.goal.target_value} {getMetricUnit(evaluation.goal.metric)} by {evaluation.goal.target_time_minutes} min
-                    · Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}
+                    {#if evaluation.goal.metric === "ItemTiming"}
+                      Target: by {formatSeconds(evaluation.goal.target_value)}
+                      · Actual: {formatSeconds(evaluation.actual_value)}
+                    {:else}
+                      Target: {evaluation.goal.target_value} {getMetricUnit(evaluation.goal.metric)} by {evaluation.goal.target_time_minutes} min
+                      · Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}
+                    {/if}
                   </div>
                 </div>
               </div>
