@@ -125,10 +125,98 @@
     };
   });
 
+  // Last 10 games sorted chronologically (oldest first, newest last)
+  let last10Games = $derived(() => {
+    const data = filteredData();
+    return [...data]
+      .sort((a, b) => a.start_time - b.start_time)
+      .slice(-10);
+  });
+
+  // Achievement status indicator
+  let achievementStatus = $derived(() => {
+    const rate = parseFloat(stats().achievementRate);
+    if (stats().total === 0) return null;
+    if (rate > 85) return { label: 'Too Easy', color: '#60a5fa', desc: 'Time to raise the bar!' };
+    if (rate >= 75) return { label: 'Excellent', color: '#4ade80', desc: 'Well-calibrated goal!' };
+    if (rate >= 65) return { label: 'Good', color: '#fbbf24', desc: 'Close! Keep pushing.' };
+    if (rate >= 50) return { label: 'Low', color: '#f97316', desc: 'Consider lowering goal' };
+    return { label: 'Critical', color: '#f87171', desc: 'Goal too ambitious' };
+  });
+
+  // Goal suggestion based on last 10 games pass rate
+  let goalSuggestion = $derived(() => {
+    const last10 = last10Games();
+    if (last10.length < 5) return null;
+    const last10Mean = last10.reduce((sum, g) => sum + g.value, 0) / last10.length;
+    const passCount = last10.filter(g => g.achieved).length;
+    const passRate = (passCount / last10.length) * 100;
+    if (passRate >= 75) return null;
+
+    // For ItemTiming (lower=better): allow more time; for others: raise the floor
+    const suggested = goal?.metric === 'ItemTiming'
+      ? Math.round(last10Mean / 0.875)
+      : Math.round(last10Mean * 1.125);
+
+    const roundedMean = Math.round(last10Mean);
+    if (passRate < 50) {
+      return { severity: 'critical', last10Mean: roundedMean, passRate: Math.round(passRate), suggested };
+    } else if (passRate < 70) {
+      return { severity: 'warning', last10Mean: roundedMean, passRate: Math.round(passRate), suggested };
+    } else {
+      return { severity: 'info', last10Mean: roundedMean, passRate: Math.round(passRate), suggested: null };
+    }
+  });
+
+  // Y-axis range for the scatter chart
+  let scatterYRange = $derived(() => {
+    const last10 = last10Games();
+    if (last10.length === 0) return { min: 0, max: 100 };
+    const values = last10.map(g => g.value);
+    const targetVal = goal?.target_value ?? 0;
+    const allVals = [...values, targetVal];
+    const min = Math.min(...allVals);
+    const max = Math.max(...allVals);
+    const padding = Math.max((max - min) * 0.25, 5);
+    return { min: Math.floor(min - padding), max: Math.ceil(max + padding) };
+  });
+
+  let bannerDismissed = $state(false);
+  let hoveredDot = $state(null);
+
+  function dismissBanner() {
+    bannerDismissed = true;
+    try {
+      localStorage.setItem(`banner_dismissed_${goalId}`, JSON.stringify({ count: matchData.length }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function applyGoalSuggestion(suggestedValue) {
+    startEdit();
+    if (goal?.metric === 'ItemTiming') {
+      editItemMinutes = Math.floor(suggestedValue / 60).toString();
+      editItemSeconds = (suggestedValue % 60).toString();
+    } else {
+      editTargetValue = suggestedValue.toString();
+    }
+  }
+
+  function formatDate(timestamp) {
+    return new Date(timestamp * 1000).toLocaleDateString();
+  }
+
   onMount(async () => {
     const favs = await invoke("get_favorite_heroes").catch(() => []);
     favoriteHeroIds = new Set(favs);
     await loadGoalData();
+    // Restore banner dismissal (re-shows after 3+ new games)
+    try {
+      const stored = localStorage.getItem(`banner_dismissed_${goalId}`);
+      if (stored) {
+        const { count } = JSON.parse(stored);
+        if (matchData.length - count < 3) bannerDismissed = true;
+      }
+    } catch (e) { /* ignore */ }
   });
 
   async function loadGoalData() {
@@ -471,12 +559,68 @@
             </div>
           </div>
         </div>
+
+        {#if achievementStatus()}
+          <div class="achievement-rate-card">
+            <div class="achievement-rate-row">
+              <div class="achievement-rate-info">
+                <span class="achievement-rate-label">Achievement Rate</span>
+                <span class="achievement-rate-value">{stats().achievementRate}%</span>
+                <span class="achievement-rate-count">({stats().achieved}/{stats().total} games)</span>
+              </div>
+              <div class="achievement-target">Target: ~75%</div>
+            </div>
+            <div class="achievement-status" style="color: {achievementStatus().color}">
+              {achievementStatus().label} — {achievementStatus().desc}
+            </div>
+            <div class="achievement-bar-track">
+              <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats().achievementRate))}%; background: {achievementStatus().color}"></div>
+              <div class="achievement-bar-target"></div>
+            </div>
+          </div>
+        {/if}
       </section>
     </div>
 
     <!-- Histogram Section -->
     <section class="histogram-section">
       <h2>Distribution</h2>
+
+      <!-- Goal suggestion banner -->
+      {#if goalSuggestion() && !bannerDismissed}
+        {@const s = goalSuggestion()}
+        <div class="suggestion-banner banner-{s.severity}">
+          <div class="banner-body">
+            {#if s.severity === 'critical'}
+              <span class="banner-icon">⚠️</span>
+              <span class="banner-text">
+                Your last {last10Games().length} games averaged <strong>{goal.metric === 'ItemTiming' ? formatSeconds(s.last10Mean) : s.last10Mean}</strong>, significantly below your goal of <strong>{goal.metric === 'ItemTiming' ? formatSeconds(goal.target_value) : goal.target_value}</strong>.
+                Consider lowering your goal for more consistent progress.
+              </span>
+            {:else if s.severity === 'warning'}
+              <span class="banner-icon">⚠️</span>
+              <span class="banner-text">
+                You're hitting this goal only <strong>{s.passRate}%</strong> of the time in your last {last10Games().length} games.
+                Aim for ~75% success rate.
+              </span>
+            {:else}
+              <span class="banner-icon">ℹ️</span>
+              <span class="banner-text">
+                You're close! Your recent average is <strong>{goal.metric === 'ItemTiming' ? formatSeconds(s.last10Mean) : s.last10Mean}</strong>. Keep pushing to consistently hit <strong>{goal.metric === 'ItemTiming' ? formatSeconds(goal.target_value) : goal.target_value}</strong>.
+              </span>
+            {/if}
+          </div>
+          <div class="banner-actions">
+            {#if s.suggested !== null && s.severity !== 'info'}
+              <button class="banner-btn banner-btn-primary" onclick={() => applyGoalSuggestion(s.suggested)}>
+                Lower to {goal.metric === 'ItemTiming' ? formatSeconds(s.suggested) : s.suggested}
+              </button>
+            {/if}
+            <button class="banner-btn banner-btn-dismiss" onclick={dismissBanner}>✕</button>
+          </div>
+        </div>
+      {/if}
+
       {#if filteredData().length === 0}
         <p class="no-data">No matches found with the current filters.</p>
       {:else}
@@ -529,6 +673,32 @@
                 font-weight="bold"
               >
                 Target: {goal.metric === "ItemTiming" ? formatSeconds(goal.target_value) : goal.target_value}
+              </text>
+            {/if}
+
+            <!-- Average line -->
+            {#if goal && histogram().bins.length > 0 && stats().total > 0}
+              {@const minVal = histogram().bins[0].start}
+              {@const maxVal = histogram().bins[histogram().bins.length - 1].end}
+              {@const range = maxVal - minVal}
+              {@const avgX = range > 0 ? 80 + ((stats().avgValue - minVal) / range) * 870 : 465}
+              <line
+                x1={avgX}
+                y1="50"
+                x2={avgX}
+                y2="350"
+                stroke="rgba(251, 191, 36, 0.7)"
+                stroke-width="2"
+                stroke-dasharray="6,4"
+              />
+              <text
+                x={avgX}
+                y="45"
+                text-anchor="middle"
+                fill="rgba(251, 191, 36, 0.85)"
+                font-size="12"
+              >
+                Avg: {goal.metric === "ItemTiming" ? formatSeconds(stats().avgValue) : stats().avgValue}
               </text>
             {/if}
 
@@ -609,7 +779,110 @@
               <div class="legend-color failed"></div>
               <span>Failed</span>
             </div>
+            <div class="legend-item">
+              <div class="legend-line target-line"></div>
+              <span>Target</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line avg-line"></div>
+              <span>Average</span>
+            </div>
           </div>
+
+          <!-- Last N games scatter chart -->
+          {#if last10Games().length > 0}
+            {@const games = last10Games()}
+            {@const yr = scatterYRange()}
+            {@const chartW = 720}
+            {@const chartH = 130}
+            {@const lm = 60}
+            {@const tm = 24}
+            {@const bm = 28}
+            {@const rm = 48}
+            {@const svgW = lm + chartW + rm}
+            {@const svgH = tm + chartH + bm}
+            {@const ySpan = yr.max - yr.min || 1}
+
+            <div class="scatter-section">
+              <h3 class="scatter-title">Last {games.length} Games</h3>
+              <div class="scatter-wrapper">
+                <svg viewBox="0 0 {svgW} {svgH}" class="scatter-chart"
+                  onmouseleave={() => hoveredDot = null}
+                  role="img"
+                  aria-label="Recent games performance scatter chart"
+                >
+                  <!-- Grid lines -->
+                  {#each [0, 0.25, 0.5, 0.75, 1] as tick}
+                    {@const y = tm + chartH * (1 - tick)}
+                    {@const val = Math.round(yr.min + tick * ySpan)}
+                    <line x1={lm} y1={y} x2={lm + chartW} y2={y} stroke="rgba(255,200,80,0.08)" stroke-width="1" />
+                    <text x={lm - 6} y={y + 4} text-anchor="end" fill="var(--text-muted)" font-size="10">
+                      {goal.metric === 'ItemTiming' ? formatSeconds(val) : val}
+                    </text>
+                  {/each}
+
+                  <!-- Goal horizontal line -->
+                  <line x1={lm} y1={tm + chartH * (1 - (goal.target_value - yr.min) / ySpan)} x2={lm + chartW} y2={tm + chartH * (1 - (goal.target_value - yr.min) / ySpan)} stroke="var(--gold)" stroke-width="2" />
+                  <text x={lm + chartW + 4} y={tm + chartH * (1 - (goal.target_value - yr.min) / ySpan) + 4} fill="var(--gold)" font-size="10" font-weight="600">Goal</text>
+
+                  <!-- Average horizontal line -->
+                  <line x1={lm} y1={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan)} x2={lm + chartW} y2={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan)} stroke="rgba(251,191,36,0.6)" stroke-width="1.5" stroke-dasharray="5,4" />
+                  <text x={lm + chartW + 4} y={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan) + 4} fill="rgba(251,191,36,0.8)" font-size="10">Avg</text>
+
+                  <!-- Dots -->
+                  {#each games as game, i}
+                    {@const dotX = lm + (games.length <= 1 ? chartW / 2 : (i / (games.length - 1)) * chartW)}
+                    {@const dotY = tm + chartH * (1 - (game.value - yr.min) / ySpan)}
+                    {@const isHovered = hoveredDot?.game?.match_id === game.match_id}
+                    <circle
+                      cx={dotX}
+                      cy={dotY}
+                      r={isHovered ? 9 : 6}
+                      fill={game.achieved ? 'rgba(74,222,128,0.9)' : 'rgba(248,113,113,0.9)'}
+                      stroke={game.achieved ? '#4ade80' : '#f87171'}
+                      stroke-width="1.5"
+                      style="cursor: pointer; transition: r 0.1s"
+                      onmouseenter={(e) => hoveredDot = { game, x: e.clientX, y: e.clientY }}
+                      onclick={() => { window.location.href = `/matches/${game.match_id}`; }}
+                      role="button"
+                      tabindex="0"
+                      aria-label="Game {i + 1}: {game.value} {getMetricUnit(goal.metric)} - {game.achieved ? 'passed' : 'failed'}"
+                    />
+                    <text x={dotX} y={svgH - 4} text-anchor="middle" fill="var(--text-muted)" font-size="9">{i + 1}</text>
+                  {/each}
+
+                  <!-- Axis labels -->
+                  <text x={lm} y={svgH - 4} text-anchor="start" fill="var(--text-muted)" font-size="9" opacity="0.6">oldest</text>
+                  <text x={lm + chartW} y={svgH - 4} text-anchor="end" fill="var(--text-muted)" font-size="9" opacity="0.6">newest</text>
+                </svg>
+
+                <!-- Hover tooltip -->
+                {#if hoveredDot}
+                  <div
+                    class="dot-tooltip"
+                    style="left: {hoveredDot.x + 14}px; top: {hoveredDot.y - 10}px"
+                  >
+                    <div class="tooltip-row tooltip-status {hoveredDot.game.achieved ? 'pass' : 'fail'}">
+                      {hoveredDot.game.achieved ? '✓ Passed' : '✗ Failed'}
+                    </div>
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">Value</span>
+                      <span>{goal.metric === 'ItemTiming' ? formatSeconds(hoveredDot.game.value) : hoveredDot.game.value} {getMetricUnit(goal.metric)}</span>
+                    </div>
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">Hero</span>
+                      <span>{getHeroName(hoveredDot.game.hero_id)}</span>
+                    </div>
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">Date</span>
+                      <span>{formatDate(hoveredDot.game.start_time)}</span>
+                    </div>
+                    <div class="tooltip-hint">Click to view match</div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
@@ -1031,6 +1304,281 @@
   .legend-item span {
     font-size: 13px;
     color: var(--text-secondary);
+  }
+
+  /* Achievement rate card */
+  .achievement-rate-card {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .achievement-rate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .achievement-rate-info {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .achievement-rate-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .achievement-rate-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .achievement-rate-count {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .achievement-target {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .achievement-status {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  .achievement-bar-track {
+    position: relative;
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: visible;
+  }
+
+  .achievement-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+    min-width: 2px;
+  }
+
+  .achievement-bar-target {
+    position: absolute;
+    left: 75%;
+    top: -3px;
+    width: 2px;
+    height: 11px;
+    background: rgba(255, 200, 80, 0.6);
+    border-radius: 1px;
+  }
+
+  /* Suggestion banner */
+  .suggestion-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 14px 16px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    border-left: 4px solid;
+  }
+
+  .banner-critical {
+    background: rgba(248, 113, 113, 0.08);
+    border-left-color: #f87171;
+  }
+
+  .banner-warning {
+    background: rgba(249, 115, 22, 0.08);
+    border-left-color: #f97316;
+  }
+
+  .banner-info {
+    background: rgba(96, 165, 250, 0.08);
+    border-left-color: #60a5fa;
+  }
+
+  .banner-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .banner-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .banner-text strong {
+    color: var(--text-primary);
+  }
+
+  .banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .banner-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 6px 12px;
+    transition: all 0.2s;
+  }
+
+  .banner-btn-primary {
+    background: var(--gold);
+    color: #080c10;
+    border: none;
+  }
+
+  .banner-btn-primary:hover {
+    background: var(--gold-bright);
+    transform: translateY(-1px);
+  }
+
+  .banner-btn-dismiss {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 10px;
+  }
+
+  .banner-btn-dismiss:hover {
+    border-color: var(--border-active);
+    color: var(--text-primary);
+  }
+
+  /* Legend lines */
+  .legend-line {
+    width: 28px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  .legend-line.target-line {
+    background: var(--gold);
+  }
+
+  .legend-line.avg-line {
+    background: rgba(251, 191, 36, 0.7);
+    background: repeating-linear-gradient(
+      to right,
+      rgba(251, 191, 36, 0.7) 0px,
+      rgba(251, 191, 36, 0.7) 6px,
+      transparent 6px,
+      transparent 10px
+    );
+  }
+
+  /* Scatter chart */
+  .scatter-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .scatter-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0 0 12px 0;
+  }
+
+  .scatter-wrapper {
+    position: relative;
+  }
+
+  .scatter-chart {
+    width: 100%;
+    height: auto;
+  }
+
+  /* Hover tooltip */
+  .dot-tooltip {
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-active);
+    border-radius: 6px;
+    padding: 10px 12px;
+    pointer-events: none;
+    min-width: 160px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .tooltip-label {
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    align-self: center;
+  }
+
+  .tooltip-status {
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 6px;
+    justify-content: flex-start;
+  }
+
+  .tooltip-status.pass {
+    color: #4ade80;
+  }
+
+  .tooltip-status.fail {
+    color: #f87171;
+  }
+
+  .tooltip-hint {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: center;
+    font-style: italic;
   }
 
   @media (max-width: 768px) {
