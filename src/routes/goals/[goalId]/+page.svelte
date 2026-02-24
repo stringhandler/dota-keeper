@@ -4,6 +4,7 @@
   import { page } from "$app/stores";
   import { heroes, getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
 
   let goalId = $derived($page.params.goalId);
@@ -467,6 +468,12 @@
           <p class="goal-description">
             {#if goal.hero_id !== null}
               <HeroIcon heroId={goal.hero_id} size="medium" showName={false} />
+            {/if}
+            {#if goal.metric === 'ItemTiming' && goal.item_id !== null}
+              {@const itemEntry = items.find(i => i.id === goal.item_id)}
+              {#if itemEntry}
+                <ItemIcon itemName={itemEntry.name} displayName={itemEntry.display_name} size="medium" showName={false} />
+              {/if}
             {/if}
             {formatGoalDescription(goal)}
           </p>

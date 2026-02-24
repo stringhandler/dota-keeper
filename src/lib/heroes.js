@@ -120,11 +120,13 @@ export const heroes = {
   126: "Void Spirit",
   128: "Snapfire",
   129: "Mars",
+  131: "Ringmaster",
   135: "Dawnbreaker",
   136: "Marci",
   137: "Primal Beast",
   138: "Muerta",
-  145: "Ringmaster",
+  145: "Kez",
+  155: "Largo",
 };
 
 export function getHeroName(heroId) {

@@ -4,6 +4,7 @@
   import { goto } from "$app/navigation";
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import ItemIcon from "$lib/ItemIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
 
   let isLoading = $state(true);
@@ -341,9 +342,37 @@
       </div>
     </div>
 
+    <!-- WEEKLY CHALLENGE -->
+    <div class="section-header">
+      <div class="section-title">🏆 Weekly Challenge</div>
+    </div>
+    {#if weeklyProgress}
+      <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
+        <div class="weekly-desc">{weeklyProgress.challenge.challenge_description}</div>
+        <div class="weekly-bar-wrap">
+          <div class="weekly-bar">
+            <div class="weekly-fill {weeklyProgress.completed ? 'done' : ''}"
+                 style="width:{weeklyProgressPct(weeklyProgress)}%"></div>
+          </div>
+          <span class="weekly-label">{weeklyProgress.current_value}/{weeklyProgress.target}</span>
+        </div>
+        <div class="weekly-meta">
+          {#if weeklyProgress.completed}
+            <span class="complete-tag">✓ Complete!</span>
+          {:else}
+            <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
+          {/if}
+        </div>
+      </a>
+    {:else}
+      <a href="/challenges" class="weekly-card empty">
+        <span class="weekly-empty-text">Choose this week's challenge →</span>
+      </a>
+    {/if}
+
     <!-- TODAY'S CHALLENGE -->
     {#if dailyProgress}
-      <div class="section-header">
+      <div class="section-header" style="margin-top: 28px;">
         <div class="section-title">⚡ Today's Challenge</div>
         <div class="reset-text">Resets in {timeUntilMidnight}</div>
       </div>
@@ -374,7 +403,7 @@
     {/if}
 
     <!-- GOAL PROGRESS -->
-    <div class="section-header" style="margin-top: 8px;">
+    <div class="section-header" style="margin-top: 28px;">
       <div class="section-title">Goal Progress — Last 7 Days</div>
       <a href="/goals" class="btn btn-ghost">Manage Goals</a>
     </div>
@@ -398,7 +427,24 @@
               {/if}
             </div>
             <div class="goal-info">
-              <div class="goal-name">{formatGoalDescription(goalData.goal)}</div>
+              <div class="goal-name" class:goal-name-inline={goalData.goal.metric === 'ItemTiming'}>
+                {#if goalData.goal.metric === 'ItemTiming'}
+                  {@const heroName = goalData.goal.hero_id !== null ? getHeroName(goalData.goal.hero_id) : 'Any Hero'}
+                  {@const itemEntry = items.find(i => i.id === goalData.goal.item_id)}
+                  {@const minutes = Math.floor(goalData.goal.target_value / 60)}
+                  {@const seconds = goalData.goal.target_value % 60}
+                  {@const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`}
+                  <span>{heroName} —</span>
+                  {#if itemEntry}
+                    <ItemIcon itemName={itemEntry.name} displayName={itemEntry.display_name} size="small" showName={true} />
+                  {:else}
+                    <span>Unknown Item</span>
+                  {/if}
+                  <span>by {timeStr}</span>
+                {:else}
+                  {formatGoalDescription(goalData.goal)}
+                {/if}
+              </div>
               <div class="goal-progress-bar">
                 <div class="goal-fill {hitRate >= 70 ? 'success' : ''}" style="width:{hitRate}%"></div>
               </div>
@@ -420,34 +466,6 @@
           </div>
         {/each}
       </div>
-    {/if}
-
-    <!-- WEEKLY CHALLENGE -->
-    <div class="section-header" style="margin-top: 28px;">
-      <div class="section-title">🏆 Weekly Challenge</div>
-    </div>
-    {#if weeklyProgress}
-      <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
-        <div class="weekly-desc">{weeklyProgress.challenge.challenge_description}</div>
-        <div class="weekly-bar-wrap">
-          <div class="weekly-bar">
-            <div class="weekly-fill {weeklyProgress.completed ? 'done' : ''}"
-                 style="width:{weeklyProgressPct(weeklyProgress)}%"></div>
-          </div>
-          <span class="weekly-label">{weeklyProgress.current_value}/{weeklyProgress.target}</span>
-        </div>
-        <div class="weekly-meta">
-          {#if weeklyProgress.completed}
-            <span class="complete-tag">✓ Complete!</span>
-          {:else}
-            <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
-          {/if}
-        </div>
-      </a>
-    {:else}
-      <a href="/challenges" class="weekly-card empty">
-        <span class="weekly-empty-text">Choose this week's challenge →</span>
-      </a>
     {/if}
 
     <!-- HERO SUGGESTION -->
@@ -650,6 +668,13 @@
   }
 
   /* Inherit .goal-row, .hero-avatar, .goal-info, .goal-name, etc. from app.css */
+
+  .goal-name-inline {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
 
   .trend-improving { color: var(--green); }
   .trend-declining { color: var(--red); }

@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { heroes, getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView, trackEvent } from "$lib/analytics.js";
 
@@ -348,7 +349,24 @@
             {/if}
           </div>
           <div class="goal-info">
-            <div class="goal-name">{formatGoalDescription(goal)}</div>
+            <div class="goal-name" class:goal-name-inline={goal.metric === 'ItemTiming'}>
+              {#if goal.metric === 'ItemTiming'}
+                {@const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : 'Any Hero'}
+                {@const itemEntry = items.find(i => i.id === goal.item_id)}
+                {@const minutes = Math.floor(goal.target_value / 60)}
+                {@const seconds = goal.target_value % 60}
+                {@const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`}
+                <span>{heroName} —</span>
+                {#if itemEntry}
+                  <ItemIcon itemName={itemEntry.name} displayName={itemEntry.display_name} size="small" showName={true} />
+                {:else}
+                  <span>Unknown Item</span>
+                {/if}
+                <span>by {timeStr}</span>
+              {:else}
+                {formatGoalDescription(goal)}
+              {/if}
+            </div>
             <div class="goal-progress-bar">
               <div class="goal-fill" style="width:0%"></div>
             </div>
@@ -511,5 +529,13 @@
     color: var(--gold);
     font-style: italic;
     font-size: 10px;
+  }
+
+  /* Inline icon layout for item timing goals */
+  .goal-name-inline {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
   }
 </style>
