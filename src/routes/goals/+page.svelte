@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { heroes, getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView, trackEvent } from "$lib/analytics.js";
 
   let goals = $state([]);
@@ -30,8 +31,6 @@
     .sort((a, b) => a.name.localeCompare(b.name));
 
   let favoriteHeroIds = $state(new Set());
-  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroIds.has(h.id)));
-  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroIds.has(h.id)));
 
   onMount(async () => {
     const favs = await invoke("get_favorite_heroes").catch(() => []);
@@ -256,21 +255,7 @@
       <div class="form-row">
         <div class="fg">
           <div class="form-label">Hero</div>
-          <select class="form-select" bind:value={formHeroId}>
-            <option value="">Any Hero</option>
-            {#if favoriteHeroList.length > 0}
-              <optgroup label="⭐ Favorites">
-                {#each favoriteHeroList as hero}
-                  <option value={hero.id}>{hero.name}</option>
-                {/each}
-              </optgroup>
-            {/if}
-            <optgroup label="All Heroes">
-              {#each otherHeroList as hero}
-                <option value={hero.id}>{hero.name}</option>
-              {/each}
-            </optgroup>
-          </select>
+          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" />
         </div>
 
         <div class="fg">

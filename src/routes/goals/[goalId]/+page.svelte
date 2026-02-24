@@ -4,6 +4,7 @@
   import { page } from "$app/stores";
   import { heroes, getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import HeroSelect from "$lib/HeroSelect.svelte";
 
   let goalId = $derived($page.params.goalId);
   let goal = $state(null);
@@ -35,9 +36,6 @@
   const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
-
-  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroIds.has(h.id)));
-  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroIds.has(h.id)));
 
   // Filtered data
   let filteredData = $derived(() => {
@@ -402,21 +400,7 @@
             <div class="form-row">
               <label>
                 Hero
-                <select bind:value={editHeroId} class="form-select">
-                  <option value="">Any Hero</option>
-                  {#if favoriteHeroList.length > 0}
-                    <optgroup label="⭐ Favorites">
-                      {#each favoriteHeroList as hero}
-                        <option value={String(hero.id)}>{hero.name}</option>
-                      {/each}
-                    </optgroup>
-                  {/if}
-                  <optgroup label="All Heroes">
-                    {#each otherHeroList as hero}
-                      <option value={String(hero.id)}>{hero.name}</option>
-                    {/each}
-                  </optgroup>
-                </select>
+                <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" />
               </label>
               <label>
                 Metric
@@ -497,21 +481,7 @@
         <div class="filters-form">
           <div class="form-group">
             <label for="hero-filter">Hero</label>
-            <select id="hero-filter" bind:value={selectedHeroId}>
-              <option value="">All Heroes</option>
-              {#if favoriteHeroList.length > 0}
-                <optgroup label="⭐ Favorites">
-                  {#each favoriteHeroList as hero}
-                    <option value={hero.id}>{hero.name}</option>
-                  {/each}
-                </optgroup>
-              {/if}
-              <optgroup label="All Heroes">
-                {#each otherHeroList as hero}
-                  <option value={hero.id}>{hero.name}</option>
-                {/each}
-              </optgroup>
-            </select>
+            <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="All Heroes" />
           </div>
 
           <div class="form-group">

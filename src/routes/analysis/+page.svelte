@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { getHeroName, heroes } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView } from "$lib/analytics.js";
 
   let isLoading = $state(true);
@@ -120,11 +121,8 @@
 
   // Sorted hero lists
   let allHeroesSorted = Object.entries(heroes)
-    .map(([id, name]) => ({ value: parseInt(id), label: name }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
-  let favoriteHeroList = $derived(allHeroesSorted.filter(h => favoriteHeroes.has(h.value)));
-  let otherHeroList = $derived(allHeroesSorted.filter(h => !favoriteHeroes.has(h.value)));
+    .map(([id, name]) => ({ id: parseInt(id), name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Sorted hero stats: favorites first, then by average
   function getSortedHeroStats() {
@@ -203,21 +201,7 @@
 
     <div class="filter-group">
       <div class="filter-label">Hero</div>
-      <select class="form-select" bind:value={selectedHeroId} onchange={loadAnalysis}>
-        <option value={null}>All Heroes</option>
-        {#if favoriteHeroList.length > 0}
-          <optgroup label="⭐ Favorites">
-            {#each favoriteHeroList as hero}
-              <option value={hero.value}>{hero.label}</option>
-            {/each}
-          </optgroup>
-        {/if}
-        <optgroup label="All Heroes">
-          {#each otherHeroList as hero}
-            <option value={hero.value}>{hero.label}</option>
-          {/each}
-        </optgroup>
-      </select>
+      <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroes} anyLabel="All Heroes" anyValue={null} onchange={loadAnalysis} />
     </div>
 
     <div class="filter-group">
