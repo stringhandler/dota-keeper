@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "dota-keeper",
+  "productName": "Dota Keeper",
   "version": "0.2.4",
   "identifier": "com.volthawk.dota-keeper",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "dota-keeper",
+        "title": "Dota Keeper",
         "width": 1280,
         "height": 800
       }

@@ -19,7 +19,7 @@ pub fn get_item_name(item_id: i32) -> Option<&'static str> {
     ITEM_ID_TO_NAME.get(&item_id).copied()
 }
 
-/// Get all trackable items (core items, not consumables)
+/// Get all trackable items (core items, not consumables/recipes)
 pub fn get_all_items() -> Vec<Item> {
     let mut items: Vec<Item> = ITEM_MAP
         .iter()
@@ -34,362 +34,328 @@ pub fn get_all_items() -> Vec<Item> {
     items
 }
 
-/// Format item name for display (e.g., "blink" -> "Blink Dagger")
+/// Format item key to display name.
+/// Uses explicit mappings for items that don't title-case cleanly.
 fn format_item_name(key: &str) -> String {
     match key {
-        // Core items commonly tracked for timing goals
-        "blink" => "Blink Dagger",
-        "black_king_bar" => "Black King Bar",
-        "battlefury" => "Battle Fury",
-        "armlet" => "Armlet of Mordiggian",
-        "mekansm" => "Mekansm",
-        "force_staff" => "Force Staff",
-        "hand_of_midas" => "Hand of Midas",
-        "orchid" => "Orchid Malevolence",
-        "bloodthorn" => "Bloodthorn",
-        "radiance" => "Radiance",
-        "diffusal_blade" => "Diffusal Blade",
-        "desolator" => "Desolator",
-        "shadow_blade" => "Shadow Blade",
-        "silver_edge" => "Silver Edge",
-        "hurricane_pike" => "Hurricane Pike",
-        "maelstrom" => "Maelstrom",
-        "mjollnir" => "Mjollnir",
-        "monkey_king_bar" => "Monkey King Bar",
-        "daedalus" => "Daedalus",
-        "abyssal_blade" => "Abyssal Blade",
-        "butterfly" => "Butterfly",
-        "satanic" => "Satanic",
-        "heart" => "Heart of Tarrasque",
-        "assault" => "Assault Cuirass",
-        "shivas_guard" => "Shiva's Guard",
-        "lotus_orb" => "Lotus Orb",
-        "pipe" => "Pipe of Insight",
-        "crimson_guard" => "Crimson Guard",
-        "blade_mail" => "Blade Mail",
-        "vanguard" => "Vanguard",
-        "hood_of_defiance" => "Hood of Defiance",
-        "solar_crest" => "Solar Crest",
-        "vladmir" => "Vladmir's Offering",
-        "drums_of_endurance" => "Drum of Endurance",
-        "urn_of_shadows" => "Urn of Shadows",
-        "spirit_vessel" => "Spirit Vessel",
-        "ethereal_blade" => "Ethereal Blade",
-        "dagon" => "Dagon",
-        "refresher" => "Refresher Orb",
-        "octarine_core" => "Octarine Core",
-        "aghanims_scepter" => "Aghanim's Scepter",
-        "aghanims_shard" => "Aghanim's Shard",
-        "ultimate_scepter" => "Aghanim's Scepter",
-        "aeon_disk" => "Aeon Disk",
-        "linkens_sphere" => "Linken's Sphere",
-        "manta" => "Manta Style",
-        "sange_and_yasha" => "Sange and Yasha",
-        "sange" => "Sange",
-        "yasha" => "Yasha",
-        "kaya" => "Kaya",
-        "kaya_and_sange" => "Kaya and Sange",
-        "yasha_and_kaya" => "Yasha and Kaya",
-        "ancient_janggo" => "Drum of Endurance",
-        "guardian_greaves" => "Guardian Greaves",
-        "arcane_boots" => "Arcane Boots",
-        "power_treads" => "Power Treads",
-        "phase_boots" => "Phase Boots",
-        "tranquil_boots" => "Tranquil Boots",
-        "travel_boots" => "Boots of Travel",
-        "travel_boots_2" => "Boots of Travel 2",
-        "soul_ring" => "Soul Ring",
-        "magic_wand" => "Magic Wand",
-        "bracer" => "Bracer",
-        "wraith_band" => "Wraith Band",
-        "null_talisman" => "Null Talisman",
-        "poor_mans_shield" => "Poor Man's Shield",
-        "quelling_blade" => "Quelling Blade",
-        "stout_shield" => "Stout Shield",
-        "ring_of_basilius" => "Ring of Basilius",
-        "headdress" => "Headdress",
-        "buckler" => "Buckler",
-        "pers" => "Perseverance",
-        "infused_raindrop" => "Infused Raindrop",
-        "glimmer_cape" => "Glimmer Cape",
-        "ghost" => "Ghost Scepter",
-        "rod_of_atos" => "Rod of Atos",
-        "ultimate_orb" => "Ultimate Orb",
-        "mystic_staff" => "Mystic Staff",
-        "reaver" => "Reaver",
-        "relic" => "Sacred Relic",
-        "demon_edge" => "Demon Edge",
-        "eagle" => "Eaglesong",
-        "platemail" => "Platemail",
-        "talisman_of_evasion" => "Talisman of Evasion",
-        "hyperstone" => "Hyperstone",
+        // Boots
+        "boots"             => "Boots of Speed",
+        "arcane_boots"      => "Arcane Boots",
+        "phase_boots"       => "Phase Boots",
+        "power_treads"      => "Power Treads",
+        "tranquil_boots"    => "Tranquil Boots",
+        "travel_boots"      => "Boots of Travel",
+        "travel_boots_2"    => "Boots of Travel 2",
+        "guardian_greaves"  => "Guardian Greaves",
+        "boots_of_bearing"  => "Boots of Bearing",
+        "samurai_tabi"      => "Samurai Tabi",
+        "hermes_sandals"    => "Hermes Sandals",
+        "witches_switch"    => "Witch's Switch",
+        "lunar_crest"       => "Lunar Crest",
+
+        // Small items
+        "blink"             => "Blink Dagger",
+        "quelling_blade"    => "Quelling Blade",
+        "magic_stick"       => "Magic Stick",
+        "magic_wand"        => "Magic Wand",
+        "ghost"             => "Ghost Scepter",
+        "wind_lace"         => "Wind Lace",
+        "orb_of_venom"      => "Orb of Venom",
+        "shadow_amulet"     => "Shadow Amulet",
+        "infused_raindrop"  => "Infused Raindrops",
+        "fluffy_hat"        => "Fluffy Hat",
+        "blitz_knuckles"    => "Blitz Knuckles",
+        "crown"             => "Crown",
+        "moon_shard"        => "Moon Shard",
+        "aghanims_shard"    => "Aghanim's Shard",
+        "diadem"            => "Diadem",
+        "falcon_blade"      => "Falcon Blade",
+        "voodoo_mask"       => "Voodoo Mask",
+        "faerie_fire"       => "Faerie Fire",
+
+        // Stat items
+        "bracer"            => "Bracer",
+        "wraith_band"       => "Wraith Band",
+        "null_talisman"     => "Null Talisman",
+        "pers"              => "Perseverance",
+        "oblivion_staff"    => "Oblivion Staff",
+        "soul_ring"         => "Soul Ring",
+        "ring_of_basilius"  => "Ring of Basilius",
+        "headdress"         => "Headdress",
+        "buckler"           => "Buckler",
+        "ring_of_aquila"    => "Ring of Aquila",
+
+        // Support / utility
+        "hand_of_midas"         => "Hand of Midas",
+        "medallion_of_courage"  => "Medallion of Courage",
+        "urn_of_shadows"        => "Urn of Shadows",
+        "spirit_vessel"         => "Spirit Vessel",
+        "ancient_janggo"        => "Drum of Endurance",
+        "veil_of_discord"       => "Veil of Discord",
+        "aether_lens"           => "Aether Lens",
+        "force_staff"           => "Force Staff",
+        "cyclone"               => "Eul's Scepter of Divinity",
+        "glimmer_cape"          => "Glimmer Cape",
+        "rod_of_atos"           => "Rod of Atos",
+        "holy_locket"           => "Holy Locket",
+        "pavise"                => "Pavise",
+        "phylactery"            => "Phylactery",
+        "cornucopia"            => "Cornucopia",
+        "pipe"                  => "Pipe of Insight",
+        "mekansm"               => "Mekansm",
+        "vladmir"               => "Vladmir's Offering",
+        "lotus_orb"             => "Lotus Orb",
+        "solar_crest"           => "Solar Crest",
+        "wraith_pact"           => "Wraith Pact",
+        "witch_blade"           => "Witch Blade",
+        "meteor_hammer"         => "Meteor Hammer",
+        "sheepstick"            => "Scythe of Vyse",
+        "orchid"                => "Orchid Malevolence",
+        "wind_waker"            => "Wind Waker",
+        "nullifier"             => "Nullifier",
+
+        // Damage / carry core
+        "dragon_lance"      => "Dragon Lance",
+        "hurricane_pike"    => "Hurricane Pike",
+        "echo_sabre"        => "Echo Sabre",
+        "maelstrom"         => "Maelstrom",
+        "mjollnir"          => "Mjollnir",
+        "desolator"         => "Desolator",
+        "monkey_king_bar"   => "Monkey King Bar",
+        "lesser_crit"       => "Crystalys",
+        "greater_crit"      => "Daedalus",
+        "diffusal_blade"    => "Diffusal Blade",
+        "mage_slayer"       => "Mage Slayer",
+        "radiance"          => "Radiance",
+        "harpoon"           => "Harpoon",
+        "gungir"            => "Gleipnir",
+        "bfury"             => "Battle Fury",
+        "armlet"            => "Armlet of Mordiggian",
+        "invis_sword"       => "Shadow Blade",
+        "silver_edge"       => "Silver Edge",
+        "mask_of_madness"   => "Mask of Madness",
+        "basher"            => "Skull Basher",
+        "abyssal_blade"     => "Abyssal Blade",
+        "sange"             => "Sange",
+        "yasha"             => "Yasha",
+        "kaya"              => "Kaya",
+        "sange_and_yasha"   => "Sange and Yasha",
+        "kaya_and_sange"    => "Kaya and Sange",
+        "yasha_and_kaya"    => "Yasha and Kaya",
+        "manta"             => "Manta Style",
+        "bloodthorn"        => "Bloodthorn",
+        "ethereal_blade"    => "Ethereal Blade",
+        "disperser"         => "Disperser",
+        "revenants_brooch"  => "Revenant's Brooch",
+
+        // Magical damage
+        "dagon"             => "Dagon",
+        "refresher"         => "Refresher Orb",
+        "octarine_core"     => "Octarine Core",
+        "bloodstone"        => "Bloodstone",
+        "necronomicon"      => "Necronomicon",
+        "overwhelming_blink" => "Overwhelming Blink",
+        "swift_blink"       => "Swift Blink",
+        "arcane_blink"      => "Arcane Blink",
+
+        // Aghs / progression
+        "ultimate_scepter"  => "Aghanim's Scepter",
+        "helm_of_the_dominator" => "Helm of the Dominator",
+        "helm_of_the_overlord"  => "Helm of the Overlord",
+
+        // Defensive / tanky
+        "black_king_bar"    => "Black King Bar",
+        "sphere"            => "Linken's Sphere",
+        "aeon_disk"         => "Aeon Disk",
+        "vanguard"          => "Vanguard",
+        "blade_mail"        => "Blade Mail",
+        "hood_of_defiance"  => "Hood of Defiance",
+        "crimson_guard"     => "Crimson Guard",
+        "eternal_shroud"    => "Eternal Shroud",
+        "assault"           => "Assault Cuirass",
+        "shivas_guard"      => "Shiva's Guard",
+        "heart"             => "Heart of Tarrasque",
+        "satanic"           => "Satanic",
+        "butterfly"         => "Butterfly",
+        "skadi"             => "Eye of Skadi",
+        "heavens_halberd"   => "Heaven's Halberd",
+        "rapier"            => "Divine Rapier",
+
+        // Newer items
+        "devastator"        => "Parasma",
+        "angels_demise"     => "Khanda",
+
+        // Fallback: title-case each word
         _ => {
-            // Default: capitalize first letter and replace underscores with spaces
-            let mut result = key.replace('_', " ");
-            if let Some(first_char) = result.get_mut(0..1) {
-                first_char.make_ascii_uppercase();
-            }
-            return result;
+            return key
+                .replace('_', " ")
+                .split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
         }
-    }.to_string()
+    }
+    .to_string()
 }
 
-// Item ID mapping based on Dota 2 item constants
-// Source: https://github.com/odota/dotaconstants/blob/master/build/items.json
+// Item ID mapping — canonical keys and IDs from OpenDota constants.
+// Source: https://api.opendota.com/api/constants/items
 lazy_static::lazy_static! {
     static ref ITEM_MAP: HashMap<&'static str, i32> = {
         let mut m = HashMap::new();
-        // Core items commonly tracked for timing goals
-        m.insert("blink", 1);
-        m.insert("blades_of_attack", 2);
-        m.insert("broadsword", 3);
-        m.insert("chainmail", 4);
-        m.insert("claymore", 5);
-        m.insert("helm_of_iron_will", 6);
-        m.insert("javelin", 7);
-        m.insert("mithril_hammer", 8);
-        m.insert("platemail", 9);
-        m.insert("quarterstaff", 10);
-        m.insert("quelling_blade", 11);
-        m.insert("ring_of_protection", 12);
-        m.insert("gauntlets", 13);
-        m.insert("slippers", 14);
-        m.insert("mantle", 15);
-        m.insert("branches", 16);
-        m.insert("belt_of_strength", 17);
-        m.insert("boots_of_elves", 18);
-        m.insert("robe", 19);
-        m.insert("circlet", 20);
-        m.insert("ogre_axe", 21);
-        m.insert("blade_of_alacrity", 22);
-        m.insert("staff_of_wizardry", 23);
-        m.insert("ultimate_orb", 24);
-        m.insert("gloves", 25);
-        m.insert("lifesteal", 26);
-        m.insert("ring_of_regen", 27);
-        m.insert("sobi_mask", 28);
+
+        // ── BOOTS ──────────────────────────────────────────────────────────────
         m.insert("boots", 29);
-        m.insert("gem", 30);
-        m.insert("cloak", 31);
-        m.insert("talisman_of_evasion", 32);
-        m.insert("cheese", 33);
+        m.insert("arcane_boots", 180);
+        m.insert("phase_boots", 50);
+        m.insert("power_treads", 63);
+        m.insert("tranquil_boots", 214);
+        m.insert("travel_boots", 48);
+        m.insert("travel_boots_2", 220);
+        m.insert("guardian_greaves", 231);
+        m.insert("boots_of_bearing", 931);
+        m.insert("samurai_tabi", 1091);
+        m.insert("hermes_sandals", 1093);
+        m.insert("witches_switch", 1100);
+        m.insert("lunar_crest", 1095);
+
+        // ── SMALL / EARLY ITEMS ────────────────────────────────────────────────
+        m.insert("blink", 1);
+        m.insert("quelling_blade", 11);
         m.insert("magic_stick", 34);
-        m.insert("recipe_magic_wand", 35);
         m.insert("magic_wand", 36);
         m.insert("ghost", 37);
-        m.insert("clarity", 38);
-        m.insert("flask", 39);
-        m.insert("dust", 40);
-        m.insert("bottle", 41);
-        m.insert("ward_observer", 42);
-        m.insert("ward_sentry", 43);
-        m.insert("tango", 44);
-        m.insert("courier", 45);
-        m.insert("tpscroll", 46);
-        m.insert("recipe_travel_boots", 47);
-        m.insert("travel_boots", 48);
-        m.insert("recipe_phase_boots", 49);
-        m.insert("phase_boots", 50);
-        m.insert("demon_edge", 51);
-        m.insert("eagle", 52);
-        m.insert("reaver", 53);
-        m.insert("relic", 54);
-        m.insert("hyperstone", 55);
-        m.insert("ring_of_health", 56);
-        m.insert("void_stone", 57);
-        m.insert("mystic_staff", 58);
-        m.insert("energy_booster", 59);
-        m.insert("point_booster", 60);
-        m.insert("vitality_booster", 61);
-        m.insert("recipe_power_treads", 62);
-        m.insert("power_treads", 63);
-        m.insert("recipe_hand_of_midas", 64);
-        m.insert("hand_of_midas", 65);
-        m.insert("recipe_oblivion_staff", 66);
-        m.insert("oblivion_staff", 67);
-        m.insert("recipe_pers", 68);
-        m.insert("pers", 69);
-        m.insert("recipe_poor_mans_shield", 70);
-        m.insert("poor_mans_shield", 71);
-        m.insert("recipe_bracer", 72);
+        m.insert("wind_lace", 244);
+        m.insert("orb_of_venom", 181);
+        m.insert("shadow_amulet", 215);
+        m.insert("infused_raindrop", 265);
+        m.insert("fluffy_hat", 593);
+        m.insert("blitz_knuckles", 485);
+        m.insert("crown", 261);
+        m.insert("moon_shard", 247);
+        m.insert("aghanims_shard", 609);
+        m.insert("diadem", 1122);
+        m.insert("falcon_blade", 596);
+        m.insert("voodoo_mask", 473);
+        m.insert("faerie_fire", 237);
+
+        // ── STAT ITEMS ─────────────────────────────────────────────────────────
         m.insert("bracer", 73);
-        m.insert("recipe_wraith_band", 74);
         m.insert("wraith_band", 75);
-        m.insert("recipe_null_talisman", 76);
         m.insert("null_talisman", 77);
-        m.insert("recipe_mekansm", 78);
-        m.insert("mekansm", 79);
-        m.insert("recipe_vladmir", 80);
-        m.insert("vladmir", 81);
-        m.insert("flying_courier", 84);
-        m.insert("recipe_buckler", 85);
-        m.insert("buckler", 86);
-        m.insert("recipe_ring_of_basilius", 87);
+        m.insert("pers", 69);
+        m.insert("oblivion_staff", 67);
+        m.insert("soul_ring", 178);
         m.insert("ring_of_basilius", 88);
-        m.insert("recipe_pipe", 89);
-        m.insert("pipe", 90);
-        m.insert("recipe_urn_of_shadows", 91);
-        m.insert("urn_of_shadows", 92);
-        m.insert("recipe_headdress", 93);
         m.insert("headdress", 94);
-        m.insert("recipe_sheepstick", 95);
-        m.insert("sheepstick", 96);
-        m.insert("recipe_orchid", 97);
-        m.insert("orchid", 98);
-        m.insert("recipe_cyclone", 99);
-        m.insert("cyclone", 100);
-        m.insert("recipe_force_staff", 101);
+        m.insert("buckler", 86);
+        m.insert("ring_of_aquila", 212);
+
+        // ── SUPPORT / UTILITY ──────────────────────────────────────────────────
+        m.insert("hand_of_midas", 65);
+        m.insert("medallion_of_courage", 187);
+        m.insert("urn_of_shadows", 92);
+        m.insert("spirit_vessel", 267);
+        m.insert("ancient_janggo", 185);
+        m.insert("veil_of_discord", 190);
+        m.insert("aether_lens", 232);
         m.insert("force_staff", 102);
-        m.insert("recipe_dagon", 103);
-        m.insert("dagon", 104);
-        m.insert("recipe_necronomicon", 105);
-        m.insert("necronomicon", 106);
-        m.insert("recipe_ultimate_scepter", 107);
-        m.insert("ultimate_scepter", 108);
-        m.insert("recipe_refresher", 109);
-        m.insert("refresher", 110);
-        m.insert("recipe_assault", 111);
-        m.insert("assault", 112);
-        m.insert("recipe_heart", 113);
-        m.insert("heart", 114);
-        m.insert("recipe_black_king_bar", 115);
-        m.insert("black_king_bar", 116);
-        m.insert("aegis", 117);
-        m.insert("recipe_shivas_guard", 118);
-        m.insert("shivas_guard", 119);
-        m.insert("recipe_bloodstone", 120);
-        m.insert("bloodstone", 121);
-        m.insert("recipe_sphere", 122);
-        m.insert("sphere", 123);
-        m.insert("recipe_vanguard", 124);
-        m.insert("vanguard", 125);
-        m.insert("recipe_blade_mail", 126);
-        m.insert("blade_mail", 127);
-        m.insert("recipe_soul_booster", 128);
-        m.insert("soul_booster", 129);
-        m.insert("recipe_hood_of_defiance", 130);
-        m.insert("hood_of_defiance", 131);
-        m.insert("recipe_rapier", 132);
-        m.insert("rapier", 133);
-        m.insert("recipe_monkey_king_bar", 134);
+        m.insert("cyclone", 100);
+        m.insert("glimmer_cape", 254);
+        m.insert("rod_of_atos", 206);
+        m.insert("holy_locket", 269);
+        m.insert("pavise", 1128);
+        m.insert("phylactery", 1107);
+        m.insert("cornucopia", 1125);
+        m.insert("pipe", 90);
+        m.insert("mekansm", 79);
+        m.insert("vladmir", 81);
+        m.insert("lotus_orb", 226);
+        m.insert("solar_crest", 229);
+        m.insert("wraith_pact", 908);
+        m.insert("witch_blade", 534);
+        m.insert("meteor_hammer", 223);
+        m.insert("sheepstick", 96);
+        m.insert("orchid", 98);
+        m.insert("wind_waker", 610);
+        m.insert("nullifier", 225);
+
+        // ── DAMAGE / CARRY CORE ────────────────────────────────────────────────
+        m.insert("dragon_lance", 236);
+        m.insert("hurricane_pike", 263);
+        m.insert("echo_sabre", 252);
+        m.insert("maelstrom", 166);
+        m.insert("mjollnir", 158);
+        m.insert("desolator", 168);
         m.insert("monkey_king_bar", 135);
-        m.insert("recipe_radiance", 136);
-        m.insert("radiance", 137);
-        m.insert("recipe_butterfly", 138);
-        m.insert("butterfly", 139);
-        m.insert("recipe_greater_crit", 140);
-        m.insert("greater_crit", 141);
-        m.insert("recipe_basher", 142);
-        m.insert("basher", 143);
-        m.insert("recipe_bfury", 144);
-        m.insert("bfury", 145);
-        m.insert("recipe_manta", 146);
-        m.insert("manta", 147);
-        m.insert("recipe_lesser_crit", 148);
         m.insert("lesser_crit", 149);
-        m.insert("recipe_armlet", 150);
+        m.insert("greater_crit", 141);
+        m.insert("diffusal_blade", 174);
+        m.insert("mage_slayer", 598);
+        m.insert("radiance", 137);
+        m.insert("harpoon", 939);
+        m.insert("gungir", 1466);
+        m.insert("bfury", 145);
         m.insert("armlet", 151);
         m.insert("invis_sword", 152);
-        m.insert("recipe_sange_and_yasha", 153);
-        m.insert("sange_and_yasha", 154);
-        m.insert("recipe_satanic", 155);
-        m.insert("satanic", 156);
-        m.insert("recipe_mjollnir", 157);
-        m.insert("mjollnir", 158);
-        m.insert("recipe_skadi", 159);
-        m.insert("skadi", 160);
-        m.insert("recipe_sange", 161);
-        m.insert("sange", 162);
-        m.insert("recipe_helm_of_the_dominator", 163);
-        m.insert("helm_of_the_dominator", 164);
-        m.insert("recipe_maelstrom", 165);
-        m.insert("maelstrom", 166);
-        m.insert("recipe_desolator", 167);
-        m.insert("desolator", 168);
-        m.insert("recipe_yasha", 169);
-        m.insert("yasha", 170);
-        m.insert("recipe_mask_of_madness", 171);
+        m.insert("silver_edge", 249);
         m.insert("mask_of_madness", 172);
-        m.insert("recipe_diffusal_blade", 173);
-        m.insert("diffusal_blade", 174);
-        m.insert("recipe_ethereal_blade", 175);
+        m.insert("basher", 143);
+        m.insert("abyssal_blade", 208);
+        m.insert("sange", 162);
+        m.insert("yasha", 170);
+        m.insert("kaya", 259);
+        m.insert("sange_and_yasha", 154);
+        m.insert("kaya_and_sange", 273);
+        m.insert("yasha_and_kaya", 277);
+        m.insert("manta", 147);
+        m.insert("bloodthorn", 250);
         m.insert("ethereal_blade", 176);
-        m.insert("recipe_soul_ring", 177);
-        m.insert("soul_ring", 178);
-        m.insert("recipe_arcane_boots", 179);
-        m.insert("arcane_boots", 180);
-        m.insert("orb_of_venom", 181);
-        m.insert("stout_shield", 182);
-        m.insert("recipe_invis_sword", 183);
-        m.insert("recipe_ancient_janggo", 184);
-        m.insert("ancient_janggo", 185);
-        m.insert("recipe_medallion_of_courage", 186);
-        m.insert("medallion_of_courage", 187);
-        m.insert("smoke_of_deceit", 188);
-        m.insert("recipe_veil_of_discord", 189);
-        m.insert("veil_of_discord", 190);
-        m.insert("recipe_guardian_greaves", 191);
-        m.insert("guardian_greaves", 192);
-        m.insert("recipe_rod_of_atos", 193);
-        m.insert("rod_of_atos", 194);
-        m.insert("recipe_abyssal_blade", 195);
-        m.insert("abyssal_blade", 196);
-        m.insert("recipe_heavens_halberd", 197);
-        m.insert("heavens_halberd", 198);
-        m.insert("recipe_ring_of_aquila", 199);
-        m.insert("ring_of_aquila", 200);
-        m.insert("recipe_tranquil_boots", 201);
-        m.insert("tranquil_boots", 202);
-        m.insert("shadow_amulet", 203);
-        m.insert("recipe_glimmer_cape", 204);
-        m.insert("glimmer_cape", 205);
-        m.insert("recipe_silver_edge", 232);
-        m.insert("silver_edge", 233);
-        m.insert("recipe_solar_crest", 234);
-        m.insert("solar_crest", 235);
-        m.insert("recipe_octarine_core", 236);
-        m.insert("octarine_core", 237);
-        m.insert("recipe_lotus_orb", 238);
-        m.insert("lotus_orb", 239);
-        m.insert("infused_raindrop", 265);
-        m.insert("recipe_aeon_disk", 297);
-        m.insert("aeon_disk", 298);
-        m.insert("recipe_kaya", 299);
-        m.insert("kaya", 300);
-        m.insert("recipe_bloodthorn", 305);
-        m.insert("bloodthorn", 306);
-        m.insert("recipe_hurricane_pike", 307);
-        m.insert("hurricane_pike", 308);
-        m.insert("recipe_spirit_vessel", 334);
-        m.insert("spirit_vessel", 335);
-        m.insert("recipe_kaya_and_sange", 344);
-        m.insert("kaya_and_sange", 345);
-        m.insert("recipe_yasha_and_kaya", 346);
-        m.insert("yasha_and_kaya", 347);
-        m.insert("recipe_crimson_guard", 370);
-        m.insert("crimson_guard", 371);
-        m.insert("aghanims_shard", 609);
-        m.insert("travel_boots_2", 220);
-        m.insert("recipe_travel_boots_2", 219);
-        m.insert("dagon_2", 197);
-        m.insert("dagon_3", 198);
-        m.insert("dagon_4", 199);
-        m.insert("dagon_5", 200);
-        m.insert("necronomicon_2", 191);
-        m.insert("necronomicon_3", 192);
-        m.insert("diffusal_blade_2", 196);
+        m.insert("disperser", 1097);
+        m.insert("revenants_brooch", 911);
 
-        // Use aliases for common items
-        m.insert("armlet", 151);
-        m.insert("battlefury", 145);
-        m.insert("bkb", 116);
-        m.insert("linkens_sphere", 123);
-        m.insert("daedalus", 141);
-        m.insert("mkb", 135);
-        m.insert("ac", 112);
-        m.insert("aghs", 108);
-        m.insert("sny", 154);
-        m.insert("drums_of_endurance", 185);
+        // ── MAGICAL DAMAGE ─────────────────────────────────────────────────────
+        m.insert("dagon", 104);
+        m.insert("refresher", 110);
+        m.insert("octarine_core", 235);
+        m.insert("bloodstone", 121);
+        m.insert("necronomicon", 106);
+        m.insert("overwhelming_blink", 600);
+        m.insert("swift_blink", 603);
+        m.insert("arcane_blink", 604);
+
+        // ── AGHS / PROGRESSION ─────────────────────────────────────────────────
+        m.insert("ultimate_scepter", 108);
+        m.insert("helm_of_the_dominator", 164);
+        m.insert("helm_of_the_overlord", 635);
+
+        // ── DEFENSIVE / TANKY ──────────────────────────────────────────────────
+        m.insert("black_king_bar", 116);
+        m.insert("sphere", 123);
+        m.insert("aeon_disk", 256);
+        m.insert("vanguard", 125);
+        m.insert("blade_mail", 127);
+        m.insert("hood_of_defiance", 131);
+        m.insert("crimson_guard", 242);
+        m.insert("eternal_shroud", 692);
+        m.insert("assault", 112);
+        m.insert("shivas_guard", 119);
+        m.insert("heart", 114);
+        m.insert("satanic", 156);
+        m.insert("butterfly", 139);
+        m.insert("skadi", 160);
+        m.insert("heavens_halberd", 210);
+        m.insert("rapier", 133);
+
+        // ── NEWER ITEMS ────────────────────────────────────────────────────────
+        m.insert("devastator", 1806);   // Parasma
+        m.insert("angels_demise", 1808); // Khanda
 
         m
     };

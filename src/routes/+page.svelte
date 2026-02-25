@@ -348,6 +348,11 @@
     </div>
     {#if weeklyProgress}
       <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
+        {#if weeklyProgress.challenge.hero_id !== null}
+          <div class="weekly-hero">
+            <HeroIcon heroId={weeklyProgress.challenge.hero_id} size="small" showName={true} />
+          </div>
+        {/if}
         <div class="weekly-desc">{weeklyProgress.challenge.challenge_description}</div>
         <div class="weekly-bar-wrap">
           <div class="weekly-bar">
@@ -719,6 +724,10 @@
   }
 
   .weekly-empty-text { color: var(--text-secondary); font-size: 13px; }
+
+  .weekly-hero {
+    margin-bottom: 8px;
+  }
 
   .weekly-desc {
     font-size: 14px;
