@@ -47,6 +47,8 @@ When a task is completed by you and requires manual verification, move to `meta/
 
 Where creating a release, you need to update package.json, src-tauri/Cargo.toml, tauri.conf.json. Also, populate the CHANGELOG.md with the changes
 
+**Do NOT commit the release.** Just prepare the files (version bumps + changelog) and leave it staged or unstaged for the user to review and commit themselves.
+
 
 ## Status
 

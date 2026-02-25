@@ -5,6 +5,17 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-02-25
+
+### Added
+- **Hero Icons in Dropdowns**: Hero selection dropdowns across Goals, Analysis, and Goal Details pages now display hero portrait icons alongside hero names for easier selection
+- **Item Icons**: Item icons are now displayed on the Goals page and Goal Details page for item timing goals
+- **New Heroes**: Added Kez and Lara (Largo) to the hero roster
+
+### Changed
+- **Default Window Size**: Increased default window size to 1280x800 for a better out-of-the-box experience
+- **Weekly Goals Display**: Fixed name and display of weekly goals on the dashboard
+
 ## [0.2.4] - 2026-02-23
 
 ### Added
