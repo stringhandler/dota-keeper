@@ -259,10 +259,14 @@
         return "Kills";
       case "LastHits":
         return "Last Hits";
+      case "Denies":
+        return "Denies";
       case "Level":
         return "Level";
       case "ItemTiming":
         return "Item Timing";
+      case "PartnerNetworth":
+        return "Partner Networth";
       default:
         return metric;
     }
@@ -276,10 +280,14 @@
         return "kills";
       case "LastHits":
         return "CS";
+      case "Denies":
+        return "denies";
       case "Level":
         return "";
       case "ItemTiming":
         return "M:SS";
+      case "PartnerNetworth":
+        return "gold";
       default:
         return "";
     }
@@ -293,6 +301,9 @@
       const itemName = g.item_id !== null ? getItemName(g.item_id) : "Unknown Item";
       const timeStr = formatSeconds(g.target_value);
       return `${heroName}: ${itemName} by ${timeStr}${modeStr}`;
+    }
+    if (g.metric === "PartnerNetworth") {
+      return `${heroName}: Partner ${g.target_value}g by ${g.target_time_minutes} min${modeStr}`;
     }
     const unit = getMetricUnit(g.metric);
     const valueStr = unit ? `${g.target_value} ${unit}` : `Level ${g.target_value}`;
@@ -399,21 +410,23 @@
               <p class="form-error">{error}</p>
             {/if}
             <div class="form-row">
-              <label>
+              <label style="flex: 2; min-width: 200px;">
                 Hero
                 <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" />
               </label>
-              <label>
+              <label style="flex: 1;">
                 Metric
                 <select bind:value={editMetric} class="form-select">
                   <option value="LastHits">Last Hits (CS)</option>
+                  <option value="Denies">Denies</option>
+                  <option value="PartnerNetworth">Partner Networth</option>
                   <option value="Networth">Net Worth</option>
                   <option value="Kills">Kills</option>
                   <option value="Level">Level</option>
                   <option value="ItemTiming">Item Timing</option>
                 </select>
               </label>
-              <label>
+              <label style="flex: 1;">
                 Game Mode
                 <select bind:value={editGameMode} class="form-select">
                   <option value="Ranked">Ranked</option>

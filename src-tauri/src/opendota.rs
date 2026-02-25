@@ -48,6 +48,7 @@ impl From<OpenDotaMatch> for Match {
             tower_damage: m.tower_damage.unwrap_or(0),
             hero_healing: m.hero_healing.unwrap_or(0),
             parse_state: MatchState::Unparsed,
+            role: 0,
         }
     }
 }
@@ -63,8 +64,10 @@ pub struct DetailedMatch {
 pub struct DetailedPlayer {
     pub account_id: Option<u32>,
     pub player_slot: i32,
+    pub lane_role: Option<i32>,  // 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
     pub lh_t: Option<Vec<i32>>,  // Last hits at each minute
     pub dn_t: Option<Vec<i32>>,  // Denies at each minute
+    pub net_worth: Option<Vec<i32>>,  // Networth at each minute
     pub purchase_log: Option<Vec<PurchaseLogEntry>>,  // Item purchases
 }
 
@@ -72,6 +75,30 @@ pub struct DetailedPlayer {
 pub struct PurchaseLogEntry {
     pub time: i32,  // Game time in seconds when item was purchased
     pub key: String,  // Item name/key (e.g., "blink", "armlet")
+}
+
+/// Find the lane partner for a support player (pos 4 or 5).
+/// Pos 5 (hard support) lanes with pos 1 (carry) in the safe lane.
+/// Pos 4 (soft support) lanes with pos 3 (offlaner) in the off lane.
+/// Returns None if the player is not a support or no partner is found.
+pub fn find_lane_partner<'a>(
+    all_players: &'a [DetailedPlayer],
+    player_slot: i32,
+    player_role: i32,
+) -> Option<&'a DetailedPlayer> {
+    let partner_role = match player_role {
+        5 => 1, // hard support partners with carry
+        4 => 3, // soft support partners with offlaner
+        _ => return None,
+    };
+
+    let is_radiant = player_slot < 128;
+
+    all_players.iter().find(|p| {
+        p.player_slot != player_slot
+            && (p.player_slot < 128) == is_radiant
+            && p.lane_role == Some(partner_role)
+    })
 }
 
 /// Parse request status

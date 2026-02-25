@@ -9,8 +9,10 @@ pub enum GoalMetric {
     Networth,
     Kills,
     LastHits,
+    Denies,
     Level,
     ItemTiming,
+    PartnerNetworth,
 }
 
 impl GoalMetric {
@@ -19,8 +21,10 @@ impl GoalMetric {
             GoalMetric::Networth => "networth",
             GoalMetric::Kills => "kills",
             GoalMetric::LastHits => "last_hits",
+            GoalMetric::Denies => "denies",
             GoalMetric::Level => "level",
             GoalMetric::ItemTiming => "item_timing",
+            GoalMetric::PartnerNetworth => "partner_networth",
         }
     }
 
@@ -29,8 +33,10 @@ impl GoalMetric {
             "networth" => Some(GoalMetric::Networth),
             "kills" => Some(GoalMetric::Kills),
             "last_hits" => Some(GoalMetric::LastHits),
+            "denies" => Some(GoalMetric::Denies),
             "level" => Some(GoalMetric::Level),
             "item_timing" => Some(GoalMetric::ItemTiming),
+            "partner_networth" => Some(GoalMetric::PartnerNetworth),
             _ => None,
         }
     }
@@ -162,6 +168,7 @@ pub struct Match {
     pub tower_damage: i32,
     pub hero_healing: i32,
     pub parse_state: MatchState,
+    pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
 }
 
 impl Match {
@@ -222,7 +229,8 @@ pub fn init_db() -> Result<Connection, String> {
             hero_damage INTEGER NOT NULL,
             tower_damage INTEGER NOT NULL,
             hero_healing INTEGER NOT NULL,
-            parse_state TEXT NOT NULL DEFAULT 'unparsed'
+            parse_state TEXT NOT NULL DEFAULT 'unparsed',
+            role INTEGER NOT NULL DEFAULT 0
         )",
         [],
     ).map_err(|e| format!("Failed to create matches table: {}", e))?;
@@ -236,6 +244,12 @@ pub fn init_db() -> Result<Connection, String> {
     // Add parse_state column if it doesn't exist (for existing databases)
     let _ = conn.execute(
         "ALTER TABLE matches ADD COLUMN parse_state TEXT NOT NULL DEFAULT 'unparsed'",
+        [],
+    );
+
+    // Add role column if it doesn't exist (for existing databases)
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN role INTEGER NOT NULL DEFAULT 0",
         [],
     );
 
@@ -307,6 +321,25 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create hero_goal_suggestions table: {}", e))?;
+
+    // Create the player_networth table (per-minute networth for all players, used for PartnerNetworth goals)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS player_networth (
+            match_id INTEGER NOT NULL,
+            player_slot INTEGER NOT NULL,
+            minute INTEGER NOT NULL,
+            networth INTEGER NOT NULL,
+            PRIMARY KEY (match_id, player_slot, minute),
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create player_networth table: {}", e))?;
+
+    // Add partner_slot column if it doesn't exist (set during parsing for support players)
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN partner_slot INTEGER",
+        [],
+    );
 
     // Create the item_timings table
     conn.execute(
@@ -413,8 +446,8 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
         "INSERT OR IGNORE INTO matches (
             match_id, hero_id, start_time, duration, game_mode, lobby_type,
             radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             m.match_id,
             m.hero_id,
@@ -435,6 +468,7 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
             m.tower_damage,
             m.hero_healing,
             m.parse_state.to_string(),
+            m.role,
         ],
     ).map_err(|e| format!("Failed to insert match: {}", e))?;
 
@@ -462,7 +496,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
              FROM matches
              WHERE parse_state = 'unparsed' OR parse_state = 'failed'
              ORDER BY start_time DESC",
@@ -492,6 +526,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 tower_damage: row.get(16)?,
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
+                role: row.get(19).unwrap_or(0),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -523,7 +558,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
              FROM matches ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -551,6 +586,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 tower_damage: row.get(16)?,
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
+                role: row.get(19).unwrap_or(0),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -735,6 +771,23 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
                 return None;
             }
         }
+        GoalMetric::Denies => {
+            if let Ok(Some(cs_data)) = get_match_cs_at_minute(conn, match_data.match_id, target_minutes) {
+                cs_data.denies
+            } else {
+                return None;
+            }
+        }
+        GoalMetric::PartnerNetworth => {
+            let partner_slot = match get_partner_slot(conn, match_data.match_id) {
+                Ok(Some(s)) => s,
+                _ => return None,
+            };
+            match get_partner_networth_at_minute(conn, match_data.match_id, partner_slot, target_minutes) {
+                Ok(Some(nw)) => nw,
+                _ => return None,
+            }
+        }
         GoalMetric::ItemTiming => {
             // For item timing goals, check when the item was purchased
             // goal.target_value contains the target time in seconds
@@ -886,6 +939,66 @@ pub fn update_match_state(conn: &Connection, match_id: i64, state: MatchState) -
     ).map_err(|e| format!("Failed to update match state: {}", e))?;
 
     Ok(())
+}
+
+/// Update match role (lane position 1-5, 0 = unknown)
+pub fn update_match_role(conn: &Connection, match_id: i64, role: i32) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET role = ?1 WHERE match_id = ?2",
+        params![role, match_id],
+    ).map_err(|e| format!("Failed to update match role: {}", e))?;
+
+    Ok(())
+}
+
+/// Store the lane partner's player_slot for a match (None if no partner / not a support)
+pub fn update_match_partner_slot(conn: &Connection, match_id: i64, partner_slot: Option<i32>) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET partner_slot = ?1 WHERE match_id = ?2",
+        params![partner_slot, match_id],
+    ).map_err(|e| format!("Failed to update partner slot: {}", e))?;
+
+    Ok(())
+}
+
+/// Get the stored lane partner player_slot for a match
+pub fn get_partner_slot(conn: &Connection, match_id: i64) -> Result<Option<i32>, String> {
+    conn.query_row(
+        "SELECT partner_slot FROM matches WHERE match_id = ?1",
+        params![match_id],
+        |row| row.get(0),
+    ).map_err(|e| format!("Failed to query partner slot: {}", e))
+}
+
+/// Bulk insert per-minute networth for a single player in a match
+pub fn insert_player_networth(conn: &Connection, match_id: i64, player_slot: i32, nw_t: &[i32]) -> Result<(), String> {
+    // Delete existing data for this player in this match first
+    conn.execute(
+        "DELETE FROM player_networth WHERE match_id = ?1 AND player_slot = ?2",
+        params![match_id, player_slot],
+    ).map_err(|e| format!("Failed to delete existing networth data: {}", e))?;
+
+    for (minute, &networth) in nw_t.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO player_networth (match_id, player_slot, minute, networth) VALUES (?1, ?2, ?3, ?4)",
+            params![match_id, player_slot, minute as i32, networth],
+        ).map_err(|e| format!("Failed to insert player networth: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get a player's networth at a specific minute
+pub fn get_partner_networth_at_minute(conn: &Connection, match_id: i64, player_slot: i32, minute: i32) -> Result<Option<i32>, String> {
+    match conn.query_row(
+        "SELECT networth FROM player_networth WHERE match_id = ?1 AND player_slot = ?2 AND minute = ?3",
+        params![match_id, player_slot, minute],
+        |row| row.get(0),
+    ) {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query partner networth: {}", e)),
+    }
 }
 
 /// Match CS data at a specific minute
@@ -1761,6 +1874,7 @@ fn row_to_match(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         tower_damage: row.get(16)?,
         hero_healing: row.get(17)?,
         parse_state: MatchState::from_string(&row.get::<_, String>(18)?),
+        role: row.get(19).unwrap_or(0),
     })
 }
 
@@ -1770,7 +1884,7 @@ fn get_matches_since(conn: &Connection, since_timestamp: i64) -> Result<Vec<Matc
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
              FROM matches WHERE start_time >= ?1 ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;

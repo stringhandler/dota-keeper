@@ -194,8 +194,10 @@
       case "Networth": return "Net Worth";
       case "Kills": return "Kills";
       case "LastHits": return "Last Hits";
+      case "Denies": return "Denies";
       case "Level": return "Level";
       case "ItemTiming": return "Item Timing";
+      case "PartnerNetworth": return "Partner Networth";
       default: return metric;
     }
   }
@@ -205,6 +207,8 @@
       case "Networth": return "gold";
       case "Kills": return "kills";
       case "LastHits": return "CS";
+      case "Denies": return "denies";
+      case "PartnerNetworth": return "gold";
       default: return "";
     }
   }
@@ -222,6 +226,8 @@
       const seconds = goal.target_value % 60;
       const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
       return `${heroName} — ${itemName} by ${timeStr}`;
+    } else if (goal.metric === "PartnerNetworth") {
+      return `${heroName} — Partner: ${goal.target_value}g by ${goal.target_time_minutes} min`;
     } else {
       const metricLabel = getMetricLabel(goal.metric);
       const unit = getMetricUnit(goal.metric);
@@ -233,9 +239,11 @@
   function getGoalTypeTag(metric) {
     switch (metric) {
       case "LastHits": return { label: 'CS Goal', cls: 'tag-cs' };
+      case "Denies": return { label: 'Deny Goal', cls: 'tag-cs' };
       case "ItemTiming": return { label: 'Item Goal', cls: 'tag-item' };
       case "Kills": return { label: 'Kill Goal', cls: 'tag-kill' };
       case "Networth": return { label: 'NW Goal', cls: 'tag-nw' };
+      case "PartnerNetworth": return { label: 'Support Goal', cls: 'tag-nw' };
       default: return { label: `${metric} Goal`, cls: '' };
     }
   }
@@ -263,6 +271,8 @@
           <div class="form-label">Metric</div>
           <select class="form-select" bind:value={formMetric}>
             <option value="LastHits">Last Hits</option>
+            <option value="Denies">Denies</option>
+            <option value="PartnerNetworth">Partner Networth</option>
             <option value="Networth">Net Worth</option>
             <option value="Kills">Kills</option>
             <option value="Level">Level</option>

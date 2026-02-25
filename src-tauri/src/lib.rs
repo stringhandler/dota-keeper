@@ -19,7 +19,8 @@ use database::{
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
     get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches,
     init_db, insert_goal, insert_match, insert_match_cs_data, match_exists, update_goal,
-    update_match_state, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchCS,
+    update_match_state, update_match_role, update_match_partner_slot,
+    insert_player_networth, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchCS,
     MatchDataPoint, MatchState, MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
     get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
     insert_item_timing, get_item_timings_for_match, NewItemTiming,
@@ -272,6 +273,20 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
         insert_match_cs_data(&conn, match_id, lh_t, dn_t)?;
 
+        // Store lane role
+        let role = player_data.lane_role.unwrap_or(0);
+        let _ = update_match_role(&conn, match_id, role);
+
+        // Store per-minute networth for all players (used by PartnerNetworth goals)
+        for p in &detailed_match.players {
+            if let Some(nw_t) = &p.net_worth {
+                let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
+            }
+        }
+        // Identify and store lane partner slot
+        let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+        let _ = update_match_partner_slot(&conn, match_id, partner.map(|p| p.player_slot));
+
         // Store item purchase timings if available
         if let Some(purchase_log) = &player_data.purchase_log {
             for purchase in purchase_log {
@@ -475,6 +490,20 @@ async fn backfill_historical_matches(
             if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
                 eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
             } else {
+                // Store lane role
+                let role = player_data.lane_role.unwrap_or(0);
+                let _ = update_match_role(&conn, m.match_id, role);
+
+                // Store per-minute networth for all players (used by PartnerNetworth goals)
+                for p in &detailed_match.players {
+                    if let Some(nw_t) = &p.net_worth {
+                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                    }
+                }
+                // Identify and store lane partner slot
+                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+
                 // Store item purchase timings if available
                 if let Some(purchase_log) = &player_data.purchase_log {
                     for purchase in purchase_log {
@@ -617,6 +646,20 @@ async fn reparse_pending_matches(
                 );
                 failed_count += 1;
             } else {
+                // Store lane role
+                let role = player_data.lane_role.unwrap_or(0);
+                let _ = update_match_role(&conn, m.match_id, role);
+
+                // Store per-minute networth for all players (used by PartnerNetworth goals)
+                for p in &detailed_match.players {
+                    if let Some(nw_t) = &p.net_worth {
+                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                    }
+                }
+                // Identify and store lane partner slot
+                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+
                 // Store item purchase timings if available
                 if let Some(purchase_log) = &player_data.purchase_log {
                     for purchase in purchase_log {
