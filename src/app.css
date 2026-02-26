@@ -27,12 +27,16 @@
   padding: 0;
 }
 
-html, body {
+html {
   height: 100%;
   overflow: hidden;
 }
 
 body {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   font-family: 'Barlow', 'Trebuchet MS', Arial, sans-serif;
   font-weight: 400;
   background: var(--bg-base);
@@ -44,7 +48,8 @@ body {
 }
 
 #svelte {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

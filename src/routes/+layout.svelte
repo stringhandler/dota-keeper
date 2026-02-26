@@ -8,6 +8,7 @@
   import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
+  import WindowResize from "$lib/WindowResize.svelte";
   import '../app.css';
 
   let isLoading = $state(true);
@@ -137,6 +138,7 @@
   }
 </script>
 
+<WindowResize />
 <TitleBar />
 
 {#if isLoading}
@@ -348,6 +350,7 @@
   .app-layout {
     display: flex;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     background: var(--bg-base);
   }
@@ -546,6 +549,7 @@
   /* ── MAIN AREA ── */
   .main {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -600,6 +604,7 @@
   /* ── CONTENT AREA ── */
   .content-area {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 28px 32px;
     scrollbar-width: thin;
