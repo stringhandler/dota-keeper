@@ -1,6 +1,6 @@
 [package]
 name = "dota-keeper"
-version = "0.2.5"
+version = "0.2.6"
 description = "A Tauri App"
 authors = ["stringhandler"]
 edition = "2021"

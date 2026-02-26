@@ -5,6 +5,20 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-02-26
+
+### Added
+- **Custom Title Bar**: Native window frame replaced with a custom in-app title bar. Includes drag-to-move, minimise, maximise/restore, and close buttons. Close button turns red on hover.
+- **Window Resize Handles**: Invisible resize handles at all window edges and corners restore the ability to resize the window after removing native decorations.
+- **Goal Hero Group Filters**: When creating or editing a goal, you can now scope it to "Any Hero", "Any Core (pos 1–3)", "Any Carry (pos 1)", or "Any Support (pos 4–5)" in addition to a specific hero. Goals evaluate correctly based on the detected lane role of each match.
+- **Role Detection**: Each match now stores the detected lane role (1–5) from OpenDota parsed data, enabling role-aware goal evaluation.
+- **Denies Goal Metric**: New goal metric to track denies at a given game minute.
+- **Partner Networth Goal Metric**: New goal metric to track your lane partner's networth, useful for support players measuring their impact on the carry.
+
+### Fixed
+- **Font Weight**: Barlow font weights 600 and 700 are now properly loaded from Google Fonts (previously only 300–500 were included, causing browser-synthesised bold that appeared too heavy).
+- **Weekly Challenge UI**: After completing a weekly challenge, the challenges page now correctly shows the completed challenge and its progress instead of showing the option-selection screen again.
+
 ## [0.2.5] - 2026-02-25
 
 ### Added
