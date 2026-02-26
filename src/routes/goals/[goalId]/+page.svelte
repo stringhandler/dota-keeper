@@ -293,9 +293,17 @@
     }
   }
 
+  function getHeroLabel(g) {
+    if (g.hero_scope) {
+      const opt = HERO_GROUP_OPTIONS.find(o => o.value === g.hero_scope);
+      return opt ? opt.label : g.hero_scope;
+    }
+    return g.hero_id !== null ? getHeroName(g.hero_id) : "Any Hero";
+  }
+
   function formatGoalDescription(g) {
     if (!g) return "";
-    const heroName = g.hero_id !== null ? getHeroName(g.hero_id) : "Any Hero";
+    const heroName = getHeroLabel(g);
     const modeStr = g.game_mode ? ` (${g.game_mode})` : "";
     if (g.metric === "ItemTiming") {
       const itemName = g.item_id !== null ? getItemName(g.item_id) : "Unknown Item";
@@ -315,8 +323,21 @@
     return value;
   }
 
+  const HERO_SCOPES = ["any_core", "any_carry", "any_support"];
+  const HERO_GROUP_OPTIONS = [
+    { value: "any_core",    label: "Any Core (pos 1/2/3)" },
+    { value: "any_carry",   label: "Any Carry (pos 1)" },
+    { value: "any_support", label: "Any Support (pos 4/5)" },
+  ];
+
+  function parseHeroValue(val) {
+    if (!val) return { hero_id: null, hero_scope: null };
+    if (HERO_SCOPES.includes(val)) return { hero_id: null, hero_scope: val };
+    return { hero_id: parseInt(val), hero_scope: null };
+  }
+
   function startEdit() {
-    editHeroId = goal.hero_id !== null ? goal.hero_id.toString() : "";
+    editHeroId = goal.hero_scope ?? (goal.hero_id !== null ? goal.hero_id.toString() : "");
     editMetric = goal.metric;
     editTargetValue = goal.target_value.toString();
     editTargetTime = goal.target_time_minutes.toString();
@@ -355,10 +376,12 @@
 
     isSaving = true;
     try {
+      const { hero_id, hero_scope } = parseHeroValue(editHeroId);
       await invoke("save_goal", {
         goal: {
           id: goal.id,
-          hero_id: editHeroId ? parseInt(editHeroId) : null,
+          hero_id,
+          hero_scope,
           metric: editMetric,
           target_value: targetValue,
           target_time_minutes: targetTime,
@@ -412,7 +435,7 @@
             <div class="form-row">
               <label style="flex: 2; min-width: 200px;">
                 Hero
-                <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" />
+                <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
               </label>
               <label style="flex: 1;">
                 Metric

@@ -34,6 +34,7 @@ html, body {
 
 body {
   font-family: 'Barlow', 'Trebuchet MS', Arial, sans-serif;
+  font-weight: 400;
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 14px;
@@ -45,7 +46,8 @@ body {
 #svelte {
   height: 100%;
   overflow: hidden;
-  display: contents;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Scrollbars */

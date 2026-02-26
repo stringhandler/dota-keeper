@@ -80,13 +80,26 @@
   }
 
   function getContextualWarning(goal) {
-    if (goal.metric !== 'LastHits' || goal.hero_id === null) return null;
+    if (goal.metric !== 'LastHits' || goal.hero_id === null || goal.hero_scope !== null) return null;
     const avg = getHeroAverage(goal.hero_id);
     if (avg === null) return null;
     if (avg >= goal.target_value) {
       return `Your avg ${getHeroName(goal.hero_id)} CS is ${avg.toFixed(0)} — consider raising this goal`;
     }
     return null;
+  }
+
+  const HERO_SCOPES = ["any_core", "any_carry", "any_support"];
+  const HERO_GROUP_OPTIONS = [
+    { value: "any_core",    label: "Any Core (pos 1/2/3)" },
+    { value: "any_carry",   label: "Any Carry (pos 1)" },
+    { value: "any_support", label: "Any Support (pos 4/5)" },
+  ];
+
+  function parseHeroValue(val) {
+    if (!val) return { hero_id: null, hero_scope: null };
+    if (HERO_SCOPES.includes(val)) return { hero_id: null, hero_scope: val };
+    return { hero_id: parseInt(val), hero_scope: null };
   }
 
   function resetForm() {
@@ -103,7 +116,7 @@
 
   function editGoal(goal) {
     editingGoal = goal;
-    formHeroId = goal.hero_id !== null ? goal.hero_id.toString() : "";
+    formHeroId = goal.hero_scope ?? (goal.hero_id !== null ? goal.hero_id.toString() : "");
     formMetric = goal.metric;
     formTargetValue = goal.target_value.toString();
     formTargetTime = goal.target_time_minutes.toString();
@@ -143,11 +156,13 @@
 
     isSaving = true;
     try {
+      const { hero_id, hero_scope } = parseHeroValue(formHeroId);
       if (editingGoal) {
         await invoke("save_goal", {
           goal: {
             id: editingGoal.id,
-            hero_id: formHeroId ? parseInt(formHeroId) : null,
+            hero_id,
+            hero_scope,
             metric: formMetric,
             target_value: targetValue,
             target_time_minutes: targetTime,
@@ -160,7 +175,8 @@
       } else {
         await invoke("create_goal", {
           goal: {
-            hero_id: formHeroId ? parseInt(formHeroId) : null,
+            hero_id,
+            hero_scope,
             metric: formMetric,
             target_value: targetValue,
             target_time_minutes: targetTime,
@@ -218,8 +234,16 @@
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  function getHeroLabel(goal) {
+    if (goal.hero_scope) {
+      const g = HERO_GROUP_OPTIONS.find(o => o.value === goal.hero_scope);
+      return g ? g.label : goal.hero_scope;
+    }
+    return goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
+  }
+
   function formatGoalDescription(goal) {
-    const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
+    const heroName = getHeroLabel(goal);
     if (goal.metric === "ItemTiming") {
       const itemName = goal.item_id !== null ? getItemName(goal.item_id) : "Unknown Item";
       const minutes = Math.floor(goal.target_value / 60);
@@ -264,7 +288,7 @@
       <div class="form-row">
         <div class="fg">
           <div class="form-label">Hero</div>
-          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" />
+          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
         </div>
 
         <div class="fg">
@@ -354,6 +378,12 @@
           <div class="hero-avatar">
             {#if goal.hero_id !== null}
               <HeroIcon heroId={goal.hero_id} size="small" showName={false} />
+            {:else if goal.hero_scope === 'any_support'}
+              🛡️
+            {:else if goal.hero_scope === 'any_core'}
+              ⚔️
+            {:else if goal.hero_scope === 'any_carry'}
+              🏹
             {:else}
               🌟
             {/if}
@@ -361,7 +391,7 @@
           <div class="goal-info">
             <div class="goal-name" class:goal-name-inline={goal.metric === 'ItemTiming'}>
               {#if goal.metric === 'ItemTiming'}
-                {@const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : 'Any Hero'}
+                {@const heroName = getHeroLabel(goal)}
                 {@const itemEntry = items.find(i => i.id === goal.item_id)}
                 {@const minutes = Math.floor(goal.target_value / 60)}
                 {@const seconds = goal.target_value % 60}

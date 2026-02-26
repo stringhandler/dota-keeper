@@ -7,6 +7,7 @@
   import { relaunch } from '@tauri-apps/plugin-process';
   import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
+  import TitleBar from "$lib/TitleBar.svelte";
   import '../app.css';
 
   let isLoading = $state(true);
@@ -135,6 +136,8 @@
     }
   }
 </script>
+
+<TitleBar />
 
 {#if isLoading}
   <div class="loading-screen">
@@ -280,7 +283,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    flex: 1;
     background: var(--bg-base);
     color: var(--gold);
     font-family: 'Barlow Condensed', sans-serif;
@@ -293,7 +296,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    flex: 1;
     background: var(--bg-base);
   }
 
@@ -344,7 +347,7 @@
   /* ── APP LAYOUT ── */
   .app-layout {
     display: flex;
-    height: 100vh;
+    flex: 1;
     overflow: hidden;
     background: var(--bg-base);
   }
@@ -352,7 +355,7 @@
   /* ── UPDATE BANNER ── */
   .update-banner {
     position: fixed;
-    top: 0; left: 0; right: 0;
+    top: 32px; left: 0; right: 0;
     background: linear-gradient(90deg, rgba(30, 80, 140, 0.97) 0%, rgba(20, 60, 110, 0.97) 100%);
     border-bottom: 1px solid rgba(100, 150, 220, 0.4);
     z-index: 1000;

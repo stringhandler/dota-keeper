@@ -7,6 +7,7 @@
     favoriteIds = new Set(),
     anyLabel = 'Any Hero',
     anyValue = '',
+    groupOptions = [],  // [{value, label}] shown between "Any Hero" and heroes
     onchange = null,
   } = $props();
 
@@ -22,6 +23,10 @@
     value !== null && value !== '' && value !== undefined
       ? heroes.find(h => h.id == value) ?? null
       : null
+  );
+
+  let selectedGroup = $derived(
+    groupOptions.find(g => g.value === value) ?? null
   );
 
   $effect(() => {
@@ -110,6 +115,8 @@
         <div class="trigger-icon-fallback">{selectedHero.name.substring(0, 2).toUpperCase()}</div>
       {/if}
       <span class="trigger-name">{selectedHero.name}</span>
+    {:else if selectedGroup}
+      <span class="trigger-group">{selectedGroup.label}</span>
     {:else}
       <span class="trigger-placeholder">{anyLabel}</span>
     {/if}
@@ -120,15 +127,32 @@
     <div class="hero-select-dropdown" role="listbox">
       <div
         class="hero-option"
-        class:selected={selectedHero === null}
+        class:selected={!selectedHero && !selectedGroup}
         role="option"
-        aria-selected={selectedHero === null}
+        aria-selected={!selectedHero && !selectedGroup}
         tabindex="0"
         onclick={selectAny}
         onkeydown={(e) => e.key === 'Enter' && selectAny()}
       >
         <span class="option-any">{anyLabel}</span>
       </div>
+
+      {#if groupOptions.length > 0}
+        <div class="group-label">By Role</div>
+        {#each groupOptions as opt}
+          <div
+            class="hero-option"
+            class:selected={value === opt.value}
+            role="option"
+            aria-selected={value === opt.value}
+            tabindex="0"
+            onclick={() => { value = opt.value; isOpen = false; onchange?.(); }}
+            onkeydown={(e) => e.key === 'Enter' && (() => { value = opt.value; isOpen = false; onchange?.(); })()}
+          >
+            <span class="option-group">{opt.label}</span>
+          </div>
+        {/each}
+      {/if}
 
       {#if favoriteHeroList.length > 0}
         <div class="group-label">⭐ Favorites</div>
@@ -267,6 +291,20 @@
   .hero-option.selected .option-any {
     color: var(--gold);
     font-style: normal;
+  }
+
+  .option-group {
+    color: var(--text-secondary);
+  }
+
+  .hero-option.selected .option-group {
+    color: var(--gold);
+  }
+
+  .trigger-group {
+    flex: 1;
+    color: var(--text-secondary);
+    font-style: italic;
   }
 
   .group-label {
