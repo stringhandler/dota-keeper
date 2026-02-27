@@ -30,10 +30,11 @@ use database::{
     accept_weekly_challenge, get_active_weekly_challenge, get_weekly_challenge_progress,
     get_challenge_history,
     ChallengeOption, WeeklyChallenge, WeeklyChallengeProgress, ChallengeHistoryItem,
+    set_db_dir, get_db_dir,
 };
 use serde_json;
 use settings::{Settings, AnalyticsConsent};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 /// Get the current settings
 #[tauri::command]
 fn get_settings() -> Settings {
@@ -351,6 +352,9 @@ fn get_goal_histogram_data(goal_id: i64) -> Result<Vec<MatchDataPoint>, String> 
 /// Get the path to the database folder
 #[tauri::command]
 fn get_database_folder_path() -> Result<String, String> {
+    if let Some(dir) = get_db_dir() {
+        return Ok(dir.to_string_lossy().to_string());
+    }
     dirs::data_local_dir()
         .map(|mut path| {
             path.push("DotaKeeper");
@@ -834,6 +838,14 @@ fn get_challenge_history_cmd(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            // Initialise the DB directory from Tauri's platform-aware path API.
+            // This works on desktop, Android, and iOS.
+            let db_dir = app.path().app_data_dir()
+                .expect("could not resolve app data directory");
+            set_db_dir(db_dir);
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![

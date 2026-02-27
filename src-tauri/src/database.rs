@@ -1,7 +1,22 @@
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use rand::Rng;
+
+/// Global app data directory, set once during Tauri setup.
+/// Used instead of `dirs::data_local_dir()` so mobile platforms work correctly.
+static DB_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Called from `run()` setup before any commands execute.
+pub fn set_db_dir(dir: PathBuf) {
+    let _ = DB_DIR.set(dir);
+}
+
+/// Returns the stored app-data directory, if initialised.
+pub fn get_db_dir() -> Option<&'static PathBuf> {
+    DB_DIR.get()
+}
 
 /// Goal metric types
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -181,20 +196,28 @@ impl Match {
     }
 }
 
-/// Get the path to the database file in the AppData directory.
+/// Get the path to the database file.
+/// Prefers the globally initialised app-data dir (set during Tauri setup, works on all
+/// platforms including mobile). Falls back to `dirs::data_local_dir()` for situations
+/// where setup hasn't run yet (e.g. unit tests).
 /// Dev builds use `dota_keeper_dev.db`; release builds use `dota_keeper.db`.
 fn get_db_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|mut path| {
-        path.push("DotaKeeper");
+    let mut base = match DB_DIR.get() {
+        Some(dir) => dir.clone(),
+        None => {
+            let mut p = dirs::data_local_dir()?;
+            p.push("DotaKeeper");
+            p
+        }
+    };
 
-        #[cfg(debug_assertions)]
-        path.push("dota_keeper_dev.db");
+    #[cfg(debug_assertions)]
+    base.push("dota_keeper_dev.db");
 
-        #[cfg(not(debug_assertions))]
-        path.push("dota_keeper.db");
+    #[cfg(not(debug_assertions))]
+    base.push("dota_keeper.db");
 
-        path
-    })
+    Some(base)
 }
 
 /// Initialize the database, creating tables if they don't exist

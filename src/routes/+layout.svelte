@@ -9,9 +9,11 @@
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
   import WindowResize from "$lib/WindowResize.svelte";
+  import BottomNav from "$lib/BottomNav.svelte";
   import '../app.css';
 
   let isLoading = $state(true);
+  let isMobile = $state(false);
   let isLoggedIn = $state(false);
   let currentSteamId = $state("");
   let steamId = $state("");
@@ -23,6 +25,10 @@
   let showConsentModal = $state(false);
 
   onMount(async () => {
+    const checkMobile = () => { isMobile = window.innerWidth < 640; };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
     await loadSettings();
     await checkForUpdates();
 
@@ -138,8 +144,10 @@
   }
 </script>
 
-<WindowResize />
-<TitleBar />
+{#if !isMobile}
+  <WindowResize />
+  <TitleBar />
+{/if}
 
 {#if isLoading}
   <div class="loading-screen">
@@ -188,8 +196,8 @@
       </div>
     {/if}
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <!-- SIDEBAR (hidden on mobile — replaced by BottomNav) -->
+    <aside class="sidebar" class:sidebar-hidden={isMobile}>
       <div class="brand">
         <div class="brand-name">Dota Keeper</div>
         <div class="brand-id">Steam ID</div>
@@ -267,11 +275,15 @@
       </div>
 
       <!-- CONTENT -->
-      <div class="content-area">
+      <div class="content-area" class:content-area-mobile={isMobile}>
         <slot />
       </div>
     </div>
   </div>
+
+  {#if isMobile}
+    <BottomNav />
+  {/if}
 {/if}
 
 <!-- Analytics Consent Modal -->
@@ -609,5 +621,26 @@
     padding: 28px 32px;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
+  }
+
+  /* ── MOBILE ── */
+  .sidebar-hidden {
+    display: none;
+  }
+
+  /* Extra bottom padding when the fixed BottomNav overlaps the content */
+  .content-area-mobile {
+    padding: 16px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 0 16px;
+    }
+
+    .update-banner {
+      top: 0;
+    }
   }
 </style>

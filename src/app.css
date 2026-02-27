@@ -55,6 +55,15 @@ body {
   flex-direction: column;
 }
 
+/* ── MOBILE: safe-area insets for notch / home-indicator ── */
+@supports (padding: env(safe-area-inset-top)) {
+  @media (max-width: 640px) {
+    body {
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+}
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
