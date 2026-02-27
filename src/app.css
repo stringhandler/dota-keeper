@@ -2,20 +2,20 @@
 
 :root {
   --bg-base: #080c10;
-  --bg-card: #0d1318;
-  --bg-surface: #111820;
-  --bg-elevated: #16202a;
-  --border: rgba(255, 200, 80, 0.12);
-  --border-active: rgba(255, 200, 80, 0.4);
+  --bg-card: #101820;
+  --bg-surface: #131e28;
+  --bg-elevated: #18232e;
+  --border: rgba(255, 200, 80, 0.18);
+  --border-active: rgba(255, 200, 80, 0.45);
   --gold: #f0b429;
   --gold-dim: #a07820;
   --gold-bright: #ffd166;
   --teal: #2dd4bf;
   --red: #f87171;
   --green: #4ade80;
-  --text-primary: #e8dcc8;
-  --text-secondary: #8a7f6e;
-  --text-muted: #504840;
+  --text-primary: #ede1cc;
+  --text-secondary: #9a8e7c;
+  --text-muted: #726558;
   --glow: rgba(240, 180, 41, 0.15);
   --glow-teal: rgba(45, 212, 191, 0.15);
   --sidebar-w: 220px;

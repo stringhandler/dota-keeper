@@ -636,7 +636,25 @@
 
   @media (max-width: 640px) {
     .topbar {
-      padding: 0 16px;
+      padding: 0 12px;
+      height: 52px;
+      gap: 8px;
+    }
+
+    .page-title {
+      font-size: 15px;
+      letter-spacing: 2px;
+      white-space: nowrap;
+    }
+
+    .topbar-actions {
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .challenge-badge {
+      font-size: 10px;
+      padding: 5px 8px;
     }
 
     .update-banner {

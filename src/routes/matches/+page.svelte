@@ -304,19 +304,20 @@
   {/if}
 
   <!-- FILTER BAR -->
-  <div class="match-filters">
-    <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>All</button>
-    <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>Wins</button>
-    <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>Losses</button>
-    <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>Ranked</button>
-    <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>Turbo</button>
-    {#each trackedHeroes as hero}
-      <button class="filter-chip" class:active={activeFilter === `hero-${hero.id}`} onclick={() => setFilter(`hero-${hero.id}`)}>
-        {hero.name}
-      </button>
-    {/each}
-    <div style="flex:1"></div>
-    <button class="btn btn-primary" onclick={handleRefresh} disabled={isRefreshing}>
+  <div class="match-filters-wrap">
+    <div class="match-filters">
+      <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>All</button>
+      <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>Wins</button>
+      <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>Losses</button>
+      <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>Ranked</button>
+      <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>Turbo</button>
+      {#each trackedHeroes as hero}
+        <button class="filter-chip" class:active={activeFilter === `hero-${hero.id}`} onclick={() => setFilter(`hero-${hero.id}`)}>
+          {hero.name}
+        </button>
+      {/each}
+    </div>
+    <button class="btn btn-primary refresh-btn" onclick={handleRefresh} disabled={isRefreshing}>
       ↻ {isRefreshing ? 'Refreshing...' : 'Refresh Matches'}
     </button>
   </div>
@@ -369,7 +370,7 @@
           </div>
 
           <!-- Date -->
-          <div class="td-text">{formatDate(match.start_time)}</div>
+          <div class="td-text td-date">{formatDate(match.start_time)}</div>
 
           <!-- Hero -->
           <div class="match-hero">
@@ -378,26 +379,26 @@
           </div>
 
           <!-- Mode -->
-          <div>
+          <div class="td-mode">
             <span class="mode-tag {getModeTag(match.game_mode).cls}">{getModeTag(match.game_mode).label}</span>
           </div>
 
           <!-- Result -->
-          <div class="{isWin(match) ? 'result-win' : 'result-loss'}">
+          <div class="td-result {isWin(match) ? 'result-win' : 'result-loss'}">
             {isWin(match) ? 'WON' : 'LOST'}
           </div>
 
           <!-- K/D/A -->
-          <div class="kda">{match.kills}/{match.deaths}/{match.assists}</div>
+          <div class="kda td-kda">{match.kills}/{match.deaths}/{match.assists}</div>
 
           <!-- GPM -->
-          <div class="td-text">{match.gold_per_min}</div>
+          <div class="td-text td-gpm">{match.gold_per_min}</div>
 
           <!-- XPM -->
-          <div class="td-text">{match.xp_per_min}</div>
+          <div class="td-text td-xpm">{match.xp_per_min}</div>
 
           <!-- Goals chip -->
-          <div>
+          <div class="td-goals">
             {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
               <span class="parsing-spinner">⏳</span>
             {:else if match.parse_state === "Unparsed"}
@@ -516,12 +517,112 @@
   .matches-content { max-width: 1400px; margin: 0 auto; }
 
   /* Filter bar */
-  .match-filters {
+  .match-filters-wrap {
     display: flex;
+    align-items: center;
     gap: 8px;
     margin-bottom: 20px;
     flex-wrap: wrap;
+  }
+
+  .match-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
     align-items: center;
+    flex: 1;
+  }
+
+  .refresh-btn { flex-shrink: 0; }
+
+  @media (max-width: 640px) {
+    .match-filters-wrap {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .match-filters {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .match-filters::-webkit-scrollbar { display: none; }
+
+    .refresh-btn { width: 100%; justify-content: center; }
+
+    /* Hide table header on mobile */
+    .table-head { display: none; }
+
+    /* Card layout using flexbox + order */
+    .match-row {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      padding: 12px 14px !important;
+      gap: 0 !important;
+      align-items: center;
+    }
+
+    /* Row 1: hero (fills left) + result (right) */
+    .match-hero {
+      order: 1;
+      flex: 1;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .td-result {
+      order: 2;
+      flex: none;
+      font-size: 12px;
+    }
+
+    /* Row 2: mode + date flow left, kda pushes right */
+    .td-mode {
+      order: 3;
+      flex: none;
+      margin-top: 6px;
+      margin-right: 8px;
+    }
+    .td-date {
+      order: 4;
+      flex: none;
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-right: 8px;
+    }
+    .td-kda {
+      order: 5;
+      flex: none;
+      margin-top: 6px;
+      margin-left: auto;
+      font-size: 13px;
+    }
+
+    /* Row 3: goals right-aligned */
+    .td-goals {
+      order: 6;
+      width: 100%;
+      margin-top: 6px;
+      display: flex !important;
+      justify-content: flex-end;
+    }
+
+    /* Hide on mobile */
+    .match-id-cell { display: none !important; }
+    .td-xpm { display: none !important; }
+    .td-gpm { display: none !important; }
+
+    /* Pagination: simpler on mobile */
+    .pagination {
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px 14px;
+    }
+    .page-size-selector { display: none; }
   }
 
   .empty-state {

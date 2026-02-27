@@ -523,6 +523,27 @@
     margin-bottom: 28px;
   }
 
+  @media (max-width: 640px) {
+    .stats-row {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      padding: 14px 16px !important;
+    }
+
+    .stat-value {
+      font-size: 26px !important;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 1px;
+    }
+  }
+
   .stat-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
