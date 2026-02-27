@@ -33,7 +33,7 @@ use database::{
     set_db_dir, get_db_dir,
 };
 use serde_json;
-use settings::{Settings, AnalyticsConsent};
+use settings::{Settings, AnalyticsConsent, set_settings_dir};
 use tauri::{Emitter, Manager};
 /// Get the current settings
 #[tauri::command]
@@ -839,11 +839,12 @@ fn get_challenge_history_cmd(
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // Initialise the DB directory from Tauri's platform-aware path API.
+            // Initialise storage directories from Tauri's platform-aware path API.
             // This works on desktop, Android, and iOS.
-            let db_dir = app.path().app_data_dir()
+            let app_data_dir = app.path().app_data_dir()
                 .expect("could not resolve app data directory");
-            set_db_dir(db_dir);
+            set_db_dir(app_data_dir.clone());
+            set_settings_dir(app_data_dir);
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())

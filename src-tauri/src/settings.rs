@@ -1,7 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use uuid;
+
+static SETTINGS_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_settings_dir(dir: PathBuf) {
+    let _ = SETTINGS_DIR.set(dir);
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum AnalyticsConsent {
@@ -67,11 +74,15 @@ impl Settings {
 
     /// Get the path to the settings file in the AppData directory
     fn get_settings_path() -> Option<PathBuf> {
-        dirs::data_dir().map(|mut path| {
-            path.push("dota-keeper");
-            path.push("settings.json");
-            path
-        })
+        let base = match SETTINGS_DIR.get() {
+            Some(dir) => dir.clone(),
+            None => {
+                let mut p = dirs::data_dir()?;
+                p.push("dota-keeper");
+                p
+            }
+        };
+        Some(base.join("settings.json"))
     }
 
     /// Load settings from the JSON file, or return default if not found.
