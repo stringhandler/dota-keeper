@@ -1,4 +1,8 @@
 .DS_Store
+
+# Android signing — never commit keystores
+*.jks
+*.keystore
 node_modules
 /build
 /.svelte-kit
