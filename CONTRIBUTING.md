@@ -107,6 +107,26 @@ The CI workflow (`android-release.yml`) signs the APK automatically using GitHub
 
 The `android-release.yml` workflow will then automatically build and sign a release APK whenever commits are pushed to the `release` branch. It can also be triggered manually via `workflow_dispatch`.
 
+### Publishing to Google Play Store
+
+The workflow also supports building an AAB and uploading it to the Play Store. This requires one-time manual setup:
+
+**One-time setup:**
+
+1. Pay the $25 [Google Play Developer](https://play.google.com/console/signup) registration fee and create your account.
+2. Create a new app in the Play Console and complete the store listing (description, screenshots, content rating, etc.).
+3. Upload your **first** AAB manually via the Play Console (required before automation can take over).
+4. Create a **service account** for CI access:
+   - Play Console → Setup → API access → Link to a Google Cloud project
+   - In Google Cloud Console → IAM → Service Accounts → Create service account
+   - Grant it the **Release Manager** role in Play Console
+   - Create a JSON key for the service account and download it
+5. Add the JSON key contents as the GitHub secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+
+**Uploading a new release:**
+
+Trigger the workflow manually from the GitHub Actions tab, check the **"Upload AAB to Google Play (internal track)"** checkbox, and run. The AAB will land in your internal testing track where you can promote it to alpha → beta → production from the Play Console.
+
 ## Project Structure
 
 ```

@@ -6,19 +6,25 @@ name: Android Release Build
 #
 # Required GitHub secrets:
 #   ANDROID_KEYSTORE        — base64-encoded .jks keystore file
-#                             Generate: keytool -genkey -v -keystore release.jks -alias key0 \
-#                                         -keyalg RSA -keysize 2048 -validity 10000
-#                             Encode:   base64 -w 0 release.jks
-#   ANDROID_KEY_ALIAS       — key alias used above (e.g. "key0")
+#   ANDROID_KEY_ALIAS       — key alias (e.g. "key0")
 #   ANDROID_STORE_PASSWORD  — keystore password
 #   ANDROID_KEY_PASSWORD    — key password (can be same as store password)
 #   POSTHOG_API_KEY         — analytics key (same as desktop release)
+#
+# Optional — only needed for automated Google Play uploads:
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON — contents of the service account JSON file
+#                                      (see CONTRIBUTING.md for setup instructions)
 
 on:
   push:
     branches:
       - release
   workflow_dispatch:
+    inputs:
+      upload_to_play_store:
+        description: 'Upload AAB to Google Play (internal track)'
+        type: boolean
+        default: false
 
 jobs:
   android:
@@ -60,12 +66,12 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > "$RUNNER_TEMP/release.keystore"
 
+      # ── APK (for sideloading / GitHub release) ────────────────────────────
+
       - name: Build release APK (arm64)
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        # Builds arm64-only — covers 95%+ of modern Android phones.
-        # Remove --target aarch64 to build a universal APK for all ABIs (slower).
         run: yarn tauri android build --apk --target aarch64
 
       - name: Sign APK
@@ -85,7 +91,6 @@ jobs:
             "$UNSIGNED"
 
           echo "SIGNED_APK=$SIGNED" >> $GITHUB_ENV
-          echo "Signed APK: $SIGNED"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
@@ -97,9 +102,44 @@ jobs:
       - name: Attach APK to GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Uploads to the draft release created by the desktop release job.
-        # Uses || true so the workflow doesn't fail if the release doesn't exist yet
-        # (run workflow_dispatch manually once the release is published).
         run: |
           gh release upload "v${{ steps.version.outputs.VERSION }}" "${{ env.SIGNED_APK }}" --clobber || \
             echo "⚠️  Could not upload to release (may not exist yet). APK is available as a workflow artifact."
+
+      # ── AAB (for Google Play Store) ────────────────────────────────────────
+
+      - name: Build release AAB (all ABIs)
+        if: ${{ inputs.upload_to_play_store == true }}
+        env:
+          NDK_HOME: ${{ env.NDK_HOME }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: yarn tauri android build --aab
+
+      - name: Sign AAB
+        if: ${{ inputs.upload_to_play_store == true }}
+        run: |
+          UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/bundle -name "*.aab" | head -1)
+          echo "Found unsigned AAB: $UNSIGNED"
+          SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}.aab"
+
+          jarsigner -verbose \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass "${{ secrets.ANDROID_STORE_PASSWORD }}" \
+            -keypass "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            -signedjar "$SIGNED" \
+            "$UNSIGNED" \
+            "${{ secrets.ANDROID_KEY_ALIAS }}"
+
+          echo "SIGNED_AAB=$SIGNED" >> $GITHUB_ENV
+
+      - name: Upload AAB to Google Play (internal track)
+        if: ${{ inputs.upload_to_play_store == true }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.volthawk.dota_keeper
+          releaseFiles: ${{ env.SIGNED_AAB }}
+          track: internal
+          status: completed
