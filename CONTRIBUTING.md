@@ -6,6 +6,7 @@ Thank you for your interest in contributing to Dota Keeper! This document provid
 
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
+- [Android Development](#android-development)
 - [Project Structure](#project-structure)
 - [Making Changes](#making-changes)
 - [Submitting Contributions](#submitting-contributions)
@@ -47,6 +48,64 @@ Dota Keeper is a desktop application built with Tauri that tracks Dota 2 games a
    ```bash
    npm run tauri build
    ```
+
+## Android Development
+
+### Prerequisites
+
+- [Android Studio](https://developer.android.com/studio) (includes the required JDK and SDK)
+- Android NDK r27 (install via Android Studio's SDK Manager, or `sdkmanager --install "ndk;27.0.12077973"`)
+- Rust Android targets:
+  ```bash
+  rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+  ```
+
+### Running on Android
+
+```bash
+yarn tauri android dev
+```
+
+### Building an APK
+
+```bash
+yarn tauri android build --apk --target aarch64
+```
+
+The unsigned APK will be output to `src-tauri/gen/android/app/build/outputs/apk/`.
+
+### Setting Up Android Release Signing
+
+The CI workflow (`android-release.yml`) signs the APK automatically using GitHub secrets. To set this up:
+
+1. **Generate a keystore** using the `keytool` bundled with Android Studio.
+
+   PowerShell:
+   ```powershell
+   & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkey -v -keystore release.jks -alias key0 -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   > **Keep `release.jks` safe and backed up.** Losing it means you cannot publish updates to the same app.
+   > `*.jks` is listed in `.gitignore` — never commit it to the repository.
+
+2. **Base64-encode the keystore** for use as a GitHub secret.
+
+   PowerShell:
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path "release.jks"))) | Set-Clipboard
+   ```
+   This copies the encoded value straight to your clipboard, ready to paste into GitHub.
+
+3. **Add the following secrets** to the GitHub repository (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   |---|---|
+   | `ANDROID_KEYSTORE` | Base64-encoded contents of `release.jks` |
+   | `ANDROID_KEY_ALIAS` | The alias you chose (e.g. `key0`) |
+   | `ANDROID_STORE_PASSWORD` | Keystore password |
+   | `ANDROID_KEY_PASSWORD` | Key password (can be the same as store password) |
+
+The `android-release.yml` workflow will then automatically build and sign a release APK whenever commits are pushed to the `release` branch. It can also be triggered manually via `workflow_dispatch`.
 
 ## Project Structure
 
