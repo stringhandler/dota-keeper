@@ -165,6 +165,9 @@
           class="form-input"
           id="steam-id"
           type="text"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
           placeholder="Steam ID or profile URL"
           bind:value={steamId}
         />
@@ -320,6 +323,18 @@
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 10px;
+  }
+
+  @media (max-width: 640px) {
+    .login-box {
+      width: calc(100% - 32px);
+      max-width: 420px;
+      padding: 28px 20px;
+    }
+
+    .login-brand {
+      font-size: 22px;
+    }
   }
 
   .login-brand {
