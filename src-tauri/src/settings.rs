@@ -41,6 +41,9 @@ pub struct Settings {
     /// Whether the first-enable explanation modal has been shown
     #[serde(default)]
     pub mental_health_intro_shown: bool,
+    /// How often to show the post-game mood check-in prompt
+    #[serde(default = "Settings::default_checkin_frequency")]
+    pub checkin_frequency: String,
 }
 
 impl Default for Settings {
@@ -53,6 +56,7 @@ impl Default for Settings {
             installation_id: Self::generate_installation_id(),
             mental_health_tracking_enabled: false,
             mental_health_intro_shown: false,
+            checkin_frequency: Self::default_checkin_frequency(),
         }
     }
 }
@@ -60,6 +64,10 @@ impl Default for Settings {
 impl Settings {
     fn default_difficulty() -> String {
         "Medium".to_string()
+    }
+
+    fn default_checkin_frequency() -> String {
+        "once_per_session".to_string()
     }
 
     /// Generate a unique installation ID (UUID v4)

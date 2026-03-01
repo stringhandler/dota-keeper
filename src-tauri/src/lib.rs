@@ -114,6 +114,15 @@ fn save_mental_health_enabled(enabled: bool) -> Result<Settings, String> {
     Ok(settings)
 }
 
+/// Save the check-in frequency preference
+#[tauri::command]
+fn save_checkin_frequency(frequency: String) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.checkin_frequency = frequency;
+    settings.save()?;
+    Ok(settings)
+}
+
 /// Mark the first-enable explanation modal as shown
 #[tauri::command]
 fn mark_mental_health_intro_shown() -> Result<(), String> {
@@ -165,7 +174,7 @@ fn get_pending_checkin() -> Result<Option<PendingCheckin>, String> {
         return Ok(None);
     };
 
-    // Check for 3+ consecutive losses (look at 5 most recent matches)
+    // Check for 3+ consecutive losses (look at 5 most recent matches) — always overrides frequency
     struct RecentMatch {
         radiant_win: i32,
         player_slot: i32,
@@ -190,25 +199,58 @@ fn get_pending_checkin() -> Result<Option<PendingCheckin>, String> {
 
     let is_loss_streak = recent.len() >= 3 && recent.iter().take(3).all(|&w| !w);
 
-    // Check for a long session (4+ games in the last 6 hours)
-    let six_hours_ago = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-        - 6 * 3600;
-    let session_count: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM matches WHERE start_time > ?1",
-            rusqlite::params![six_hours_ago],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("DB error counting session games: {}", e))?;
-    let is_long_session = session_count >= 4;
+    // Check frequency-based trigger condition
+    let frequency = settings.checkin_frequency.as_str();
+    let frequency_triggered = match frequency {
+        // every_game and once_per_session: always return (frontend manages session limit)
+        "every_game" | "once_per_session" => true,
 
-    // ~25% random trigger (deterministic per match)
-    let is_random_trigger = match_id % 4 == 0;
+        // Threshold-based: count unchecked matches since the last successful check-in
+        "every_3" | "every_5" | "every_10" => {
+            let threshold: i64 = match frequency {
+                "every_3" => 3,
+                "every_5" => 5,
+                _ => 10,
+            };
+            // Count matches not in mood_checkins that are newer than the last successful check-in
+            let unchecked_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM matches \
+                     WHERE match_id NOT IN (SELECT match_id FROM mood_checkins) \
+                     AND start_time > COALESCE( \
+                         (SELECT m.start_time FROM mood_checkins mc \
+                          JOIN matches m ON mc.match_id = m.match_id \
+                          WHERE mc.skipped = 0 \
+                          ORDER BY m.start_time DESC LIMIT 1), \
+                         0)",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            unchecked_count >= threshold
+        }
 
-    if is_loss_streak || is_long_session || is_random_trigger {
+        // after_loss: only trigger if the pending match was a loss
+        "after_loss" => {
+            let result: Option<(i32, i32)> = conn
+                .query_row(
+                    "SELECT radiant_win, player_slot FROM matches WHERE match_id = ?1",
+                    rusqlite::params![match_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .unwrap_or(None);
+            result.map_or(false, |(radiant_win, player_slot)| {
+                let is_radiant = player_slot < 128;
+                (is_radiant && radiant_win == 0) || (!is_radiant && radiant_win == 1)
+            })
+        }
+
+        // Unknown value: fall back to once_per_session behaviour
+        _ => true,
+    };
+
+    if is_loss_streak || frequency_triggered {
         Ok(Some(PendingCheckin {
             match_id,
             is_loss_streak,
@@ -1308,6 +1350,7 @@ pub fn run() {
             get_challenge_history_cmd,
             start_steam_login,
             save_mental_health_enabled,
+            save_checkin_frequency,
             mark_mental_health_intro_shown,
             clear_mood_data,
             get_pending_checkin,

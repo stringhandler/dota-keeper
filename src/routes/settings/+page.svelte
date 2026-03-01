@@ -20,6 +20,7 @@
   let analyticsConsent = $state("NotYet");
   let isSavingAnalytics = $state(false);
   let mentalHealthEnabled = $state(false);
+  let checkinFrequency = $state("once_per_session");
   let isSavingMentalHealth = $state(false);
   let isClearingMoodData = $state(false);
   let showMentalHealthIntro = $state(false);
@@ -103,8 +104,18 @@
     try {
       const settings = await invoke("get_settings");
       mentalHealthEnabled = settings.mental_health_tracking_enabled ?? false;
+      checkinFrequency = settings.checkin_frequency ?? "once_per_session";
     } catch (e) {
       console.error("Failed to load mental health setting:", e);
+    }
+  }
+
+  async function saveCheckinFrequency(frequency) {
+    checkinFrequency = frequency;
+    try {
+      await invoke("save_checkin_frequency", { frequency });
+    } catch (e) {
+      console.error("Failed to save check-in frequency:", e);
     }
   }
 
@@ -559,6 +570,29 @@
         </div>
       </div>
     </div>
+
+    {#if mentalHealthEnabled}
+      <div class="setting-item">
+        <div class="setting-info">
+          <h3>How often to check in?</h3>
+          <p class="setting-description">
+            Controls how frequently the post-game mood prompt appears. Loss streaks always trigger a check-in regardless of this setting.
+          </p>
+          <select
+            class="frequency-select"
+            value={checkinFrequency}
+            onchange={(e) => saveCheckinFrequency(e.target.value)}
+          >
+            <option value="every_game">Every game</option>
+            <option value="every_3">Every 3 games</option>
+            <option value="every_5">Every 5 games</option>
+            <option value="every_10">Every 10 games</option>
+            <option value="once_per_session">Once per session</option>
+            <option value="after_loss">After every loss</option>
+          </select>
+        </div>
+      </div>
+    {/if}
 
     <div class="setting-item">
       <div class="setting-info">
@@ -1031,6 +1065,24 @@
 .toggle-label {
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.frequency-select {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+.frequency-select:focus {
+  outline: none;
+  border-color: rgba(74, 222, 128, 0.4);
 }
 
 /* First-enable modal */
