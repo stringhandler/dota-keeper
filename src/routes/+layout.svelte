@@ -5,6 +5,8 @@
   import { goto } from "$app/navigation";
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
+  import { listen } from '@tauri-apps/api/event';
+  import { openUrl } from '@tauri-apps/plugin-opener';
   import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
@@ -23,6 +25,7 @@
   let isUpdating = $state(false);
   let dailyProgress = $state(null);
   let showConsentModal = $state(false);
+  let steamLoginPending = $state(false);
 
   onMount(async () => {
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
@@ -72,18 +75,49 @@
     return trimmed;
   }
 
+  async function saveAndLogin(id64) {
+    const settings = await invoke("save_steam_id", { steamId: id64 });
+    isLoggedIn = true;
+    currentSteamId = settings.steam_id;
+    await loadDailyChallenge();
+  }
+
   async function handleLogin(event) {
     event.preventDefault();
     error = "";
     if (!steamId.trim()) { error = "Please enter your Steam ID"; return; }
-    const extractedId = extractSteamId(steamId);
     try {
-      const settings = await invoke("save_steam_id", { steamId: extractedId });
-      isLoggedIn = true;
-      currentSteamId = settings.steam_id;
-      await loadDailyChallenge();
+      await saveAndLogin(extractSteamId(steamId));
     } catch (e) {
       error = `Failed to save Steam ID: ${e}`;
+    }
+  }
+
+  async function handleSteamLogin() {
+    steamLoginPending = true;
+    error = "";
+    let unlisten;
+    try {
+      const url = await invoke("start_steam_login");
+      unlisten = await listen("steam-login-complete", async (event) => {
+        unlisten?.();
+        steamLoginPending = false;
+        const payload = event.payload;
+        if (payload.steam_id) {
+          try {
+            await saveAndLogin(payload.steam_id);
+          } catch (e) {
+            error = `Failed to save Steam ID: ${e}`;
+          }
+        } else {
+          error = payload.error || "Steam login failed";
+        }
+      });
+      await openUrl(url);
+    } catch (e) {
+      unlisten?.();
+      steamLoginPending = false;
+      error = `Steam login failed: ${e}`;
     }
   }
 
@@ -176,6 +210,26 @@
           Save & Continue
         </button>
       </form>
+
+      <div class="login-divider">
+        <span>or</span>
+      </div>
+
+      <button
+        type="button"
+        class="btn btn-steam"
+        onclick={handleSteamLogin}
+        disabled={steamLoginPending}
+      >
+        {#if steamLoginPending}
+          Waiting for Steam…
+        {:else}
+          <svg viewBox="0 0 233 233" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M116.5 0C52.1 0 0 52.1 0 116.5c0 55.1 38.5 101.3 90.4 113.1l30.5-73.2c-1.3.1-2.5.1-3.8.1-26.7 0-48.4-21.7-48.4-48.4s21.7-48.4 48.4-48.4 48.4 21.7 48.4 48.4c0 23.6-16.9 43.3-39.4 47.5L96.7 228c6.4 1.6 13 2.5 19.8 2.5C180.9 230.5 233 178.4 233 114S180.9 0 116.5 0zM106.6 160.1l-14.5 34.8C63.7 183.6 43 152.3 43 116.5c0-40.5 32.9-73.5 73.5-73.5s73.5 32.9 73.5 73.5-32.9 73.5-73.5 73.5c-3.2 0-6.4-.2-9.5-.6l-.4-29.3zm9.9-93.6c-27.6 0-50 22.4-50 50s22.4 50 50 50 50-22.4 50-50-22.4-50-50-50zm0 80.7c-17 0-30.7-13.8-30.7-30.7s13.8-30.7 30.7-30.7 30.7 13.8 30.7 30.7-13.8 30.7-30.7 30.7z"/>
+          </svg>
+          Sign in through Steam
+        {/if}
+      </button>
 
       {#if error}
         <div class="error-banner" style="margin-top:12px">{error}</div>
@@ -371,6 +425,56 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-bottom: 8px;
+  }
+
+  .login-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .login-divider::before,
+  .login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .btn-steam {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 11px;
+    background: rgba(23, 47, 80, 0.6);
+    border: 1px solid rgba(100, 150, 220, 0.35);
+    border-radius: 6px;
+    color: #c6d4df;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .btn-steam:hover:not(:disabled) {
+    background: rgba(23, 47, 80, 0.9);
+    border-color: rgba(100, 150, 220, 0.6);
+  }
+
+  .btn-steam:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   /* ── APP LAYOUT ── */

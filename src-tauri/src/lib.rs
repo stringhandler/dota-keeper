@@ -835,6 +835,243 @@ fn get_challenge_history_cmd(
     get_challenge_history(&conn, challenge_type, limit.unwrap_or(50))
 }
 
+// ── Steam OpenID login ────────────────────────────────────────────────────────
+
+fn percent_encode(input: &str) -> String {
+    let mut out = String::new();
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+    out
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("00");
+            if let Ok(b) = u8::from_str_radix(hex, 16) {
+                out.push(b as char);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            out.push(' ');
+            i += 1;
+            continue;
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+/// Start a Steam OpenID login flow.
+/// Binds a temporary local HTTP server, returns the Steam authorisation URL.
+/// When Steam redirects back, the callback is verified and a `steam-login-complete`
+/// event is emitted with `{steam_id}` on success or `{error}` on failure.
+#[tauri::command]
+async fn start_steam_login(app: tauri::AppHandle) -> Result<String, String> {
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| format!("Failed to bind port: {e}"))?;
+
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to get local address: {e}"))?
+        .port();
+
+    let return_to = format!("http://127.0.0.1:{port}/callback");
+    let realm = format!("http://127.0.0.1:{port}");
+
+    let steam_url = format!(
+        "https://steamcommunity.com/openid/login\
+         ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
+         &openid.mode=checkid_setup\
+         &openid.return_to={}\
+         &openid.realm={}\
+         &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
+         &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
+        percent_encode(&return_to),
+        percent_encode(&realm),
+    );
+
+    tokio::spawn(handle_steam_callback(listener, app));
+
+    Ok(steam_url)
+}
+
+async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::AppHandle) {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let (stream, _) = match listener.accept().await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Steam callback: failed to accept connection: {e}");
+            let _ = app.emit(
+                "steam-login-complete",
+                serde_json::json!({"error": "Connection failed"}),
+            );
+            return;
+        }
+    };
+
+    let (reader_half, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader_half);
+
+    // Read the HTTP request line ("GET /callback?... HTTP/1.1")
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line).await.is_err() {
+        let _ = app.emit(
+            "steam-login-complete",
+            serde_json::json!({"error": "Failed to read request"}),
+        );
+        return;
+    }
+
+    // Drain remaining HTTP headers before sending a response
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line).await {
+            Ok(0) | Err(_) => break,
+            Ok(_) if line == "\r\n" || line == "\n" => break,
+            _ => {}
+        }
+    }
+
+    // Extract query string from "GET /callback?<qs> HTTP/1.1"
+    let path_part = request_line.split_whitespace().nth(1).unwrap_or("");
+    let query_string = path_part.split_once('?').map(|(_, q)| q).unwrap_or("");
+
+    // Parse all OpenID parameters
+    let mut params: Vec<(String, String)> = Vec::new();
+    let mut claimed_id: Option<String> = None;
+    let mut openid_mode: Option<String> = None;
+
+    for pair in query_string.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let key = percent_decode(k);
+            let val = percent_decode(v);
+            if key == "openid.claimed_id" {
+                claimed_id = Some(val.clone());
+            }
+            if key == "openid.mode" {
+                openid_mode = Some(val.clone());
+            }
+            params.push((key, val));
+        }
+    }
+
+    // Steam sends mode=id_res on success, mode=cancel on cancellation
+    if openid_mode.as_deref() != Some("id_res") {
+        let _ = steam_html_response(&mut writer, 400, "Login cancelled. You can close this tab.").await;
+        let _ = app.emit(
+            "steam-login-complete",
+            serde_json::json!({"error": "Login cancelled"}),
+        );
+        return;
+    }
+
+    // Extract Steam64 ID from "https://steamcommunity.com/openid/id/{ID}"
+    let steam_id = match claimed_id
+        .as_deref()
+        .and_then(|id| id.strip_prefix("https://steamcommunity.com/openid/id/"))
+        .map(|s| s.trim().to_string())
+    {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            let _ = steam_html_response(&mut writer, 400, "Could not extract Steam ID. Please try again.").await;
+            let _ = app.emit(
+                "steam-login-complete",
+                serde_json::json!({"error": "Could not extract Steam ID"}),
+            );
+            return;
+        }
+    };
+
+    // Verify the assertion with Steam (switch mode to check_authentication)
+    let verify_params: Vec<(String, String)> = params
+        .into_iter()
+        .map(|(k, v)| {
+            if k == "openid.mode" {
+                (k, "check_authentication".to_string())
+            } else {
+                (k, v)
+            }
+        })
+        .collect();
+
+    let verified = match reqwest::Client::new()
+        .post("https://steamcommunity.com/openid/login")
+        .form(&verify_params)
+        .send()
+        .await
+    {
+        Ok(resp) => resp.text().await.unwrap_or_default().contains("is_valid:true"),
+        Err(e) => {
+            eprintln!("Steam OpenID verification request failed: {e}");
+            false
+        }
+    };
+
+    if verified {
+        let _ = steam_html_response(
+            &mut writer,
+            200,
+            "Steam login successful! You can close this tab and return to Dota Keeper.",
+        )
+        .await;
+        let _ = app.emit(
+            "steam-login-complete",
+            serde_json::json!({"steam_id": steam_id}),
+        );
+    } else {
+        let _ = steam_html_response(&mut writer, 400, "Steam verification failed. Please try again.").await;
+        let _ = app.emit(
+            "steam-login-complete",
+            serde_json::json!({"error": "Steam verification failed"}),
+        );
+    }
+}
+
+async fn steam_html_response(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    status: u16,
+    message: &str,
+) -> Result<(), std::io::Error> {
+    use tokio::io::AsyncWriteExt;
+    let (status_text, color) = if status == 200 {
+        ("OK", "#f0b429")
+    } else {
+        ("Bad Request", "#e53e3e")
+    };
+    let body = format!(
+        "<html><head><title>Dota Keeper</title></head>\
+         <body style='font-family:sans-serif;background:#1a1a1a;color:{color};\
+         text-align:center;padding:60px'><h2>{message}</h2></body></html>"
+    );
+    let response = format!(
+        "HTTP/1.1 {status} {status_text}\r\n\
+         Content-Type: text/html; charset=utf-8\r\n\
+         Content-Length: {}\r\n\
+         Connection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    writer.write_all(response.as_bytes()).await
+}
+
+// ── end Steam OpenID login ────────────────────────────────────────────────────
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -890,7 +1127,8 @@ pub fn run() {
             accept_weekly_challenge_cmd,
             get_active_weekly_challenge_cmd,
             get_weekly_challenge_progress_cmd,
-            get_challenge_history_cmd
+            get_challenge_history_cmd,
+            start_steam_login
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
