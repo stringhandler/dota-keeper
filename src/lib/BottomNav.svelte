@@ -60,7 +60,7 @@
     display: flex;
     background: var(--bg-card);
     border-top: 1px solid var(--border);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--sab);
     z-index: 100;
   }
 

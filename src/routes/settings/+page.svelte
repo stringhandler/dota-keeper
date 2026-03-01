@@ -19,6 +19,10 @@
   let isSavingDifficulty = $state(false);
   let analyticsConsent = $state("NotYet");
   let isSavingAnalytics = $state(false);
+  let mentalHealthEnabled = $state(false);
+  let isSavingMentalHealth = $state(false);
+  let isClearingMoodData = $state(false);
+  let showMentalHealthIntro = $state(false);
   let appVersion = $state("");
   let checkingUpdate = $state(false);
   let updateResult = $state(null);
@@ -30,6 +34,7 @@
     await loadSteamId();
     await loadDifficulty();
     await loadAnalytics();
+    await loadMentalHealth();
     await loadAppVersion();
 
     // Track page view
@@ -91,6 +96,62 @@
       error = `Failed to save difficulty: ${e}`;
     } finally {
       isSavingDifficulty = false;
+    }
+  }
+
+  async function loadMentalHealth() {
+    try {
+      const settings = await invoke("get_settings");
+      mentalHealthEnabled = settings.mental_health_tracking_enabled ?? false;
+    } catch (e) {
+      console.error("Failed to load mental health setting:", e);
+    }
+  }
+
+  async function toggleMentalHealth(enabled) {
+    isSavingMentalHealth = true;
+    error = "";
+    successMessage = "";
+    try {
+      await invoke("save_mental_health_enabled", { enabled });
+      mentalHealthEnabled = enabled;
+      if (enabled) {
+        const settings = await invoke("get_settings");
+        if (!settings.mental_health_intro_shown) {
+          showMentalHealthIntro = true;
+        }
+      }
+    } catch (e) {
+      error = `Failed to save mental health setting: ${e}`;
+    } finally {
+      isSavingMentalHealth = false;
+    }
+  }
+
+  async function dismissMentalHealthIntro() {
+    showMentalHealthIntro = false;
+    try {
+      await invoke("mark_mental_health_intro_shown");
+    } catch (e) {
+      console.error("Failed to mark intro shown:", e);
+    }
+  }
+
+  async function clearMoodData() {
+    const confirmed = confirm(
+      "This will permanently delete all mood check-in history.\n\nYour match data is not affected."
+    );
+    if (!confirmed) return;
+    isClearingMoodData = true;
+    error = "";
+    successMessage = "";
+    try {
+      await invoke("clear_mood_data");
+      successMessage = "All mood check-in data has been cleared.";
+    } catch (e) {
+      error = `Failed to clear mood data: ${e}`;
+    } finally {
+      isClearingMoodData = false;
     }
   }
 
@@ -475,6 +536,48 @@
   </div>
 
   <div class="settings-section">
+    <h2>Mental Wellbeing</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Post-game mood check-ins</h3>
+        <p class="setting-description">
+          Get occasional prompts to reflect on how you felt during a session. Helps you spot patterns like fatigue or frustration before they affect your gameplay.
+        </p>
+        <p class="setting-description">
+          All data is stored locally on your device only. You can skip any check-in, and disable this at any time.
+        </p>
+        <div class="toggle-row">
+          <button
+            class="toggle-btn"
+            class:active={mentalHealthEnabled}
+            onclick={() => toggleMentalHealth(!mentalHealthEnabled)}
+            disabled={isSavingMentalHealth}
+          >
+            {mentalHealthEnabled ? "On" : "Off"}
+          </button>
+          <span class="toggle-label">{mentalHealthEnabled ? "Check-ins enabled" : "Check-ins disabled"}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Clear all mood data</h3>
+        <p class="setting-description">
+          Permanently delete all mood check-in history. Your match data and goals are not affected.
+        </p>
+      </div>
+      <button
+        class="clear-btn"
+        onclick={clearMoodData}
+        disabled={isClearingMoodData}
+      >
+        {isClearingMoodData ? "Clearing..." : "Clear Mood Data"}
+      </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
     <h2>Account</h2>
     <div class="setting-item">
       <div class="setting-info">
@@ -492,6 +595,26 @@
     </div>
   </div>
 </div>
+
+{#if showMentalHealthIntro}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={dismissMentalHealthIntro}>
+    <div class="modal-card" onclick={(e) => e.stopPropagation()}>
+      <h3 class="modal-title">About mood check-ins</h3>
+      <p class="modal-body">
+        Occasionally, after a session, we'll ask how you felt — using simple emoji scales. This helps you spot patterns like fatigue or frustration before they affect your gameplay.
+      </p>
+      <ul class="modal-list">
+        <li>All data stays on your device</li>
+        <li>You can skip any check-in</li>
+        <li>Disable tracking at any time from this page</li>
+      </ul>
+      <button class="modal-confirm-btn" onclick={dismissMentalHealthIntro}>
+        Got it, let's go
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
 .settings-content {
@@ -868,5 +991,109 @@
   border-color: var(--red);
   background: rgba(248, 113, 113, 0.1);
   color: var(--red);
+}
+
+/* Mental health toggle */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.toggle-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 6px 18px;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  min-width: 56px;
+}
+
+.toggle-btn.active {
+  background: rgba(74, 222, 128, 0.1);
+  color: var(--green);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* First-enable modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-active);
+  border-radius: 10px;
+  padding: 28px 32px;
+  max-width: 420px;
+  width: 90%;
+}
+
+.modal-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+  margin: 0 0 14px 0;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 12px 0;
+}
+
+.modal-list {
+  margin: 0 0 20px 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.modal-confirm-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-size: 12px;
+  background: var(--gold);
+  color: #080c10;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.modal-confirm-btn:hover {
+  background: #ffdf80;
 }
 </style>

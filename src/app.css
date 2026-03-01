@@ -55,13 +55,15 @@ body {
   flex-direction: column;
 }
 
-/* ── MOBILE: safe-area insets for notch / home-indicator ── */
-@supports (padding: env(safe-area-inset-top)) {
-  @media (max-width: 640px) {
-    body {
-      padding-top: env(safe-area-inset-top);
-    }
-  }
+/* ── SAFE AREA: notch / status bar / home indicator ──
+   viewport-fit=cover (app.html) enables env() to return real device values.
+   Exposed as CSS custom properties so all layout elements can consume them.
+   On desktop all four values are 0px — safe to apply unconditionally. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
 /* Scrollbars */

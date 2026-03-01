@@ -1,8 +1,9 @@
+use rusqlite::OptionalExtension;
+mod analytics;
 mod database;
+mod items;
 mod opendota;
 mod settings;
-mod items;
-mod analytics;
 
 use std::sync::OnceLock;
 use uuid;
@@ -11,29 +12,29 @@ use uuid;
 static SESSION_ID: OnceLock<String> = OnceLock::new();
 
 fn get_session_id() -> String {
-    SESSION_ID.get_or_init(|| uuid::Uuid::new_v4().to_string()).clone()
+    SESSION_ID
+        .get_or_init(|| uuid::Uuid::new_v4().to_string())
+        .clone()
 }
 
 use database::{
-    clear_all_matches, delete_goal, evaluate_match_goals, get_all_goals, get_all_matches,
-    get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_last_hits_analysis,
-    get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp, get_unparsed_matches,
-    init_db, insert_goal, insert_match, insert_match_cs_data, match_exists, update_goal,
-    update_match_state, update_match_role, update_match_partner_slot,
-    insert_player_networth, Goal, GoalEvaluation, GoalWithDailyProgress, LastHitsAnalysis, MatchCS,
-    MatchDataPoint, MatchState, MatchWithGoals, NewGoal, toggle_hero_favorite, get_favorite_hero_ids,
-    get_or_generate_hero_suggestion, regenerate_hero_suggestion, HeroGoalSuggestion,
-    insert_item_timing, get_item_timings_for_match, NewItemTiming,
-    get_or_generate_daily_challenge, get_daily_challenge_progress, get_daily_streak,
-    DailyChallenge, DailyChallengeProgress,
-    get_weekly_challenge_options, reroll_weekly_challenges, skip_weekly_challenge,
-    accept_weekly_challenge, get_active_weekly_challenge, get_weekly_challenge_progress,
-    get_challenge_history,
-    ChallengeOption, WeeklyChallenge, WeeklyChallengeProgress, ChallengeHistoryItem,
-    set_db_dir, get_db_dir,
+    accept_weekly_challenge, clear_all_matches, delete_goal, evaluate_match_goals,
+    get_active_weekly_challenge, get_all_goals, get_all_matches, get_challenge_history,
+    get_daily_challenge_progress, get_daily_streak, get_db_dir, get_favorite_hero_ids,
+    get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_item_timings_for_match,
+    get_last_hits_analysis, get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp,
+    get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
+    get_weekly_challenge_options, get_weekly_challenge_progress, init_db, insert_goal,
+    insert_item_timing, insert_match, insert_match_cs_data, insert_player_networth, match_exists,
+    regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir, skip_weekly_challenge,
+    toggle_hero_favorite, update_goal, update_match_partner_slot, update_match_role,
+    update_match_state, ChallengeHistoryItem, ChallengeOption, DailyChallenge,
+    DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
+    LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
+    WeeklyChallenge, WeeklyChallengeProgress,
 };
 use serde_json;
-use settings::{Settings, AnalyticsConsent, set_settings_dir};
+use settings::{set_settings_dir, AnalyticsConsent, Settings};
 use tauri::{Emitter, Manager};
 /// Get the current settings
 #[tauri::command]
@@ -87,10 +88,7 @@ async fn identify_analytics_user() -> Result<(), String> {
 
 /// Track an analytics event (async, fails silently)
 #[tauri::command]
-async fn track_event(
-    event: String,
-    properties: Option<serde_json::Value>,
-) -> Result<(), String> {
+async fn track_event(event: String, properties: Option<serde_json::Value>) -> Result<(), String> {
     let settings = Settings::load();
     let is_accepted = settings.analytics_consent == AnalyticsConsent::Accepted;
     let installation_id = settings.installation_id.clone();
@@ -105,6 +103,158 @@ fn logout() -> Result<Settings, String> {
     settings.steam_id = None;
     settings.save()?;
     Ok(settings)
+}
+
+/// Enable or disable mental health mood tracking
+#[tauri::command]
+fn save_mental_health_enabled(enabled: bool) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.mental_health_tracking_enabled = enabled;
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Mark the first-enable explanation modal as shown
+#[tauri::command]
+fn mark_mental_health_intro_shown() -> Result<(), String> {
+    let mut settings = Settings::load();
+    settings.mental_health_intro_shown = true;
+    settings.save()?;
+    Ok(())
+}
+
+/// Delete all mood check-in data (does not affect match history or goals)
+#[tauri::command]
+fn clear_mood_data() -> Result<(), String> {
+    let conn = init_db()?;
+    conn.execute("DELETE FROM mood_checkins", [])
+        .map_err(|e| format!("Failed to clear mood data: {}", e))?;
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PendingCheckin {
+    match_id: i64,
+    is_loss_streak: bool,
+}
+
+/// Return the most recent match that needs a check-in, if trigger conditions are met.
+/// Returns null if tracking is disabled, no qualifying match exists, or no trigger fires.
+#[tauri::command]
+fn get_pending_checkin() -> Result<Option<PendingCheckin>, String> {
+    let settings = Settings::load();
+    if !settings.mental_health_tracking_enabled {
+        return Ok(None);
+    }
+
+    let conn = init_db()?;
+
+    // Find the most recent match that hasn't been checked in or dismissed
+    let pending: Option<i64> = conn
+        .query_row(
+            "SELECT match_id FROM matches \
+             WHERE match_id NOT IN (SELECT match_id FROM mood_checkins) \
+             ORDER BY start_time DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("DB error getting pending checkin: {}", e))?;
+
+    let Some(match_id) = pending else {
+        return Ok(None);
+    };
+
+    // Check for 3+ consecutive losses (look at 5 most recent matches)
+    struct RecentMatch {
+        radiant_win: i32,
+        player_slot: i32,
+    }
+    let mut stmt = conn
+        .prepare("SELECT radiant_win, player_slot FROM matches ORDER BY start_time DESC LIMIT 5")
+        .map_err(|e| format!("DB error: {}", e))?;
+    let recent: Vec<bool> = stmt
+        .query_map([], |row| {
+            Ok(RecentMatch {
+                radiant_win: row.get(0)?,
+                player_slot: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("DB error: {}", e))?
+        .filter_map(|r| r.ok())
+        .map(|m| {
+            let is_radiant = m.player_slot < 128;
+            (is_radiant && m.radiant_win == 1) || (!is_radiant && m.radiant_win == 0)
+        })
+        .collect();
+
+    let is_loss_streak = recent.len() >= 3 && recent.iter().take(3).all(|&w| !w);
+
+    // Check for a long session (4+ games in the last 6 hours)
+    let six_hours_ago = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        - 6 * 3600;
+    let session_count: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM matches WHERE start_time > ?1",
+            rusqlite::params![six_hours_ago],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("DB error counting session games: {}", e))?;
+    let is_long_session = session_count >= 4;
+
+    // ~25% random trigger (deterministic per match)
+    let is_random_trigger = match_id % 4 == 0;
+
+    if is_loss_streak || is_long_session || is_random_trigger {
+        Ok(Some(PendingCheckin {
+            match_id,
+            is_loss_streak,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Save a mood check-in linked to a match
+#[tauri::command]
+fn save_mood_checkin(
+    match_id: i64,
+    energy: i32,
+    calm: i32,
+    attribution: Option<String>,
+) -> Result<(), String> {
+    let conn = init_db()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    conn.execute(
+        "INSERT OR REPLACE INTO mood_checkins \
+         (match_id, checked_at, energy, calm, attribution, skipped) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 0)",
+        rusqlite::params![match_id, now, energy, calm, attribution],
+    )
+    .map_err(|e| format!("Failed to save mood checkin: {}", e))?;
+    Ok(())
+}
+
+/// Dismiss a check-in for a match (records a skip so it won't appear again)
+#[tauri::command]
+fn dismiss_checkin(match_id: i64) -> Result<(), String> {
+    let conn = init_db()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    conn.execute(
+        "INSERT OR IGNORE INTO mood_checkins (match_id, checked_at, skipped) VALUES (?1, ?2, 1)",
+        rusqlite::params![match_id, now],
+    )
+    .map_err(|e| format!("Failed to dismiss checkin: {}", e))?;
+    Ok(())
 }
 
 /// Refresh matches from OpenDota API
@@ -285,7 +435,8 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
             }
         }
         // Identify and store lane partner slot
-        let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+        let partner =
+            opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
         let _ = update_match_partner_slot(&conn, match_id, partner.map(|p| p.player_slot));
 
         // Store item purchase timings if available
@@ -505,8 +656,13 @@ async fn backfill_historical_matches(
                     }
                 }
                 // Identify and store lane partner slot
-                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
-                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+                let partner = opendota::find_lane_partner(
+                    &detailed_match.players,
+                    player_data.player_slot,
+                    role,
+                );
+                let _ =
+                    update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
 
                 // Store item purchase timings if available
                 if let Some(purchase_log) = &player_data.purchase_log {
@@ -661,8 +817,13 @@ async fn reparse_pending_matches(
                     }
                 }
                 // Identify and store lane partner slot
-                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
-                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+                let partner = opendota::find_lane_partner(
+                    &detailed_match.players,
+                    player_data.player_slot,
+                    role,
+                );
+                let _ =
+                    update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
 
                 // Store item purchase timings if available
                 if let Some(purchase_log) = &player_data.purchase_log {
@@ -973,7 +1134,8 @@ async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::Ap
 
     // Steam sends mode=id_res on success, mode=cancel on cancellation
     if openid_mode.as_deref() != Some("id_res") {
-        let _ = steam_html_response(&mut writer, 400, "Login cancelled. You can close this tab.").await;
+        let _ =
+            steam_html_response(&mut writer, 400, "Login cancelled. You can close this tab.").await;
         let _ = app.emit(
             "steam-login-complete",
             serde_json::json!({"error": "Login cancelled"}),
@@ -989,7 +1151,12 @@ async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::Ap
     {
         Some(id) if !id.is_empty() => id,
         _ => {
-            let _ = steam_html_response(&mut writer, 400, "Could not extract Steam ID. Please try again.").await;
+            let _ = steam_html_response(
+                &mut writer,
+                400,
+                "Could not extract Steam ID. Please try again.",
+            )
+            .await;
             let _ = app.emit(
                 "steam-login-complete",
                 serde_json::json!({"error": "Could not extract Steam ID"}),
@@ -1016,7 +1183,11 @@ async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::Ap
         .send()
         .await
     {
-        Ok(resp) => resp.text().await.unwrap_or_default().contains("is_valid:true"),
+        Ok(resp) => resp
+            .text()
+            .await
+            .unwrap_or_default()
+            .contains("is_valid:true"),
         Err(e) => {
             eprintln!("Steam OpenID verification request failed: {e}");
             false
@@ -1035,7 +1206,12 @@ async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::Ap
             serde_json::json!({"steam_id": steam_id}),
         );
     } else {
-        let _ = steam_html_response(&mut writer, 400, "Steam verification failed. Please try again.").await;
+        let _ = steam_html_response(
+            &mut writer,
+            400,
+            "Steam verification failed. Please try again.",
+        )
+        .await;
         let _ = app.emit(
             "steam-login-complete",
             serde_json::json!({"error": "Steam verification failed"}),
@@ -1078,7 +1254,9 @@ pub fn run() {
         .setup(|app| {
             // Initialise storage directories from Tauri's platform-aware path API.
             // This works on desktop, Android, and iOS.
-            let app_data_dir = app.path().app_data_dir()
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
                 .expect("could not resolve app data directory");
             set_db_dir(app_data_dir.clone());
             set_settings_dir(app_data_dir);
@@ -1128,7 +1306,13 @@ pub fn run() {
             get_active_weekly_challenge_cmd,
             get_weekly_challenge_progress_cmd,
             get_challenge_history_cmd,
-            start_steam_login
+            start_steam_login,
+            save_mental_health_enabled,
+            mark_mental_health_intro_shown,
+            clear_mood_data,
+            get_pending_checkin,
+            save_mood_checkin,
+            dismiss_checkin
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

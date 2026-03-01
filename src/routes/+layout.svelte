@@ -361,6 +361,7 @@
     font-size: 12px;
     letter-spacing: 3px;
     text-transform: uppercase;
+    padding-top: var(--sat);
   }
 
   .login-screen {
@@ -369,6 +370,7 @@
     align-items: center;
     flex: 1;
     background: var(--bg-base);
+    padding-top: var(--sat);
   }
 
   .login-box {
@@ -688,8 +690,8 @@
 
   /* ── TOP BAR ── */
   .topbar {
-    padding: 0 32px;
-    height: 60px;
+    padding: var(--sat) 32px 0;
+    height: calc(60px + var(--sat));
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -747,16 +749,16 @@
     display: none;
   }
 
-  /* Extra bottom padding when the fixed BottomNav overlaps the content */
+  /* Extra bottom padding when the fixed BottomNav overlaps the content.
+     Also account for landscape safe areas on left/right edges. */
   .content-area-mobile {
-    padding: 16px;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    padding: 16px calc(16px + var(--sar)) calc(72px + var(--sab)) calc(16px + var(--sal));
   }
 
   @media (max-width: 640px) {
     .topbar {
-      padding: 0 12px;
-      height: 52px;
+      padding: var(--sat) 12px 0;
+      height: calc(52px + var(--sat));
       gap: 8px;
     }
 
@@ -777,7 +779,7 @@
     }
 
     .update-banner {
-      top: 0;
+      top: var(--sat);
     }
   }
 </style>

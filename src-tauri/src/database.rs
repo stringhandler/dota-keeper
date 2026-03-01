@@ -436,6 +436,21 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create challenge_options table: {}", e))?;
 
+    // Create the mood check-ins table (mental health tracking)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mood_checkins (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id    INTEGER UNIQUE REFERENCES matches(match_id),
+            checked_at  INTEGER NOT NULL,
+            energy      INTEGER,
+            calm        INTEGER,
+            attribution TEXT,
+            skipped     INTEGER NOT NULL DEFAULT 0,
+            hidden      INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create mood_checkins table: {}", e))?;
+
     // Create the accepted weekly challenges table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS weekly_challenges (

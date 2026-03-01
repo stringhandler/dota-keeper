@@ -6,6 +6,7 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import ItemIcon from "$lib/ItemIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import MoodCheckin from "$lib/MoodCheckin.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -22,6 +23,10 @@
   // Quick stats
   let recentMatches = $state([]);
   let analysisData = $state(null);
+
+  // Mental health check-in (session-scoped — cleared on navigation away)
+  let pendingCheckin = $state(null);
+  let checkinShownThisSession = false;
 
   const DAYS_TO_SHOW = 7;
 
@@ -72,6 +77,7 @@
       loadDailyChallenge(),
       loadWeeklyChallenge(),
       loadQuickStats(),
+      loadPendingCheckin(),
     ]);
     updateMidnightCountdown();
     midnightTimer = setInterval(updateMidnightCountdown, 60000);
@@ -108,6 +114,25 @@
     } catch (e) {
       console.error("Failed to load quick stats:", e);
     }
+  }
+
+  async function loadPendingCheckin() {
+    // Only show check-in once per session unless it's a loss-streak trigger
+    try {
+      const result = await invoke("get_pending_checkin");
+      if (!result) return;
+      // Always show loss-streak triggers; otherwise show only once per session
+      if (result.is_loss_streak || !checkinShownThisSession) {
+        pendingCheckin = result;
+        checkinShownThisSession = true;
+      }
+    } catch (e) {
+      console.error("Failed to load pending checkin:", e);
+    }
+  }
+
+  function onCheckinComplete() {
+    pendingCheckin = null;
   }
 
   async function loadDailyChallenge() {
@@ -296,6 +321,11 @@
   {:else}
     {#if error}
       <div class="error-banner">{error}</div>
+    {/if}
+
+    <!-- MOOD CHECK-IN CARD (shown when a qualifying match needs a check-in) -->
+    {#if pendingCheckin}
+      <MoodCheckin matchId={pendingCheckin.match_id} onComplete={onCheckinComplete} />
     {/if}
 
     <!-- QUICK STATS STRIP -->

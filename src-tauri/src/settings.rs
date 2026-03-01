@@ -35,6 +35,12 @@ pub struct Settings {
     /// Unique installation ID for analytics tracking (generated once, persisted forever)
     #[serde(default = "Settings::generate_installation_id")]
     pub installation_id: String,
+    /// Whether mood check-in tracking is enabled (opt-in, default off)
+    #[serde(default)]
+    pub mental_health_tracking_enabled: bool,
+    /// Whether the first-enable explanation modal has been shown
+    #[serde(default)]
+    pub mental_health_intro_shown: bool,
 }
 
 impl Default for Settings {
@@ -45,6 +51,8 @@ impl Default for Settings {
             suggestion_custom_percentage: None,
             analytics_consent: AnalyticsConsent::default(),
             installation_id: Self::generate_installation_id(),
+            mental_health_tracking_enabled: false,
+            mental_health_intro_shown: false,
         }
     }
 }
