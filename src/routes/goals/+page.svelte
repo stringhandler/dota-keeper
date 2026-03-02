@@ -6,7 +6,9 @@
   import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView, trackEvent } from "$lib/analytics.js";
+  import { showToast } from "$lib/toast.js";
 
+  let pendingDeleteId = $state(null);
   let goals = $state([]);
   let isLoading = $state(true);
   let error = $state("");
@@ -172,6 +174,7 @@
           },
         });
         trackEvent("goal_updated", { metric: formMetric, game_mode: formGameMode });
+        showToast("Goal updated");
       } else {
         await invoke("create_goal", {
           goal: {
@@ -185,6 +188,7 @@
           },
         });
         trackEvent("goal_created", { metric: formMetric, game_mode: formGameMode });
+        showToast("Goal created");
       }
       resetForm();
       await loadGoals();
@@ -195,13 +199,23 @@
     }
   }
 
+  async function confirmDelete(goalId) {
+    pendingDeleteId = goalId;
+  }
+
+  async function cancelDelete() {
+    pendingDeleteId = null;
+  }
+
   async function deleteGoal(goalId) {
-    if (!confirm("Delete this goal?")) return;
+    pendingDeleteId = null;
     try {
       await invoke("remove_goal", { goalId });
       await loadGoals();
+      showToast("Goal deleted");
     } catch (e) {
       error = `Failed to delete goal: ${e}`;
+      showToast(`Failed to delete goal: ${e}`, 'error');
     }
   }
 
@@ -419,13 +433,21 @@
             </div>
           </div>
           <div class="goal-actions" onclick={(e) => e.stopPropagation()}>
-            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
-              Edit
-            </button>
-            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
-              onclick={() => deleteGoal(goal.id)}>
-              Delete
-            </button>
+            {#if pendingDeleteId === goal.id}
+              <span class="delete-confirm-label">Delete?</span>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.4)"
+                onclick={() => deleteGoal(goal.id)}>Yes</button>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px"
+                onclick={cancelDelete}>No</button>
+            {:else}
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
+                Edit
+              </button>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
+                onclick={() => confirmDelete(goal.id)}>
+                Delete
+              </button>
+            {/if}
           </div>
         </div>
       {/each}
@@ -526,6 +548,13 @@
     gap: 6px;
     align-items: center;
     flex-shrink: 0;
+  }
+
+  .delete-confirm-label {
+    font-size: 10px;
+    color: var(--red);
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.5px;
   }
 
   /* Goal type tags */

@@ -299,6 +299,458 @@ fn dismiss_checkin(match_id: i64) -> Result<(), String> {
     Ok(())
 }
 
+// ── Mental Health: Tilt Assessment ──────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
+struct TiltSignal {
+    signal_type: String,
+    value: f64,
+    threshold: f64,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct TiltSuggestion {
+    title: String,
+    body: String,
+    severity: String,
+    actions: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct TiltAssessment {
+    tilt_score: i32,
+    pattern: String,
+    signals: Vec<TiltSignal>,
+    energy_avg_7d: Option<f64>,
+    calm_avg_7d: Option<f64>,
+    trend: String,
+    has_sufficient_data: bool,
+    suggestion: Option<TiltSuggestion>,
+}
+
+/// Compute a tilt assessment from objective match data + subjective mood check-ins.
+/// Returns None if mental health tracking is disabled.
+#[tauri::command]
+fn get_tilt_assessment() -> Result<Option<TiltAssessment>, String> {
+    let settings = Settings::load();
+    if !settings.mental_health_tracking_enabled {
+        return Ok(None);
+    }
+
+    let conn = init_db()?;
+
+    // ── Objective Signals ──────────────────────────────────────────────────
+    let mut obj_score: f64 = 0.0;
+    let mut signals: Vec<TiltSignal> = Vec::new();
+
+    // Loss streak — look at last 5 matches
+    let mut stmt = conn
+        .prepare("SELECT radiant_win, player_slot FROM matches ORDER BY start_time DESC LIMIT 5")
+        .map_err(|e| format!("DB error: {}", e))?;
+    let recent_results: Vec<bool> = stmt
+        .query_map([], |row| {
+            let rw: i32 = row.get(0)?;
+            let ps: i32 = row.get(1)?;
+            Ok((ps < 128 && rw == 1) || (ps >= 128 && rw == 0))
+        })
+        .map_err(|e| format!("DB: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let loss_streak_len = recent_results.iter().take_while(|&&w| !w).count();
+    let has_loss_streak = loss_streak_len >= 3;
+    if has_loss_streak {
+        obj_score += 20.0;
+        signals.push(TiltSignal {
+            signal_type: "loss_streak".to_string(),
+            value: loss_streak_len as f64,
+            threshold: 3.0,
+        });
+    }
+
+    // Deaths elevated — last 3 vs 30-game baseline
+    struct MatchStats {
+        deaths: f64,
+        kills: f64,
+        assists: f64,
+    }
+    let mut stat_stmt = conn
+        .prepare("SELECT deaths, kills, assists FROM matches ORDER BY start_time DESC LIMIT 30")
+        .map_err(|e| format!("DB error: {}", e))?;
+    let all_stats: Vec<MatchStats> = stat_stmt
+        .query_map([], |row| {
+            Ok(MatchStats {
+                deaths: row.get::<_, f64>(0)?,
+                kills: row.get::<_, f64>(1)?,
+                assists: row.get::<_, f64>(2)?,
+            })
+        })
+        .map_err(|e| format!("DB: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let deaths_elevated;
+    let kda_depressed;
+    if all_stats.len() >= 6 {
+        let last3_deaths = all_stats.iter().take(3).map(|s| s.deaths).sum::<f64>() / 3.0;
+        let baseline_deaths = all_stats.iter().map(|s| s.deaths).sum::<f64>() / all_stats.len() as f64;
+        deaths_elevated = baseline_deaths > 0.0 && last3_deaths >= baseline_deaths * 1.5;
+        if deaths_elevated {
+            obj_score += 25.0;
+            signals.push(TiltSignal {
+                signal_type: "deaths_elevated".to_string(),
+                value: last3_deaths,
+                threshold: baseline_deaths * 1.5,
+            });
+        }
+
+        let kda = |s: &MatchStats| (s.kills + s.assists) / (s.deaths + 1.0);
+        let last3_kda = all_stats.iter().take(3).map(kda).sum::<f64>() / 3.0;
+        let baseline_kda = all_stats.iter().map(kda).sum::<f64>() / all_stats.len() as f64;
+        kda_depressed = baseline_kda > 0.0 && last3_kda <= baseline_kda * 0.6;
+        if kda_depressed {
+            obj_score += 20.0;
+            signals.push(TiltSignal {
+                signal_type: "kda_depressed".to_string(),
+                value: last3_kda,
+                threshold: baseline_kda * 0.6,
+            });
+        }
+    } else {
+        deaths_elevated = false;
+        kda_depressed = false;
+    }
+
+    // Session length — games in the last 24 hours
+    let day_ago = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        - 86400;
+    let session_games: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM matches WHERE start_time > ?1",
+            rusqlite::params![day_ago],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let long_session = session_games >= 5;
+    if long_session {
+        obj_score += 15.0;
+        signals.push(TiltSignal {
+            signal_type: "long_session".to_string(),
+            value: session_games as f64,
+            threshold: 5.0,
+        });
+    }
+
+    // ── Subjective Signals ─────────────────────────────────────────────────
+    struct RecentCheckin {
+        energy: Option<i32>,
+        calm: Option<i32>,
+        attribution: Option<String>,
+    }
+    let mut ci_stmt = conn
+        .prepare(
+            "SELECT energy, calm, attribution FROM mood_checkins \
+             WHERE skipped = 0 AND hidden = 0 \
+             ORDER BY checked_at DESC LIMIT 10",
+        )
+        .map_err(|e| format!("DB error: {}", e))?;
+    let checkins: Vec<RecentCheckin> = ci_stmt
+        .query_map([], |row| {
+            Ok(RecentCheckin {
+                energy: row.get(0)?,
+                calm: row.get(1)?,
+                attribution: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("DB: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let has_checkin_data = !checkins.is_empty();
+    let mut subj_score: f64 = 0.0;
+
+    let last_energy = checkins.first().and_then(|c| c.energy);
+    let last_calm = checkins.first().and_then(|c| c.calm);
+
+    if let Some(e) = last_energy {
+        if e <= 2 {
+            subj_score += 10.0;
+            signals.push(TiltSignal {
+                signal_type: "low_energy".to_string(),
+                value: e as f64,
+                threshold: 2.0,
+            });
+        }
+    }
+    if let Some(c) = last_calm {
+        if c <= 2 {
+            subj_score += 10.0;
+            signals.push(TiltSignal {
+                signal_type: "low_calm".to_string(),
+                value: c as f64,
+                threshold: 2.0,
+            });
+        }
+    }
+
+    // Calm trend — is it declining over last 3 check-ins?
+    let calm_trend_declining = checkins.len() >= 3 && {
+        let calms: Vec<i32> = checkins.iter().take(3).filter_map(|c| c.calm).collect();
+        calms.len() == 3 && calms[0] < calms[1] && calms[1] <= calms[2]
+    };
+    if calm_trend_declining {
+        subj_score += 15.0;
+        signals.push(TiltSignal {
+            signal_type: "calm_declining".to_string(),
+            value: 1.0,
+            threshold: 1.0,
+        });
+    }
+
+    // Team attribution count in last 5 non-skipped check-ins
+    let team_attrib_count = checkins.iter().take(5)
+        .filter(|c| c.attribution.as_deref() == Some("Teammates"))
+        .count();
+    if team_attrib_count >= 2 {
+        subj_score += 10.0;
+        signals.push(TiltSignal {
+            signal_type: "team_friction".to_string(),
+            value: team_attrib_count as f64,
+            threshold: 2.0,
+        });
+    }
+    let self_attrib_count = checkins.iter().take(5)
+        .filter(|c| c.attribution.as_deref() == Some("My own mistakes"))
+        .count();
+
+    // Composite tilt score
+    let tilt_score = if has_checkin_data {
+        (obj_score * 0.6 + subj_score * 0.4).min(100.0) as i32
+    } else {
+        obj_score.min(100.0) as i32
+    };
+
+    // ── 7-day averages ─────────────────────────────────────────────────────
+    let seven_days_ago = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        - 7 * 86400;
+
+    let mut avg_stmt = conn
+        .prepare(
+            "SELECT energy, calm FROM mood_checkins \
+             WHERE skipped = 0 AND hidden = 0 AND checked_at > ?1",
+        )
+        .map_err(|e| format!("DB error: {}", e))?;
+    struct AvgRow { energy: Option<i32>, calm: Option<i32> }
+    let week_checkins: Vec<AvgRow> = avg_stmt
+        .query_map(rusqlite::params![seven_days_ago], |row| {
+            Ok(AvgRow { energy: row.get(0)?, calm: row.get(1)? })
+        })
+        .map_err(|e| format!("DB: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let energy_avg_7d = if week_checkins.is_empty() {
+        None
+    } else {
+        let vals: Vec<f64> = week_checkins.iter().filter_map(|r| r.energy.map(|v| v as f64)).collect();
+        if vals.is_empty() { None } else { Some(vals.iter().sum::<f64>() / vals.len() as f64) }
+    };
+    let calm_avg_7d = if week_checkins.is_empty() {
+        None
+    } else {
+        let vals: Vec<f64> = week_checkins.iter().filter_map(|r| r.calm.map(|v| v as f64)).collect();
+        if vals.is_empty() { None } else { Some(vals.iter().sum::<f64>() / vals.len() as f64) }
+    };
+
+    // ── Trend ──────────────────────────────────────────────────────────────
+    let trend = if checkins.len() < 3 {
+        "insufficient_data".to_string()
+    } else {
+        // Compare avg of last 3 vs next 3
+        let last3_calm: Vec<f64> = checkins.iter().take(3).filter_map(|c| c.calm.map(|v| v as f64)).collect();
+        let prev3_calm: Vec<f64> = checkins.iter().skip(3).take(3).filter_map(|c| c.calm.map(|v| v as f64)).collect();
+        if last3_calm.len() < 3 || prev3_calm.len() < 3 {
+            "insufficient_data".to_string()
+        } else {
+            let last_avg = last3_calm.iter().sum::<f64>() / 3.0;
+            let prev_avg = prev3_calm.iter().sum::<f64>() / 3.0;
+            if last_avg >= prev_avg + 0.4 {
+                "improving".to_string()
+            } else if last_avg <= prev_avg - 0.4 {
+                "declining".to_string()
+            } else {
+                "stable".to_string()
+            }
+        }
+    };
+
+    // ── Pattern Classification ─────────────────────────────────────────────
+    let pattern = if tilt_score <= 20 && !has_loss_streak {
+        "peak_performance".to_string()
+    } else if long_session || last_energy.map_or(false, |e| e <= 2) {
+        "fatigue".to_string()
+    } else if has_loss_streak && deaths_elevated {
+        "loss_spiral".to_string()
+    } else if team_attrib_count >= 2 {
+        "team_friction".to_string()
+    } else if self_attrib_count >= 2 && calm_trend_declining {
+        "self_doubt".to_string()
+    } else if has_loss_streak {
+        "loss_spiral".to_string()
+    } else {
+        "mild_tilt".to_string()
+    };
+
+    // ── Suggestion ─────────────────────────────────────────────────────────
+    let severity = if tilt_score >= 56 { "high" } else if tilt_score >= 31 { "mild" } else { "none" };
+    let suggestion = if tilt_score < 31 {
+        if pattern == "peak_performance" {
+            Some(TiltSuggestion {
+                title: "You're in the zone".to_string(),
+                body: "You're playing well and feeling good about it. This is the state that produces your best Dota — notice what's working so you can recreate it.".to_string(),
+                severity: "positive".to_string(),
+                actions: vec![],
+            })
+        } else {
+            None
+        }
+    } else {
+        let (title, body, actions) = match (pattern.as_str(), severity) {
+            ("fatigue", "high") => (
+                "You've been playing a lot",
+                "5+ games in one sitting is a lot. Fatigue is one of the biggest hidden performance drains in Dota. A 15-minute break — walk, water, stretch — often makes the next game feel completely different.",
+                vec!["Take a Break".to_string(), "Play One More Anyway".to_string()],
+            ),
+            ("fatigue", _) => (
+                "Consider taking a break",
+                "You've played quite a bit today. Even top pros schedule regular breaks — your reaction time and decision-making genuinely improve with rest.",
+                vec!["Take a Break".to_string()],
+            ),
+            ("loss_spiral", "high") => (
+                "You're in a loss streak",
+                "You're in a loss streak and your deaths are climbing. This is the classic tilt spiral — each loss makes the next one more likely. The single most effective thing you can do right now is stop and come back in an hour.",
+                vec!["Step Away".to_string(), "Switch to Turbo for Fun".to_string(), "Keep Grinding".to_string()],
+            ),
+            ("loss_spiral", _) => (
+                "3 losses in a row",
+                "It happens to everyone. Consider whether a different hero or role might give you a mental reset.",
+                vec!["Switch Hero".to_string(), "Take a Break".to_string()],
+            ),
+            ("team_friction", "high") => (
+                "Frustration with teammates",
+                "When frustration comes from teammates, it often makes us play more aggressively or alone — which backfires. Try focusing purely on your own farm, positioning, and cooldown usage this next game.",
+                vec!["Focus on Self".to_string()],
+            ),
+            ("team_friction", _) => (
+                "Rough teammates lately?",
+                "It's worth remembering that in a 5-player team game, your individual impact is highest when you focus on what you can control.",
+                vec![],
+            ),
+            ("self_doubt", "high") => (
+                "Paralysis by analysis",
+                "You seem focused on your own errors. Replaying mistakes mentally during a game is called 'paralysis by analysis' — try to notice mistakes once, then let them go and focus on the next decision.",
+                vec![],
+            ),
+            ("self_doubt", _) => (
+                "You're being self-aware",
+                "That self-awareness is actually a strength — most players never notice their mistakes at all.",
+                vec![],
+            ),
+            _ => (
+                "Performance dip detected",
+                "Your recent games show some signs of tilt. Consider taking a short break or switching to a more comfortable hero.",
+                vec!["Take a Break".to_string()],
+            ),
+        };
+        Some(TiltSuggestion {
+            title: title.to_string(),
+            body: body.to_string(),
+            severity: severity.to_string(),
+            actions,
+        })
+    };
+
+    Ok(Some(TiltAssessment {
+        tilt_score,
+        pattern,
+        signals,
+        energy_avg_7d,
+        calm_avg_7d,
+        trend,
+        has_sufficient_data: checkins.len() >= 3,
+        suggestion,
+    }))
+}
+
+// ── Mental Health: Check-in History ─────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
+struct CheckinHistoryItem {
+    match_id: i64,
+    checked_at: i64,
+    energy: Option<i32>,
+    calm: Option<i32>,
+    attribution: Option<String>,
+    skipped: bool,
+    hero_id: Option<i32>,
+    won: Option<bool>,
+    match_start_time: Option<i64>,
+}
+
+/// Return the most recent check-in history entries (including skipped ones).
+#[tauri::command]
+fn get_checkin_history(limit: i32) -> Result<Vec<CheckinHistoryItem>, String> {
+    let settings = Settings::load();
+    if !settings.mental_health_tracking_enabled {
+        return Ok(vec![]);
+    }
+
+    let conn = init_db()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT mc.match_id, mc.checked_at, mc.energy, mc.calm, mc.attribution, mc.skipped, \
+                    m.hero_id, m.radiant_win, m.player_slot, m.start_time \
+             FROM mood_checkins mc \
+             LEFT JOIN matches m ON mc.match_id = m.match_id \
+             WHERE mc.hidden = 0 \
+             ORDER BY mc.checked_at DESC \
+             LIMIT ?1",
+        )
+        .map_err(|e| format!("DB error: {}", e))?;
+
+    let items: Vec<CheckinHistoryItem> = stmt
+        .query_map(rusqlite::params![limit], |row| {
+            let radiant_win: Option<i32> = row.get(7)?;
+            let player_slot: Option<i32> = row.get(8)?;
+            let won = match (radiant_win, player_slot) {
+                (Some(rw), Some(ps)) => Some((ps < 128 && rw == 1) || (ps >= 128 && rw == 0)),
+                _ => None,
+            };
+            Ok(CheckinHistoryItem {
+                match_id: row.get(0)?,
+                checked_at: row.get(1)?,
+                energy: row.get(2)?,
+                calm: row.get(3)?,
+                attribution: row.get(4)?,
+                skipped: row.get::<_, i32>(5)? == 1,
+                hero_id: row.get(6)?,
+                won,
+                match_start_time: row.get(9)?,
+            })
+        })
+        .map_err(|e| format!("DB error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
+}
+
 /// Refresh matches from OpenDota API
 #[tauri::command]
 async fn refresh_matches() -> Result<Vec<MatchWithGoals>, String> {
@@ -1355,7 +1807,9 @@ pub fn run() {
             clear_mood_data,
             get_pending_checkin,
             save_mood_checkin,
-            dismiss_checkin
+            dismiss_checkin,
+            get_tilt_assessment,
+            get_checkin_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

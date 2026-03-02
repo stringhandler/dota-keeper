@@ -6,6 +6,7 @@
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import { showToast } from "$lib/toast.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -16,6 +17,7 @@
   let goalDetails = $state([]);
   let copiedMatchId = $state(null);
   let parsingMatches = $state(new Set());
+  let parseErrors = $state(new Map());
   let currentSteamId = $state("");
   let unlistenMatchStateChanged = null;
   let autoRefreshTimer = null;
@@ -110,15 +112,10 @@
     isRefreshing = true;
     try {
       matches = await invoke("refresh_matches");
+      showToast("Matches updated");
     } catch (e) {
-      const msg = String(e);
-      if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("429")) {
-        error = "OpenDota is temporarily unavailable — your cached matches are shown below.";
-      } else if (msg.includes("Failed to fetch") || msg.includes("connection") || msg.includes("network")) {
-        error = "Could not reach OpenDota. Check your internet connection.";
-      } else {
-        error = `Refresh failed: ${e}`;
-      }
+      error = String(e);
+      showToast(String(e), 'error', 5000);
       await loadMatches();
     } finally {
       isRefreshing = false;
@@ -222,15 +219,34 @@
 
   async function parseMatch(matchId) {
     parsingMatches = new Set([...parsingMatches, matchId]);
+    // Clear previous error for this match
+    if (parseErrors.has(matchId)) {
+      const m = new Map(parseErrors);
+      m.delete(matchId);
+      parseErrors = m;
+    }
     try {
       await invoke("parse_match", { matchId, steamId: currentSteamId });
       await loadMatches();
     } catch (e) {
-      error = `Failed to parse match: ${e}`;
+      const m = new Map(parseErrors);
+      m.set(matchId, String(e));
+      parseErrors = m;
     } finally {
       const newSet = new Set(parsingMatches);
       newSet.delete(matchId);
       parsingMatches = newSet;
+    }
+  }
+
+  function getRoleLabel(role) {
+    switch (role) {
+      case 1: return "Carry";
+      case 2: return "Mid";
+      case 3: return "Offlane";
+      case 4: return "Soft Sup";
+      case 5: return "Hard Sup";
+      default: return "—";
     }
   }
 
@@ -334,6 +350,7 @@
         <div class="th">Date</div>
         <div class="th">Hero</div>
         <div class="th">Mode</div>
+        <div class="th">Role</div>
         <div class="th">Result</div>
         <div class="th">K/D/A</div>
         <div class="th">GPM</div>
@@ -383,6 +400,9 @@
             <span class="mode-tag {getModeTag(match.game_mode).cls}">{getModeTag(match.game_mode).label}</span>
           </div>
 
+          <!-- Role -->
+          <div class="td-role td-text">{getRoleLabel(match.role)}</div>
+
           <!-- Result -->
           <div class="td-result {isWin(match) ? 'result-win' : 'result-loss'}">
             {isWin(match) ? 'WON' : 'LOST'}
@@ -401,12 +421,21 @@
           <div class="td-goals">
             {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
               <span class="parsing-spinner">⏳</span>
-            {:else if match.parse_state === "Unparsed"}
+            {:else if parseErrors.has(match.match_id)}
+              {@const errMsg = parseErrors.get(match.match_id)}
+              {@const isPending = errMsg.includes('next sync') || errMsg.includes('not yet') || errMsg.includes('will be')}
+              <span
+                class="parse-status-icon {isPending ? 'parse-pending' : 'parse-warn'}"
+                title={errMsg}
+                role="img"
+                aria-label={errMsg}
+              >{isPending ? '🕐' : '⚠'}</span>
+            {:else if match.parse_state === "Unparsed" || match.parse_state === "Failed"}
               <button
                 class="parse-btn"
                 onclick={(e) => { e.stopPropagation(); parseMatch(match.match_id); }}
                 disabled={parsingMatches.has(match.match_id)}
-              >Parse</button>
+              >{match.parse_state === "Failed" ? "↺ Retry" : "Parse"}</button>
             {:else if match.goals_applicable > 0}
               <span class="goals-chip" class:has-goals={match.goals_achieved > 0}>
                 {match.goals_achieved}/{match.goals_applicable}{match.goals_achieved > 0 ? ' ⚡' : ''}
@@ -615,6 +644,7 @@
     .match-id-cell { display: none !important; }
     .td-xpm { display: none !important; }
     .td-gpm { display: none !important; }
+    .td-role { display: none !important; }
 
     /* Pagination: simpler on mobile */
     .pagination {
@@ -647,7 +677,7 @@
   .table-head,
   .match-row {
     display: grid;
-    grid-template-columns: 160px 80px 160px 80px 70px 90px 60px 60px 90px;
+    grid-template-columns: 160px 80px 160px 80px 65px 70px 90px 60px 60px 90px;
     padding: 12px 20px;
     align-items: center;
     gap: 8px;
@@ -775,6 +805,15 @@
     animation: spin 2s linear infinite;
     font-size: 14px;
   }
+
+  .parse-status-icon {
+    font-size: 14px;
+    cursor: help;
+    line-height: 1;
+  }
+
+  .parse-warn { color: var(--red); }
+  .parse-pending { color: var(--text-muted); }
 
   @keyframes spin {
     from { transform: rotate(0deg); }

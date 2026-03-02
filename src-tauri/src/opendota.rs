@@ -3,6 +3,25 @@ use serde::Deserialize;
 
 const OPENDOTA_API_BASE: &str = "https://api.opendota.com/api";
 
+// ── User-friendly error helpers ─────────────────────────────────────────────
+
+fn friendly_network_err(err: &reqwest::Error) -> String {
+    if err.is_connect() || err.is_timeout() {
+        "Couldn't reach OpenDota — check your internet connection. Matches will sync automatically when you're back online.".to_string()
+    } else {
+        "Network error while contacting OpenDota. Will retry automatically.".to_string()
+    }
+}
+
+fn friendly_status_err(status: reqwest::StatusCode) -> String {
+    match status.as_u16() {
+        429 => "Too many requests to OpenDota. Will try again shortly.".to_string(),
+        404 => "No data found for this request. The match may not be tracked by OpenDota yet.".to_string(),
+        500..=599 => "OpenDota is unavailable right now. Your matches will sync automatically when it comes back.".to_string(),
+        code => format!("OpenDota returned an unexpected error (HTTP {}). Will retry later.", code),
+    }
+}
+
 /// Response from the OpenDota recent matches endpoint
 #[derive(Debug, Deserialize)]
 struct OpenDotaMatch {
@@ -116,7 +135,7 @@ pub struct JobInfo {
 fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
     let id64: u64 = steam_id64
         .parse()
-        .map_err(|_| "Invalid Steam ID format".to_string())?;
+        .map_err(|_| "No matches found for this Steam ID. Double-check the ID in Settings.".to_string())?;
 
     // Steam ID32 = Steam ID64 - 76561197960265728
     const STEAM_ID64_BASE: u64 = 76561197960265728;
@@ -143,19 +162,20 @@ pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Ma
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch matches: {}", e))?;
+        .map_err(|e| friendly_network_err(&e))?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "OpenDota API returned error: {}",
-            response.status()
-        ));
+    let status = response.status();
+    if !status.is_success() {
+        if status.as_u16() == 404 {
+            return Err("No matches found for this Steam ID. Double-check the ID in Settings.".to_string());
+        }
+        return Err(friendly_status_err(status));
     }
 
     let matches: Vec<OpenDotaMatch> = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse matches: {}", e))?;
+        .map_err(|_| "OpenDota returned unexpected data. Check that your Steam ID is correct in Settings.".to_string())?;
 
     // Take only the requested number of matches
     let matches: Vec<Match> = matches
@@ -196,19 +216,16 @@ pub async fn fetch_matches_before(
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch matches: {}", e))?;
+            .map_err(|e| friendly_network_err(&e))?;
 
         if !response.status().is_success() {
-            return Err(format!(
-                "OpenDota API returned error: {}",
-                response.status()
-            ));
+            return Err(friendly_status_err(response.status()));
         }
 
         let matches: Vec<OpenDotaMatch> = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse matches: {}", e))?;
+            .map_err(|_| "OpenDota returned unexpected data while backfilling. Backfill may be incomplete.".to_string())?;
 
         eprintln!("Backfill: Received {} matches from API", matches.len());
 
@@ -258,13 +275,10 @@ pub async fn request_match_parse(match_id: i64) -> Result<(), String> {
         .post(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to request match parse: {}", e))?;
+        .map_err(|e| friendly_network_err(&e))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "OpenDota API returned error: {}",
-            response.status()
-        ));
+        return Err(format!("OpenDota couldn't parse this match — it will be skipped and retried later. ({})", friendly_status_err(response.status())));
     }
 
     Ok(())
@@ -279,19 +293,20 @@ pub async fn fetch_match_details(match_id: i64) -> Result<DetailedMatch, String>
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch match details: {}", e))?;
+        .map_err(|e| friendly_network_err(&e))?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "OpenDota API returned error: {}",
-            response.status()
-        ));
+    let status = response.status();
+    if !status.is_success() {
+        if status.as_u16() == 404 {
+            return Err("This match hasn't been parsed by OpenDota yet. It will be picked up on the next sync.".to_string());
+        }
+        return Err(friendly_status_err(status));
     }
 
     let match_details: DetailedMatch = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse match details: {}", e))?;
+        .map_err(|_| "This match hasn't been fully parsed by OpenDota yet. It will be picked up on the next sync.".to_string())?;
 
     Ok(match_details)
 }

@@ -12,6 +12,7 @@
   import TitleBar from "$lib/TitleBar.svelte";
   import WindowResize from "$lib/WindowResize.svelte";
   import BottomNav from "$lib/BottomNav.svelte";
+  import Toast from "$lib/Toast.svelte";
   import '../app.css';
 
   let isLoading = $state(true);
@@ -146,6 +147,7 @@
     if (pathname.startsWith('/analysis')) return 'Performance Analysis';
     if (pathname.startsWith('/goals')) return 'Goal Management';
     if (pathname.startsWith('/challenges')) return 'Challenges';
+    if (pathname.startsWith('/mental-health')) return 'Mental Wellbeing';
     if (pathname.startsWith('/settings')) return 'Settings';
     return 'Dota Keeper';
   }
@@ -292,6 +294,12 @@
           </svg>
           Challenges
         </a>
+        <a href="/mental-health" class="nav-item" class:active={isActivePath('/mental-health')}>
+          <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+          </svg>
+          Mind
+        </a>
         <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -347,6 +355,9 @@
 {#if showConsentModal}
   <AnalyticsConsentModal onClose={() => showConsentModal = false} />
 {/if}
+
+<!-- Global toast notifications -->
+<Toast />
 
 <style>
   /* ── LOADING / LOGIN ── */

@@ -1,3 +1,8 @@
+<script module>
+  // Persists across navigations for the lifetime of the app session
+  let checkinShownThisSession = false;
+</script>
+
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
@@ -24,9 +29,8 @@
   let recentMatches = $state([]);
   let analysisData = $state(null);
 
-  // Mental health check-in (session-scoped — cleared on navigation away)
+  // Mental health check-in
   let pendingCheckin = $state(null);
-  let checkinShownThisSession = false;
 
   const DAYS_TO_SHOW = 7;
 
