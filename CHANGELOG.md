@@ -5,6 +5,21 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-03-02
+
+### Added
+- **Mental Health / Mind Tab**: New "Mind" section for tracking tilt and emotional state after games
+  - Post-game mood check-in prompt appears after matches with a mood slider and optional notes
+  - Tilt assessment based on recent check-in history (calm / watch yourself / tilted / on tilt)
+  - Full check-in history with mood trend visualisation and personalised suggestions
+  - Check-in frequency setting (after every game, every 3 games, or every 5 games)
+- **Steam Login**: Authenticate via Steam OpenID directly in the app as an alternative login path
+- **Toast Notifications**: Global toast notification system for in-app feedback messages
+
+### Fixed
+- **OpenDota Parsing**: Resolved parsing edge cases that could cause match data to be incorrectly marked as parsed
+- **Goal Sparklines**: Fixed sparkline charts on the dashboard not rendering correctly for goals
+
 ## [0.2.6] - 2026-02-26
 
 ### Added
