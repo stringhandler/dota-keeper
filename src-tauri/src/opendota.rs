@@ -86,7 +86,7 @@ pub struct DetailedPlayer {
     pub lane_role: Option<i32>,  // 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
     pub lh_t: Option<Vec<i32>>,  // Last hits at each minute
     pub dn_t: Option<Vec<i32>>,  // Denies at each minute
-    pub net_worth: Option<Vec<i32>>,  // Networth at each minute
+    pub gold_t: Option<Vec<i32>>,  // Gold (net worth) at each minute — OpenDota field name
     pub purchase_log: Option<Vec<PurchaseLogEntry>>,  // Item purchases
 }
 
@@ -306,7 +306,7 @@ pub async fn fetch_match_details(match_id: i64) -> Result<DetailedMatch, String>
     let match_details: DetailedMatch = response
         .json()
         .await
-        .map_err(|_| "This match hasn't been fully parsed by OpenDota yet. It will be picked up on the next sync.".to_string())?;
+        .map_err(|e| format!("Unexpected response from OpenDota for this match ({}). Try again or check https://www.opendota.com/matches/{}", e, match_id))?;
 
     Ok(match_details)
 }

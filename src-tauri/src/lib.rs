@@ -924,7 +924,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
         // Store per-minute networth for all players (used by PartnerNetworth goals)
         for p in &detailed_match.players {
-            if let Some(nw_t) = &p.net_worth {
+            if let Some(nw_t) = &p.gold_t {
                 let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
             }
         }
@@ -1145,7 +1145,7 @@ async fn backfill_historical_matches(
 
                 // Store per-minute networth for all players (used by PartnerNetworth goals)
                 for p in &detailed_match.players {
-                    if let Some(nw_t) = &p.net_worth {
+                    if let Some(nw_t) = &p.gold_t {
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
@@ -1306,7 +1306,7 @@ async fn reparse_pending_matches(
 
                 // Store per-minute networth for all players (used by PartnerNetworth goals)
                 for p in &detailed_match.players {
-                    if let Some(nw_t) = &p.net_worth {
+                    if let Some(nw_t) = &p.gold_t {
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
