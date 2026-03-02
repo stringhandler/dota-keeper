@@ -7,6 +7,7 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
   import { showToast } from "$lib/toast.js";
+  import { pendingCheckinStore } from "$lib/checkin-store.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -67,8 +68,12 @@
 
   async function autoRefreshAndParse() {
     try {
-      const newMatches = await invoke("refresh_matches");
-      matches = newMatches;
+      const result = await invoke("refresh_matches");
+      matches = result.matches;
+      if (result.new_count > 0) {
+        const checkin = await invoke("get_pending_checkin").catch(() => null);
+        if (checkin) pendingCheckinStore.set(checkin);
+      }
       const recentMatches = matches.slice(0, 10);
       for (const match of recentMatches) {
         if ((match.parse_state === "Unparsed" || match.parse_state === "Failed") &&
@@ -111,8 +116,15 @@
     error = "";
     isRefreshing = true;
     try {
-      matches = await invoke("refresh_matches");
-      showToast("Matches updated");
+      const result = await invoke("refresh_matches");
+      matches = result.matches;
+      if (result.new_count > 0) {
+        const checkin = await invoke("get_pending_checkin").catch(() => null);
+        if (checkin) pendingCheckinStore.set(checkin);
+        showToast(`${result.new_count} new match${result.new_count > 1 ? 'es' : ''} found`);
+      } else {
+        showToast("Matches up to date");
+      }
     } catch (e) {
       error = String(e);
       showToast(String(e), 'error', 5000);

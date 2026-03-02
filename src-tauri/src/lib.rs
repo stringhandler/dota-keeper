@@ -751,9 +751,15 @@ fn get_checkin_history(limit: i32) -> Result<Vec<CheckinHistoryItem>, String> {
     Ok(items)
 }
 
+#[derive(Debug, serde::Serialize)]
+struct RefreshResult {
+    new_count: usize,
+    matches: Vec<MatchWithGoals>,
+}
+
 /// Refresh matches from OpenDota API
 #[tauri::command]
-async fn refresh_matches() -> Result<Vec<MatchWithGoals>, String> {
+async fn refresh_matches() -> Result<RefreshResult, String> {
     let settings = Settings::load();
     let steam_id = settings
         .steam_id
@@ -766,16 +772,18 @@ async fn refresh_matches() -> Result<Vec<MatchWithGoals>, String> {
     let conn = init_db()?;
 
     // Insert matches that don't already exist
-    let mut new_matches = Vec::new();
+    let mut new_count = 0;
     for m in matches {
         if !match_exists(&conn, m.match_id)? {
             insert_match(&conn, &m)?;
-            new_matches.push(m);
+            new_count += 1;
         }
     }
 
-    // Return all matches from database
-    get_matches_with_goals(&conn)
+    Ok(RefreshResult {
+        new_count,
+        matches: get_matches_with_goals(&conn)?,
+    })
 }
 
 /// Get all stored matches

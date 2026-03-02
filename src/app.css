@@ -189,7 +189,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: 8px;
   padding: 16px 20px;
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 40px 1fr 110px auto;
   align-items: center;
   gap: 16px;
   cursor: pointer;
@@ -231,23 +231,18 @@ input, select, textarea { font-family: inherit; }
   text-overflow: ellipsis;
 }
 
-.goal-progress-bar {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 2px;
+.goal-spark-col {
+  width: 110px;
+  height: 40px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
   overflow: hidden;
-  margin-bottom: 4px;
 }
 
-.goal-fill {
+.goal-sparkline {
+  display: block;
+  width: 100%;
   height: 100%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
-  transition: width 0.4s ease;
-}
-
-.goal-fill.success {
-  background: linear-gradient(90deg, #16a34a, var(--green));
 }
 
 .goal-meta {

@@ -1,8 +1,3 @@
-<script module>
-  // Persists across navigations for the lifetime of the app session
-  let checkinShownThisSession = false;
-</script>
-
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
@@ -12,6 +7,7 @@
   import ItemIcon from "$lib/ItemIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
   import MoodCheckin from "$lib/MoodCheckin.svelte";
+  import { pendingCheckinStore } from "$lib/checkin-store.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -29,8 +25,8 @@
   let recentMatches = $state([]);
   let analysisData = $state(null);
 
-  // Mental health check-in
-  let pendingCheckin = $state(null);
+  // Mental health check-in (set by matches page after finding new matches)
+  let pendingCheckin = $derived($pendingCheckinStore);
 
   const DAYS_TO_SHOW = 7;
 
@@ -81,7 +77,6 @@
       loadDailyChallenge(),
       loadWeeklyChallenge(),
       loadQuickStats(),
-      loadPendingCheckin(),
     ]);
     updateMidnightCountdown();
     midnightTimer = setInterval(updateMidnightCountdown, 60000);
@@ -120,23 +115,8 @@
     }
   }
 
-  async function loadPendingCheckin() {
-    // Only show check-in once per session unless it's a loss-streak trigger
-    try {
-      const result = await invoke("get_pending_checkin");
-      if (!result) return;
-      // Always show loss-streak triggers; otherwise show only once per session
-      if (result.is_loss_streak || !checkinShownThisSession) {
-        pendingCheckin = result;
-        checkinShownThisSession = true;
-      }
-    } catch (e) {
-      console.error("Failed to load pending checkin:", e);
-    }
-  }
-
   function onCheckinComplete() {
-    pendingCheckin = null;
+    pendingCheckinStore.set(null);
   }
 
   async function loadDailyChallenge() {
@@ -307,6 +287,41 @@
     return { label: 'Stable', cls: 'stable' };
   }
 
+  function getSparklineData(goalData) {
+    const days = goalData.daily_progress;
+    const n = days.length;
+    if (n === 0) return null;
+
+    const rates = days.map(d => d.total > 0 ? d.achieved / d.total : null);
+
+    // 3-day trailing moving average
+    const ma = rates.map((_, i) => {
+      const win = rates.slice(Math.max(0, i - 2), i + 1).filter(r => r !== null);
+      return win.length > 0 ? win.reduce((a, b) => a + b, 0) / win.length : null;
+    });
+
+    const W = 110, H = 40, px = 8, py = 6;
+    const iW = W - px * 2, iH = H - py * 2;
+
+    const pts = ma
+      .map((v, i) => v !== null
+        ? { x: px + (n > 1 ? (i / (n - 1)) * iW : iW / 2), y: py + (1 - v) * iH }
+        : null)
+      .filter(Boolean);
+
+    if (pts.length === 0) return null;
+
+    const fmt = p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    const bottom = H - py;
+    const linePoints = pts.map(fmt).join(' ');
+    const fillPath =
+      `M${fmt(pts[0])} ` +
+      pts.slice(1).map(p => `L${fmt(p)}`).join(' ') +
+      ` L${pts[pts.length - 1].x.toFixed(1)},${bottom} L${pts[0].x.toFixed(1)},${bottom} Z`;
+
+    return { linePoints, fillPath, lastPt: pts[pts.length - 1] };
+  }
+
   function formatDayLabel(dateString) {
     const date = new Date(dateString + "T00:00:00Z");
     const today = new Date();
@@ -457,6 +472,9 @@
         {#each goalCalendar as goalData}
           {@const trend = getTrendLabel(goalData)}
           {@const hitRate = getHitRate(goalData)}
+          {@const spark = getSparklineData(goalData)}
+          {@const sparkColor = hitRate >= 70 ? '#4ade80' : '#f0b429'}
+          {@const gradId = `sg${goalData.goal.id}`}
           <div class="goal-row" onclick={() => goto(`/goals/${goalData.goal.id}`)}>
             <div class="hero-avatar">
               {#if goalData.goal.hero_id !== null}
@@ -484,9 +502,6 @@
                   {formatGoalDescription(goalData.goal)}
                 {/if}
               </div>
-              <div class="goal-progress-bar">
-                <div class="goal-fill {hitRate >= 70 ? 'success' : ''}" style="width:{hitRate}%"></div>
-              </div>
               <div class="goal-meta">
                 {#if trend}
                   <span class="trend-{trend.cls}">{trend.label}</span>
@@ -494,6 +509,30 @@
                 <span>{goalData.goal.metric === 'ItemTiming' ? 'Item Goal' : getMetricLabel(goalData.goal.metric) + ' Goal'}</span>
                 <span>{goalData.goal.game_mode}</span>
               </div>
+            </div>
+            <div class="goal-spark-col">
+              <svg class="goal-sparkline" viewBox="0 0 110 40" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color={sparkColor} stop-opacity="0.22" />
+                    <stop offset="100%" stop-color={sparkColor} stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                <!-- 75% target reference line at y=13 -->
+                <line x1="8" y1="13" x2="102" y2="13" stroke="rgba(255,255,255,0.07)" stroke-width="0.5" stroke-dasharray="2,2" />
+                {#if spark}
+                  <path d={spark.fillPath} fill="url(#{gradId})" />
+                  <polyline
+                    points={spark.linePoints}
+                    fill="none"
+                    stroke={sparkColor}
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle cx={spark.lastPt.x} cy={spark.lastPt.y} r="2.5" fill={sparkColor} />
+                {/if}
+              </svg>
             </div>
             <div class="goal-dots">
               {#each goalData.daily_progress as day}
