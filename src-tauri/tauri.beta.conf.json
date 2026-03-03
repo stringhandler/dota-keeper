@@ -1,0 +1,11 @@
+{
+  "productName": "Dota Keeper Beta",
+  "identifier": "com.volthawk.dota-keeper-beta",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://raw.githubusercontent.com/stringhandler/dota-keeper/main/meta/autoupdate/latest-beta.json"
+      ]
+    }
+  }
+}

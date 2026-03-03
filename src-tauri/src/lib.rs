@@ -1002,6 +1002,12 @@ fn get_goal_histogram_data(goal_id: i64) -> Result<Vec<MatchDataPoint>, String> 
     get_goal_match_data(&conn, goal_id)
 }
 
+/// Returns true when this binary was compiled with the `beta` feature flag.
+#[tauri::command]
+fn is_beta_build() -> bool {
+    cfg!(feature = "beta")
+}
+
 /// Get the path to the database folder
 #[tauri::command]
 fn get_database_folder_path() -> Result<String, String> {
@@ -1783,6 +1789,7 @@ pub fn run() {
             get_hero_goal_suggestion,
             refresh_hero_goal_suggestion,
             parse_match,
+            is_beta_build,
             get_database_folder_path,
             open_database_folder,
             get_last_hits_analysis_data,

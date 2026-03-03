@@ -200,7 +200,8 @@ impl Match {
 /// Prefers the globally initialised app-data dir (set during Tauri setup, works on all
 /// platforms including mobile). Falls back to `dirs::data_local_dir()` for situations
 /// where setup hasn't run yet (e.g. unit tests).
-/// Dev builds use `dota_keeper_dev.db`; release builds use `dota_keeper.db`.
+/// Dev builds use `dota_keeper_dev.db`; beta builds use `dota_keeper_beta.db`;
+/// release builds use `dota_keeper.db`.
 fn get_db_path() -> Option<PathBuf> {
     let mut base = match DB_DIR.get() {
         Some(dir) => dir.clone(),
@@ -214,7 +215,10 @@ fn get_db_path() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     base.push("dota_keeper_dev.db");
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), feature = "beta"))]
+    base.push("dota_keeper_beta.db");
+
+    #[cfg(all(not(debug_assertions), not(feature = "beta")))]
     base.push("dota_keeper.db");
 
     Some(base)
