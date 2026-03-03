@@ -19,6 +19,7 @@ on:
   push:
     branches:
       - release
+      - beta
   workflow_dispatch:
     inputs:
       upload_to_play_store:
@@ -72,7 +73,7 @@ jobs:
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: yarn tauri android build --apk --target aarch64
+        run: yarn tauri android build --apk true --target aarch64
 
       - name: Sign APK
         run: |

@@ -1,12 +1,31 @@
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use rand::Rng;
 
 /// Global app data directory, set once during Tauri setup.
 /// Used instead of `dirs::data_local_dir()` so mobile platforms work correctly.
 static DB_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Single shared database connection, protected by a Mutex to prevent concurrent-write races.
+static DB_CONN: OnceLock<Mutex<Connection>> = OnceLock::new();
+
+/// Called once from `run()` setup after `init_db()` succeeds.
+/// Stores the connection in the global slot so every command can acquire it via `get_db_conn()`.
+pub fn init_shared_db(conn: Connection) {
+    let _ = DB_CONN.set(Mutex::new(conn));
+}
+
+/// Acquire the shared database connection.
+/// Returns an error if `init_shared_db` has not been called yet or the Mutex is poisoned.
+pub fn get_db_conn() -> Result<std::sync::MutexGuard<'static, Connection>, String> {
+    DB_CONN
+        .get()
+        .ok_or_else(|| "Database not initialized".to_string())?
+        .lock()
+        .map_err(|e| format!("Database lock poisoned: {}", e))
+}
 
 /// Called from `run()` setup before any commands execute.
 pub fn set_db_dir(dir: PathBuf) {
@@ -236,6 +255,11 @@ pub fn init_db() -> Result<Connection, String> {
 
     let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    // Enable WAL mode for better concurrency and set a busy timeout so that
+    // any stray second connection waits instead of immediately returning SQLITE_BUSY.
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+        .map_err(|e| format!("Failed to set database pragmas: {}", e))?;
 
     // Create the matches table
     conn.execute(
