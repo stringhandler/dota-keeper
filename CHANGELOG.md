@@ -5,6 +5,11 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-03-03
+
+### Added
+- **Beta Release Channel**: Separate beta build (`com.volthawk.dota-keeper-beta`) that installs side-by-side with stable. Beta builds use an isolated database (`dota_keeper_beta.db`), point to a separate auto-update manifest (`latest-beta.json`), and display a **BETA** badge in the title bar. A dedicated GitHub Actions workflow publishes beta releases as GitHub pre-releases when commits land on the `beta` branch.
+
 ## [0.2.7] - 2026-03-02
 
 ### Added
