@@ -5,6 +5,12 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-03-03
+
+### Fixed
+- **Database Locking**: Eliminated intermittent "database is locked" errors on startup by replacing per-command `Connection` creation with a single shared `Mutex<Connection>` for the app lifetime. Also enabled WAL journal mode and a 5-second busy timeout as additional hardening.
+- **Android CI Build**: Fixed `tauri android build --apk` argument syntax for the updated Tauri CLI. Android builds now also trigger on the `beta` branch.
+
 ## [0.2.9] - 2026-03-03
 
 ### Added
