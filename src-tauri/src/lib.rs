@@ -20,15 +20,15 @@ fn get_session_id() -> String {
 use database::{
     accept_weekly_challenge, clear_all_matches, delete_goal, evaluate_match_goals,
     get_active_weekly_challenge, get_all_goals, get_all_matches, get_challenge_history,
-    get_daily_challenge_progress, get_daily_streak, get_db_dir, get_favorite_hero_ids,
+    get_daily_challenge_progress, get_daily_streak, get_db_dir, get_db_conn, get_favorite_hero_ids,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_item_timings_for_match,
     get_last_hits_analysis, get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp,
     get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
-    get_weekly_challenge_options, get_weekly_challenge_progress, init_db, insert_goal,
-    insert_item_timing, insert_match, insert_match_cs_data, insert_player_networth, match_exists,
-    regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir, skip_weekly_challenge,
-    toggle_hero_favorite, update_goal, update_match_partner_slot, update_match_role,
-    update_match_state, ChallengeHistoryItem, ChallengeOption, DailyChallenge,
+    get_weekly_challenge_options, get_weekly_challenge_progress, init_db, init_shared_db,
+    insert_goal, insert_item_timing, insert_match, insert_match_cs_data, insert_player_networth,
+    match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
+    skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
+    update_match_role, update_match_state, ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
     LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
     WeeklyChallenge, WeeklyChallengeProgress,
@@ -135,7 +135,7 @@ fn mark_mental_health_intro_shown() -> Result<(), String> {
 /// Delete all mood check-in data (does not affect match history or goals)
 #[tauri::command]
 fn clear_mood_data() -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     conn.execute("DELETE FROM mood_checkins", [])
         .map_err(|e| format!("Failed to clear mood data: {}", e))?;
     Ok(())
@@ -156,7 +156,7 @@ fn get_pending_checkin() -> Result<Option<PendingCheckin>, String> {
         return Ok(None);
     }
 
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
 
     // Find the most recent match that hasn't been checked in or dismissed
     let pending: Option<i64> = conn
@@ -268,7 +268,7 @@ fn save_mood_checkin(
     calm: i32,
     attribution: Option<String>,
 ) -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -286,7 +286,7 @@ fn save_mood_checkin(
 /// Dismiss a check-in for a match (records a skip so it won't appear again)
 #[tauri::command]
 fn dismiss_checkin(match_id: i64) -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -337,7 +337,7 @@ fn get_tilt_assessment() -> Result<Option<TiltAssessment>, String> {
         return Ok(None);
     }
 
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
 
     // ── Objective Signals ──────────────────────────────────────────────────
     let mut obj_score: f64 = 0.0;
@@ -711,7 +711,7 @@ fn get_checkin_history(limit: i32) -> Result<Vec<CheckinHistoryItem>, String> {
         return Ok(vec![]);
     }
 
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     let mut stmt = conn
         .prepare(
             "SELECT mc.match_id, mc.checked_at, mc.energy, mc.calm, mc.attribution, mc.skipped, \
@@ -769,7 +769,7 @@ async fn refresh_matches() -> Result<RefreshResult, String> {
     let matches = opendota::fetch_recent_matches(&steam_id, 10).await?;
 
     // Initialize database
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
 
     // Insert matches that don't already exist
     let mut new_count = 0;
@@ -789,42 +789,42 @@ async fn refresh_matches() -> Result<RefreshResult, String> {
 /// Get all stored matches
 #[tauri::command]
 fn get_matches() -> Result<Vec<MatchWithGoals>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_matches_with_goals(&conn)
 }
 
 /// Create a new goal
 #[tauri::command]
 fn create_goal(goal: NewGoal) -> Result<Goal, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     insert_goal(&conn, &goal)
 }
 
 /// Get all goals
 #[tauri::command]
 fn get_goals() -> Result<Vec<Goal>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_all_goals(&conn)
 }
 
 /// Update an existing goal
 #[tauri::command]
 fn save_goal(goal: Goal) -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     update_goal(&conn, &goal)
 }
 
 /// Delete a goal
 #[tauri::command]
 fn remove_goal(goal_id: i64) -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     delete_goal(&conn, goal_id)
 }
 
 /// Evaluate goals for a specific match
 #[tauri::command]
 fn evaluate_goals_for_match(match_id: i64) -> Result<Vec<GoalEvaluation>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
 
     // Get the match
     let matches = get_all_matches(&conn)?;
@@ -840,24 +840,25 @@ fn evaluate_goals_for_match(match_id: i64) -> Result<Vec<GoalEvaluation>, String
 /// Get or generate weekly hero goal suggestion
 #[tauri::command]
 fn get_hero_goal_suggestion() -> Result<Option<HeroGoalSuggestion>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_or_generate_hero_suggestion(&conn)
 }
 
 /// Force regenerate hero goal suggestion (ignores cache)
 #[tauri::command]
 fn refresh_hero_goal_suggestion() -> Result<Option<HeroGoalSuggestion>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     regenerate_hero_suggestion(&conn)
 }
 
 /// Parse a match and extract goal progress data
 #[tauri::command]
 async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> Result<(), String> {
-    let conn = init_db()?;
-
-    // Update match state to parsing
-    update_match_state(&conn, match_id, MatchState::Parsing)?;
+    // Update match state to parsing — lock dropped before any await.
+    {
+        let conn = get_db_conn()?;
+        update_match_state(&conn, match_id, MatchState::Parsing)?;
+    }
     let _ = app.emit(
         "match-state-changed",
         serde_json::json!({
@@ -868,7 +869,10 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
     // Request OpenDota to parse the match
     if let Err(e) = opendota::request_match_parse(match_id).await {
-        update_match_state(&conn, match_id, MatchState::Failed)?;
+        {
+            let conn = get_db_conn()?;
+            update_match_state(&conn, match_id, MatchState::Failed)?;
+        }
         let _ = app.emit(
             "match-state-changed",
             serde_json::json!({
@@ -886,7 +890,10 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
     let detailed_match = match opendota::fetch_match_details(match_id).await {
         Ok(m) => m,
         Err(e) => {
-            update_match_state(&conn, match_id, MatchState::Failed)?;
+            {
+                let conn = get_db_conn()?;
+                update_match_state(&conn, match_id, MatchState::Failed)?;
+            }
             let _ = app.emit(
                 "match-state-changed",
                 serde_json::json!({
@@ -898,7 +905,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         }
     };
 
-    // Convert Steam ID to account ID for matching
+    // No more await points from here — acquire the connection once for all remaining DB writes.
     let account_id = steam_id64_to_id32(&steam_id)?;
 
     // Find the player's data
@@ -907,6 +914,8 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         .iter()
         .find(|p| p.account_id == Some(account_id))
         .ok_or_else(|| "Player not found in match".to_string())?;
+
+    let conn = get_db_conn()?;
 
     // Store all per-minute CS data - this is REQUIRED for parsing to be successful
     // Without per-minute data, we can't evaluate last-hit goals accurately
@@ -984,21 +993,21 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 /// Get goals with daily progress for the last N days
 #[tauri::command]
 fn get_goals_calendar(days: i32) -> Result<Vec<GoalWithDailyProgress>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_goals_with_daily_progress(&conn, days)
 }
 
 /// Get a specific goal by ID
 #[tauri::command]
 fn get_goal(goal_id: i64) -> Result<Goal, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_goal_by_id(&conn, goal_id)
 }
 
 /// Get match data for a specific goal (for histogram visualization)
 #[tauri::command]
 fn get_goal_histogram_data(goal_id: i64) -> Result<Vec<MatchDataPoint>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_goal_match_data(&conn, goal_id)
 }
 
@@ -1046,7 +1055,7 @@ fn get_last_hits_analysis_data(
     hero_id: Option<i32>,
     game_mode: Option<i32>,
 ) -> Result<LastHitsAnalysis, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
 }
 
@@ -1056,18 +1065,17 @@ async fn backfill_historical_matches(
     app: tauri::AppHandle,
     steam_id: String,
 ) -> Result<String, String> {
-    let conn = init_db()?;
-
-    // Get the oldest match timestamp
-    let oldest_timestamp = get_oldest_match_timestamp(&conn)?;
-
-    // If no matches exist, fetch from current time
-    let before_timestamp = oldest_timestamp.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
-    });
+    // Read the oldest timestamp — lock dropped before first await.
+    let before_timestamp = {
+        let conn = get_db_conn()?;
+        let oldest = get_oldest_match_timestamp(&conn)?;
+        oldest.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64
+        })
+    };
 
     // Fetch 100 matches before the oldest timestamp
     let matches = opendota::fetch_matches_before(&steam_id, before_timestamp, 100).await?;
@@ -1076,21 +1084,25 @@ async fn backfill_historical_matches(
         return Ok("No new matches found to backfill.".to_string());
     }
 
-    // Insert matches that don't already exist
+    // Insert matches that don't already exist — lock dropped before the parse loop.
     let mut new_count = 0;
-    let mut parsed_count = 0;
-
-    for m in &matches {
-        if !match_exists(&conn, m.match_id)? {
-            insert_match(&conn, m)?;
-            new_count += 1;
+    {
+        let conn = get_db_conn()?;
+        for m in &matches {
+            if !match_exists(&conn, m.match_id)? {
+                insert_match(&conn, m)?;
+                new_count += 1;
+            }
         }
     }
 
     // Convert Steam ID for parsing
     let account_id = steam_id64_to_id32(&steam_id)?;
 
-    // Parse matches (with a small delay between each to avoid rate limiting)
+    let mut parsed_count = 0;
+
+    // Parse matches (with a small delay between each to avoid rate limiting).
+    // The DB lock is acquired in short scopes so it is never held across an await.
     for m in &matches {
         // Request parse
         if let Err(e) = opendota::request_match_parse(m.match_id).await {
@@ -1098,7 +1110,10 @@ async fn backfill_historical_matches(
             continue;
         }
 
-        update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        {
+            let conn = get_db_conn()?;
+            update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        }
         let _ = app.emit(
             "match-state-changed",
             serde_json::json!({
@@ -1115,7 +1130,10 @@ async fn backfill_historical_matches(
             Ok(dm) => dm,
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
-                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                {
+                    let conn = get_db_conn()?;
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                }
                 let _ = app.emit(
                     "match-state-changed",
                     serde_json::json!({
@@ -1127,7 +1145,7 @@ async fn backfill_historical_matches(
             }
         };
 
-        // Find the player's data
+        // No more awaits until the sleep at the end — acquire the connection once for all writes.
         let player_data = match detailed_match
             .players
             .iter()
@@ -1136,7 +1154,10 @@ async fn backfill_historical_matches(
             Some(p) => p,
             None => {
                 eprintln!("Player not found in match {}", m.match_id);
-                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                {
+                    let conn = get_db_conn()?;
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                }
                 let _ = app.emit(
                     "match-state-changed",
                     serde_json::json!({
@@ -1148,64 +1169,78 @@ async fn backfill_historical_matches(
             }
         };
 
-        // Store CS data if available
-        if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
-            if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
-                eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
-            } else {
-                // Store lane role
-                let role = player_data.lane_role.unwrap_or(0);
-                let _ = update_match_role(&conn, m.match_id, role);
+        {
+            let conn = get_db_conn()?;
+            // Store CS data if available
+            if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+                if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
+                    eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({
+                            "match_id": m.match_id,
+                            "state": "Failed"
+                        }),
+                    );
+                } else {
+                    // Store lane role
+                    let role = player_data.lane_role.unwrap_or(0);
+                    let _ = update_match_role(&conn, m.match_id, role);
 
-                // Store per-minute networth for all players (used by PartnerNetworth goals)
-                for p in &detailed_match.players {
-                    if let Some(nw_t) = &p.gold_t {
-                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
-                    }
-                }
-                // Identify and store lane partner slot
-                let partner = opendota::find_lane_partner(
-                    &detailed_match.players,
-                    player_data.player_slot,
-                    role,
-                );
-                let _ =
-                    update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
-
-                // Store item purchase timings if available
-                if let Some(purchase_log) = &player_data.purchase_log {
-                    for purchase in purchase_log {
-                        if let Some(item_id) = items::get_item_id(&purchase.key) {
-                            let timing = NewItemTiming {
-                                match_id: m.match_id,
-                                item_id,
-                                timing_seconds: purchase.time,
-                            };
-                            let _ = insert_item_timing(&conn, &timing);
+                    // Store per-minute networth for all players (used by PartnerNetworth goals)
+                    for p in &detailed_match.players {
+                        if let Some(nw_t) = &p.gold_t {
+                            let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                         }
                     }
-                }
+                    // Identify and store lane partner slot
+                    let partner = opendota::find_lane_partner(
+                        &detailed_match.players,
+                        player_data.player_slot,
+                        role,
+                    );
+                    let _ = update_match_partner_slot(
+                        &conn,
+                        m.match_id,
+                        partner.map(|p| p.player_slot),
+                    );
 
-                update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                    // Store item purchase timings if available
+                    if let Some(purchase_log) = &player_data.purchase_log {
+                        for purchase in purchase_log {
+                            if let Some(item_id) = items::get_item_id(&purchase.key) {
+                                let timing = NewItemTiming {
+                                    match_id: m.match_id,
+                                    item_id,
+                                    timing_seconds: purchase.time,
+                                };
+                                let _ = insert_item_timing(&conn, &timing);
+                            }
+                        }
+                    }
+
+                    update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({
+                            "match_id": m.match_id,
+                            "state": "Parsed"
+                        }),
+                    );
+                    parsed_count += 1;
+                }
+            } else {
+                update_match_state(&conn, m.match_id, MatchState::Failed)?;
                 let _ = app.emit(
                     "match-state-changed",
                     serde_json::json!({
                         "match_id": m.match_id,
-                        "state": "Parsed"
+                        "state": "Failed"
                     }),
                 );
-                parsed_count += 1;
             }
-        } else {
-            update_match_state(&conn, m.match_id, MatchState::Failed)?;
-            let _ = app.emit(
-                "match-state-changed",
-                serde_json::json!({
-                    "match_id": m.match_id,
-                    "state": "Failed"
-                }),
-            );
-        }
+        } // conn dropped here, before the sleep
 
         // Small delay to avoid rate limiting
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -1223,10 +1258,11 @@ async fn reparse_pending_matches(
     app: tauri::AppHandle,
     steam_id: String,
 ) -> Result<String, String> {
-    let conn = init_db()?;
-
-    // Get all unparsed or failed matches
-    let matches = get_unparsed_matches(&conn)?;
+    // Get all unparsed or failed matches — lock dropped before any await.
+    let matches = {
+        let conn = get_db_conn()?;
+        get_unparsed_matches(&conn)?
+    };
 
     if matches.is_empty() {
         return Ok("No pending matches to reparse.".to_string());
@@ -1239,7 +1275,8 @@ async fn reparse_pending_matches(
     // Convert Steam ID for parsing
     let account_id = steam_id64_to_id32(&steam_id)?;
 
-    // Parse each match
+    // Parse each match.
+    // The DB lock is acquired in short scopes so it is never held across an await.
     for m in &matches {
         // Request parse
         if let Err(e) = opendota::request_match_parse(m.match_id).await {
@@ -1248,7 +1285,10 @@ async fn reparse_pending_matches(
             continue;
         }
 
-        update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        {
+            let conn = get_db_conn()?;
+            update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        }
         let _ = app.emit(
             "match-state-changed",
             serde_json::json!({
@@ -1265,7 +1305,10 @@ async fn reparse_pending_matches(
             Ok(dm) => dm,
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
-                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                {
+                    let conn = get_db_conn()?;
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                }
                 let _ = app.emit(
                     "match-state-changed",
                     serde_json::json!({
@@ -1278,7 +1321,7 @@ async fn reparse_pending_matches(
             }
         };
 
-        // Find the player's data
+        // No more awaits until the sleep at the end — acquire the connection once for all writes.
         let player_data = match detailed_match
             .players
             .iter()
@@ -1287,7 +1330,10 @@ async fn reparse_pending_matches(
             Some(p) => p,
             None => {
                 eprintln!("Player not found in match {}", m.match_id);
-                update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                {
+                    let conn = get_db_conn()?;
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                }
                 let _ = app.emit(
                     "match-state-changed",
                     serde_json::json!({
@@ -1300,10 +1346,69 @@ async fn reparse_pending_matches(
             }
         };
 
-        // Store CS data if available
-        if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
-            if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
-                eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
+        {
+            let conn = get_db_conn()?;
+            // Store CS data if available
+            if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+                if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
+                    eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
+                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({
+                            "match_id": m.match_id,
+                            "state": "Failed"
+                        }),
+                    );
+                    failed_count += 1;
+                } else {
+                    // Store lane role
+                    let role = player_data.lane_role.unwrap_or(0);
+                    let _ = update_match_role(&conn, m.match_id, role);
+
+                    // Store per-minute networth for all players (used by PartnerNetworth goals)
+                    for p in &detailed_match.players {
+                        if let Some(nw_t) = &p.gold_t {
+                            let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                        }
+                    }
+                    // Identify and store lane partner slot
+                    let partner = opendota::find_lane_partner(
+                        &detailed_match.players,
+                        player_data.player_slot,
+                        role,
+                    );
+                    let _ = update_match_partner_slot(
+                        &conn,
+                        m.match_id,
+                        partner.map(|p| p.player_slot),
+                    );
+
+                    // Store item purchase timings if available
+                    if let Some(purchase_log) = &player_data.purchase_log {
+                        for purchase in purchase_log {
+                            if let Some(item_id) = items::get_item_id(&purchase.key) {
+                                let timing = NewItemTiming {
+                                    match_id: m.match_id,
+                                    item_id,
+                                    timing_seconds: purchase.time,
+                                };
+                                let _ = insert_item_timing(&conn, &timing);
+                            }
+                        }
+                    }
+
+                    update_match_state(&conn, m.match_id, MatchState::Parsed)?;
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({
+                            "match_id": m.match_id,
+                            "state": "Parsed"
+                        }),
+                    );
+                    parsed_count += 1;
+                }
+            } else {
                 update_match_state(&conn, m.match_id, MatchState::Failed)?;
                 let _ = app.emit(
                     "match-state-changed",
@@ -1313,61 +1418,8 @@ async fn reparse_pending_matches(
                     }),
                 );
                 failed_count += 1;
-            } else {
-                // Store lane role
-                let role = player_data.lane_role.unwrap_or(0);
-                let _ = update_match_role(&conn, m.match_id, role);
-
-                // Store per-minute networth for all players (used by PartnerNetworth goals)
-                for p in &detailed_match.players {
-                    if let Some(nw_t) = &p.gold_t {
-                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
-                    }
-                }
-                // Identify and store lane partner slot
-                let partner = opendota::find_lane_partner(
-                    &detailed_match.players,
-                    player_data.player_slot,
-                    role,
-                );
-                let _ =
-                    update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
-
-                // Store item purchase timings if available
-                if let Some(purchase_log) = &player_data.purchase_log {
-                    for purchase in purchase_log {
-                        if let Some(item_id) = items::get_item_id(&purchase.key) {
-                            let timing = NewItemTiming {
-                                match_id: m.match_id,
-                                item_id,
-                                timing_seconds: purchase.time,
-                            };
-                            let _ = insert_item_timing(&conn, &timing);
-                        }
-                    }
-                }
-
-                update_match_state(&conn, m.match_id, MatchState::Parsed)?;
-                let _ = app.emit(
-                    "match-state-changed",
-                    serde_json::json!({
-                        "match_id": m.match_id,
-                        "state": "Parsed"
-                    }),
-                );
-                parsed_count += 1;
             }
-        } else {
-            update_match_state(&conn, m.match_id, MatchState::Failed)?;
-            let _ = app.emit(
-                "match-state-changed",
-                serde_json::json!({
-                    "match_id": m.match_id,
-                    "state": "Failed"
-                }),
-            );
-            failed_count += 1;
-        }
+        } // conn dropped here, before the sleep
 
         // Small delay to avoid rate limiting
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -1382,7 +1434,7 @@ async fn reparse_pending_matches(
 /// Clear all matches from the database
 #[tauri::command]
 fn clear_matches() -> Result<String, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     clear_all_matches(&conn)?;
     Ok("All matches cleared successfully.".to_string())
 }
@@ -1390,14 +1442,14 @@ fn clear_matches() -> Result<String, String> {
 /// Toggle hero favorite status
 #[tauri::command]
 fn toggle_favorite_hero(hero_id: i32) -> Result<bool, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     toggle_hero_favorite(&conn, hero_id)
 }
 
 /// Get all favorite hero IDs
 #[tauri::command]
 fn get_favorite_heroes() -> Result<Vec<i32>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_favorite_hero_ids(&conn)
 }
 
@@ -1410,35 +1462,35 @@ fn get_all_items() -> Vec<items::Item> {
 /// Get item timings for a specific match
 #[tauri::command]
 fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_item_timings_for_match(&conn, match_id)
 }
 
 /// Get per-minute CS data for a specific match
 #[tauri::command]
 fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_match_cs_data(&conn, match_id)
 }
 
 /// Get (or generate) today's daily challenge
 #[tauri::command]
 fn get_daily_challenge() -> Result<Option<DailyChallenge>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_or_generate_daily_challenge(&conn)
 }
 
 /// Get today's daily challenge with evaluated progress
 #[tauri::command]
 fn get_daily_challenge_progress_cmd() -> Result<Option<DailyChallengeProgress>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_daily_challenge_progress(&conn)
 }
 
 /// Get the current daily challenge completion streak
 #[tauri::command]
 fn get_daily_streak_cmd() -> Result<i32, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_daily_streak(&conn)
 }
 
@@ -1461,37 +1513,37 @@ fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
 
 #[tauri::command]
 fn get_weekly_challenge_options_cmd() -> Result<Vec<ChallengeOption>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_weekly_challenge_options(&conn)
 }
 
 #[tauri::command]
 fn reroll_weekly_challenges_cmd() -> Result<Vec<ChallengeOption>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     reroll_weekly_challenges(&conn)
 }
 
 #[tauri::command]
 fn skip_weekly_challenge_cmd() -> Result<(), String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     skip_weekly_challenge(&conn)
 }
 
 #[tauri::command]
 fn accept_weekly_challenge_cmd(option_id: i64) -> Result<WeeklyChallenge, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     accept_weekly_challenge(&conn, option_id)
 }
 
 #[tauri::command]
 fn get_active_weekly_challenge_cmd() -> Result<Option<WeeklyChallenge>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_active_weekly_challenge(&conn)
 }
 
 #[tauri::command]
 fn get_weekly_challenge_progress_cmd() -> Result<Option<WeeklyChallengeProgress>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_weekly_challenge_progress(&conn)
 }
 
@@ -1500,7 +1552,7 @@ fn get_challenge_history_cmd(
     challenge_type: Option<String>,
     limit: Option<i32>,
 ) -> Result<Vec<ChallengeHistoryItem>, String> {
-    let conn = init_db()?;
+    let conn = get_db_conn()?;
     get_challenge_history(&conn, challenge_type, limit.unwrap_or(50))
 }
 
@@ -1768,6 +1820,11 @@ pub fn run() {
                 .expect("could not resolve app data directory");
             set_db_dir(app_data_dir.clone());
             set_settings_dir(app_data_dir);
+            // Open a single shared database connection for the lifetime of the app.
+            // All Tauri commands acquire this via get_db_conn(), which serializes DB
+            // access through a Mutex and eliminates concurrent-write SQLITE_BUSY errors.
+            let conn = init_db().expect("Failed to initialize database");
+            init_shared_db(conn);
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
