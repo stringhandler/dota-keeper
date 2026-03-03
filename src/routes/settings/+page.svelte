@@ -3,7 +3,8 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
 
   let databasePath = $state("");
@@ -24,11 +25,16 @@
   let isSavingMentalHealth = $state(false);
   let isClearingMoodData = $state(false);
   let showMentalHealthIntro = $state(false);
+  let backgroundParseEnabled = $state(true);
+  let bgParseActive = $state(false);
+  let bgParsePending = $state(0);
   let appVersion = $state("");
   let checkingUpdate = $state(false);
   let updateResult = $state(null);
   let updateError = $state("");
   let isInstalling = $state(false);
+
+  let unlistenBgParse;
 
   onMount(async () => {
     await loadDatabasePath();
@@ -36,10 +42,30 @@
     await loadDifficulty();
     await loadAnalytics();
     await loadMentalHealth();
+    await loadBackgroundParse();
     await loadAppVersion();
+
+    // Sync initial status from backend
+    try {
+      const status = await invoke("get_background_parse_status");
+      bgParseActive = status.active;
+      bgParsePending = status.pending;
+    } catch (e) {
+      console.error("Failed to get background parse status:", e);
+    }
+
+    // Listen for live progress updates
+    unlistenBgParse = await listen("background-parse-progress", (event) => {
+      bgParseActive = event.payload.active;
+      bgParsePending = event.payload.pending;
+    });
 
     // Track page view
     trackPageView("Settings");
+  });
+
+  onDestroy(() => {
+    unlistenBgParse?.();
   });
 
   async function loadDatabasePath() {
@@ -97,6 +123,24 @@
       error = `Failed to save difficulty: ${e}`;
     } finally {
       isSavingDifficulty = false;
+    }
+  }
+
+  async function loadBackgroundParse() {
+    try {
+      const settings = await invoke("get_settings");
+      backgroundParseEnabled = settings.background_parse_enabled ?? true;
+    } catch (e) {
+      console.error("Failed to load background parse setting:", e);
+    }
+  }
+
+  async function toggleBackgroundParse(enabled) {
+    try {
+      await invoke("save_background_parse_enabled", { enabled });
+      backgroundParseEnabled = enabled;
+    } catch (e) {
+      error = `Failed to save background parse setting: ${e}`;
     }
   }
 
@@ -463,6 +507,27 @@
       >
         {isBackfilling ? 'Backfilling...' : 'Backfill 100 Matches'}
       </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Background Auto-Parse</h3>
+        <p class="setting-description">
+          Automatically parse unparsed matches in the background at startup — one at a time, every 10 seconds — so your history is always up to date without manual intervention.
+        </p>
+        {#if bgParseActive}
+          <p class="bg-parse-status">Parsing in background — {bgParsePending} match{bgParsePending === 1 ? '' : 'es'} remaining…</p>
+        {/if}
+        <div class="toggle-row">
+          <button
+            class="toggle-btn"
+            class:active={backgroundParseEnabled}
+            onclick={() => toggleBackgroundParse(!backgroundParseEnabled)}
+          >
+            {backgroundParseEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="setting-item">
@@ -1025,6 +1090,14 @@
   border-color: var(--red);
   background: rgba(248, 113, 113, 0.1);
   color: var(--red);
+}
+
+.bg-parse-status {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin: 6px 0 4px;
 }
 
 /* Mental health toggle */

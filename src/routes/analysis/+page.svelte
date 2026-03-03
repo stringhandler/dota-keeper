@@ -18,6 +18,10 @@
   // Favorites
   let favoriteHeroes = $state(new Set());
 
+  // Hero list pagination
+  const HEROES_PER_PAGE = 10;
+  let heroPage = $state(0);
+
   // Analysis data
   let analysis = $state(null);
 
@@ -68,6 +72,7 @@
         favoriteHeroes.delete(heroId);
       }
       favoriteHeroes = new Set(favoriteHeroes);
+      heroPage = 0;
       await loadAnalysis();
     } catch (e) {
       error = `Failed to toggle favorite: ${e}`;
@@ -75,6 +80,7 @@
   }
 
   async function loadAnalysis() {
+    heroPage = 0;
     isLoading = true;
     error = "";
     try {
@@ -228,6 +234,8 @@
     {@const changePct = getChangePercentage()}
     {@const insight = generateInsight()}
     {@const heroStats = getSortedHeroStats()}
+    {@const heroPageCount = Math.ceil(heroStats.length / HEROES_PER_PAGE)}
+    {@const pagedHeroStats = heroStats.slice(heroPage * HEROES_PER_PAGE, (heroPage + 1) * HEROES_PER_PAGE)}
     {@const maxAvg = getMaxAverage()}
     {@const topHero = getTopHeroStat()}
 
@@ -271,7 +279,7 @@
           <p style="color:var(--text-muted);font-size:12px">No per-hero data available.</p>
         {:else}
           <div class="hero-breakdown">
-            {#each heroStats as hs}
+            {#each pagedHeroStats as hs}
               <div class="hero-stat-row">
                 <div class="hero-stat-name">
                   <button
@@ -291,6 +299,21 @@
               </div>
             {/each}
           </div>
+          {#if heroPageCount > 1}
+            <div class="hero-pagination">
+              <button
+                class="page-btn"
+                disabled={heroPage === 0}
+                onclick={() => heroPage--}
+              >‹</button>
+              <span class="page-info">{heroPage + 1} / {heroPageCount}</span>
+              <button
+                class="page-btn"
+                disabled={heroPage >= heroPageCount - 1}
+                onclick={() => heroPage++}
+              >›</button>
+            </div>
+          {/if}
           {#if insight}
             <div class="insight-box">
               <div class="insight-label">💡 Insight</div>
@@ -475,6 +498,53 @@
   /* Override hero-stat-name width since we have fav button + name */
   :global(.hero-stat-name) {
     width: 110px;
+  }
+
+  /* ── HERO PAGINATION ── */
+  .hero-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .page-btn {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .page-btn:hover:not(:disabled) {
+    background: var(--bg-card-hover, var(--bg-card));
+    color: var(--gold);
+    border-color: var(--gold);
+  }
+
+  .page-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .page-info {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    min-width: 40px;
+    text-align: center;
   }
 
   /* ── RANGE CARD ── */

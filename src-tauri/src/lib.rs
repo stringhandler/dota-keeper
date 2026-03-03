@@ -6,10 +6,15 @@ mod opendota;
 mod settings;
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid;
 
 // Global session ID - generated once per app launch
 static SESSION_ID: OnceLock<String> = OnceLock::new();
+
+// Background parser state (updated by background_parse_loop)
+static BG_PARSER_ACTIVE: AtomicBool = AtomicBool::new(false);
+static BG_PARSER_PENDING: AtomicUsize = AtomicUsize::new(0);
 
 fn get_session_id() -> String {
     SESSION_ID
@@ -1806,7 +1811,206 @@ async fn steam_html_response(
     writer.write_all(response.as_bytes()).await
 }
 
-// ── end Steam OpenID login ────────────────────────────────────────────────────
+// ── Background match parser ───────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+struct BackgroundParseStatus {
+    active: bool,
+    pending: usize,
+}
+
+/// Returns the current background parse status (active flag + pending count).
+#[tauri::command]
+fn get_background_parse_status() -> BackgroundParseStatus {
+    BackgroundParseStatus {
+        active: BG_PARSER_ACTIVE.load(Ordering::Relaxed),
+        pending: BG_PARSER_PENDING.load(Ordering::Relaxed),
+    }
+}
+
+/// Enable or disable the background match parser.
+#[tauri::command]
+fn save_background_parse_enabled(enabled: bool) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.background_parse_enabled = enabled;
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Parses unparsed matches one at a time in the background with a 10-second
+/// delay between each attempt.  Called once from `run()` via `tokio::spawn`.
+async fn background_parse_loop(app: tauri::AppHandle) {
+    let settings = Settings::load();
+    if !settings.background_parse_enabled {
+        return;
+    }
+    let steam_id = match settings.steam_id {
+        Some(s) => s,
+        None => return,
+    };
+    let account_id = match steam_id64_to_id32(&steam_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    let matches = {
+        let conn = match get_db_conn() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        match get_unparsed_matches(&conn) {
+            Ok(m) => m,
+            Err(_) => return,
+        }
+    };
+
+    if matches.is_empty() {
+        return;
+    }
+
+    BG_PARSER_ACTIVE.store(true, Ordering::Relaxed);
+    BG_PARSER_PENDING.store(matches.len(), Ordering::Relaxed);
+    let _ = app.emit(
+        "background-parse-progress",
+        serde_json::json!({ "pending": matches.len(), "active": true }),
+    );
+
+    for m in &matches {
+        // Re-check the enabled flag on each iteration so the user can pause it.
+        if !Settings::load().background_parse_enabled {
+            break;
+        }
+
+        // Request parse; retry once after 60 s if rate-limited.
+        let parse_err = opendota::request_match_parse(m.match_id).await.err();
+        if let Some(ref e) = parse_err {
+            if e.contains("Too many requests") {
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                if opendota::request_match_parse(m.match_id).await.is_err() {
+                    BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                    continue;
+                }
+            } else {
+                BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
+        }
+
+        {
+            let Ok(conn) = get_db_conn() else { break };
+            let _ = update_match_state(&conn, m.match_id, MatchState::Parsing);
+        }
+        let _ = app.emit(
+            "match-state-changed",
+            serde_json::json!({ "match_id": m.match_id, "state": "Parsing" }),
+        );
+
+        // Give OpenDota time to complete the parse.
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+            Ok(dm) => dm,
+            Err(_) => {
+                if let Ok(conn) = get_db_conn() {
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
+                }
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({ "match_id": m.match_id, "state": "Failed" }),
+                );
+                BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
+        };
+
+        let player_data = match detailed_match
+            .players
+            .iter()
+            .find(|p| p.account_id == Some(account_id))
+        {
+            Some(p) => p,
+            None => {
+                if let Ok(conn) = get_db_conn() {
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
+                }
+                BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
+        };
+
+        {
+            let Ok(conn) = get_db_conn() else { break };
+            if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+                if !lh_t.is_empty() && !dn_t.is_empty() && insert_match_cs_data(&conn, m.match_id, lh_t, dn_t).is_ok() {
+                    let role = player_data.lane_role.unwrap_or(0);
+                    let _ = update_match_role(&conn, m.match_id, role);
+                    for p in &detailed_match.players {
+                        if let Some(nw_t) = &p.gold_t {
+                            let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                        }
+                    }
+                    let partner = opendota::find_lane_partner(
+                        &detailed_match.players,
+                        player_data.player_slot,
+                        role,
+                    );
+                    let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+                    if let Some(purchase_log) = &player_data.purchase_log {
+                        for purchase in purchase_log {
+                            if let Some(item_id) = items::get_item_id(&purchase.key) {
+                                let timing = NewItemTiming {
+                                    match_id: m.match_id,
+                                    item_id,
+                                    timing_seconds: purchase.time,
+                                };
+                                let _ = insert_item_timing(&conn, &timing);
+                            }
+                        }
+                    }
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Parsed);
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({ "match_id": m.match_id, "state": "Parsed" }),
+                    );
+                } else {
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
+                    let _ = app.emit(
+                        "match-state-changed",
+                        serde_json::json!({ "match_id": m.match_id, "state": "Failed" }),
+                    );
+                }
+            } else {
+                let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
+                let _ = app.emit(
+                    "match-state-changed",
+                    serde_json::json!({ "match_id": m.match_id, "state": "Failed" }),
+                );
+            }
+        }
+
+        BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+        let pending = BG_PARSER_PENDING.load(Ordering::Relaxed);
+        let _ = app.emit(
+            "background-parse-progress",
+            serde_json::json!({ "pending": pending, "active": true }),
+        );
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    }
+
+    BG_PARSER_ACTIVE.store(false, Ordering::Relaxed);
+    BG_PARSER_PENDING.store(0, Ordering::Relaxed);
+    let _ = app.emit(
+        "background-parse-progress",
+        serde_json::json!({ "pending": 0, "active": false }),
+    );
+}
+
+// ── end Background match parser ───────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -1825,6 +2029,12 @@ pub fn run() {
             // access through a Mutex and eliminates concurrent-write SQLITE_BUSY errors.
             let conn = init_db().expect("Failed to initialize database");
             init_shared_db(conn);
+            // Spawn the background parser; small delay lets the UI render first.
+            let bg_app = app.handle().clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                background_parse_loop(bg_app).await;
+            });
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -1881,7 +2091,9 @@ pub fn run() {
             save_mood_checkin,
             dismiss_checkin,
             get_tilt_assessment,
-            get_checkin_history
+            get_checkin_history,
+            get_background_parse_status,
+            save_background_parse_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

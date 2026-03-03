@@ -44,6 +44,9 @@ pub struct Settings {
     /// How often to show the post-game mood check-in prompt
     #[serde(default = "Settings::default_checkin_frequency")]
     pub checkin_frequency: String,
+    /// Whether the background match parser should run automatically on startup
+    #[serde(default = "Settings::default_background_parse_enabled")]
+    pub background_parse_enabled: bool,
 }
 
 impl Default for Settings {
@@ -57,6 +60,7 @@ impl Default for Settings {
             mental_health_tracking_enabled: false,
             mental_health_intro_shown: false,
             checkin_frequency: Self::default_checkin_frequency(),
+            background_parse_enabled: Self::default_background_parse_enabled(),
         }
     }
 }
@@ -68,6 +72,10 @@ impl Settings {
 
     fn default_checkin_frequency() -> String {
         "once_per_session".to_string()
+    }
+
+    fn default_background_parse_enabled() -> bool {
+        true
     }
 
     /// Generate a unique installation ID (UUID v4)
