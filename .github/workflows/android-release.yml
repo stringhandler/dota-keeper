@@ -60,6 +60,11 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install
 
+      - name: Create cargo-tauri wrapper
+        run: |
+          printf '#!/bin/sh\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
+          chmod +x ~/.cargo/bin/cargo-tauri
+
       - name: Get version from package.json
         id: version
         run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
@@ -73,7 +78,7 @@ jobs:
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: yarn tauri android build --apk true --target aarch64
+        run: yarn tauri android build --apk --target aarch64
 
       - name: Sign APK
         run: |
