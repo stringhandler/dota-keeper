@@ -5,16 +5,18 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.10] - 2026-03-03
+## [0.2.11] - 2026-03-04
+
+### Added
+- **Background Parse**: Match data is now parsed in the background, so the app remains responsive while fetching and processing new matches.
+- **First Run Experience**: New users are guided through an onboarding flow on first launch to set up their Steam ID and initial preferences.
+- **Factory Reset**: New option in Settings to completely reset the app — clears all data and returns to the first-run state.
+- **Hero Pick on Startup**: Hero pool data is refreshed automatically on startup so the hero list is always up to date.
 
 ### Fixed
 - **Database Locking**: Eliminated intermittent "database is locked" errors on startup by replacing per-command `Connection` creation with a single shared `Mutex<Connection>` for the app lifetime. Also enabled WAL journal mode and a 5-second busy timeout as additional hardening.
 - **Android CI Build**: Fixed `tauri android build --apk` argument syntax for the updated Tauri CLI. Android builds now also trigger on the `beta` branch.
-
-## [0.2.9] - 2026-03-03
-
-### Added
-- **Beta Release Channel**: Separate beta build (`com.volthawk.dota-keeper-beta`) that installs side-by-side with stable. Beta builds use an isolated database (`dota_keeper_beta.db`), point to a separate auto-update manifest (`latest-beta.json`), and display a **BETA** badge in the title bar. A dedicated GitHub Actions workflow publishes beta releases as GitHub pre-releases when commits land on the `beta` branch.
+- **Bug Fixes**: Various stability and correctness improvements.
 
 ## [0.2.7] - 2026-03-02
 
