@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.12] - 2026-03-04
 
 ### Fixed
-- **Android CI Build**: Fixed Android build workflow — corrected `--apk` flag syntax and added a `cargo-tauri` wrapper script so the Tauri CLI resolves correctly in CI.
+- **Android CI Build**: Fixed Android build workflow — restored required `--apk true` value and added a `cargo-tauri` wrapper script so the Tauri CLI resolves correctly in CI.
 
 ## [0.2.11] - 2026-03-04
 

@@ -78,7 +78,7 @@ jobs:
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: yarn tauri android build --apk --target aarch64
+        run: yarn tauri android build --apk true --target aarch64
 
       - name: Sign APK
         run: |
