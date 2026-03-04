@@ -1,7 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
-  import { heroes } from "$lib/heroes.js";
+  import { heroes, getHeroIconUrl } from "$lib/heroes.js";
 
   let { steamId = "", onComplete = () => {} } = $props();
 
@@ -29,6 +29,12 @@
     .map(([id, name]) => ({ id: parseInt(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name));
   let selectedHeroIds = $state(new Set());
+  let heroSearch = $state("");
+  let filteredHeroes = $derived(
+    heroSearch.trim() === ""
+      ? allHeroes
+      : allHeroes.filter(h => h.name.toLowerCase().includes(heroSearch.toLowerCase()))
+  );
 
   async function toggleHero(id) {
     if (selectedHeroIds.has(id)) {
@@ -128,18 +134,46 @@
     {:else if step === 2}
       <div class="step-content">
         <h2 class="ob-title">Favourite Heroes</h2>
-        <p class="ob-sub">Pick up to {MAX_FAVORITES} heroes you play most.</p>
+        <p class="ob-sub">Pick up to {MAX_FAVORITES} heroes you play most. ({selectedHeroIds.size}/{MAX_FAVORITES} selected)</p>
+        <input
+          class="hero-search"
+          type="text"
+          placeholder="Search heroes…"
+          bind:value={heroSearch}
+          autocomplete="off"
+          spellcheck="false"
+        />
         <div class="hero-grid">
-          {#each allHeroes as hero}
+          {#each filteredHeroes as hero (hero.id)}
+            {@const iconUrl = getHeroIconUrl(hero.id)}
+            {@const isSelected = selectedHeroIds.has(hero.id)}
+            {@const isDisabled = !isSelected && selectedHeroIds.size >= MAX_FAVORITES}
             <button
-              class="hero-chip"
-              class:selected={selectedHeroIds.has(hero.id)}
-              class:disabled={!selectedHeroIds.has(hero.id) && selectedHeroIds.size >= MAX_FAVORITES}
+              class="hero-card"
+              class:selected={isSelected}
+              class:disabled={isDisabled}
               onclick={() => toggleHero(hero.id)}
+              title={hero.name}
             >
-              {hero.name}
+              {#if iconUrl}
+                <img
+                  src={iconUrl}
+                  alt={hero.name}
+                  class="hero-card-img"
+                  loading="lazy"
+                />
+              {:else}
+                <div class="hero-card-fallback">{hero.name.substring(0, 2).toUpperCase()}</div>
+              {/if}
+              <span class="hero-card-name">{hero.name}</span>
+              {#if isSelected}
+                <span class="hero-card-check">✓</span>
+              {/if}
             </button>
           {/each}
+          {#if filteredHeroes.length === 0}
+            <p class="no-results">No heroes match "{heroSearch}"</p>
+          {/if}
         </div>
         <p class="hint-text">You can always update favourites in the Analysis page.</p>
         <div class="step-actions">
@@ -326,42 +360,135 @@
   }
 
   /* Hero grid */
-  .hero-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    max-height: 280px;
-    overflow-y: auto;
-    margin-bottom: 12px;
-    padding: 4px 0;
-  }
-
-  .hero-chip {
+  .hero-search {
+    width: 100%;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 5px 10px;
-    font-size: 12px;
+    padding: 8px 12px;
     font-family: 'Barlow', sans-serif;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
-  }
-
-  .hero-chip:hover:not(.disabled) {
-    border-color: var(--border-active);
+    font-size: 13px;
     color: var(--text-primary);
+    outline: none;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
   }
 
-  .hero-chip.selected {
+  .hero-search:focus {
+    border-color: var(--border-active);
+  }
+
+  .hero-search::placeholder {
+    color: var(--text-muted);
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    padding: 2px 0;
+  }
+
+  .hero-grid::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .hero-grid::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .hero-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 200, 80, 0.2);
+    border-radius: 2px;
+  }
+
+  .hero-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 4px 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
+  }
+
+  .hero-card:hover:not(.disabled) {
+    border-color: var(--border-active);
+    background: var(--bg-surface);
+  }
+
+  .hero-card.selected {
     border-color: var(--gold);
-    background: rgba(255, 200, 80, 0.12);
+    background: rgba(255, 200, 80, 0.1);
+  }
+
+  .hero-card.disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .hero-card-img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    object-position: center top;
+    border-radius: 2px;
+    display: block;
+  }
+
+  .hero-card-fallback {
+    width: 100%;
+    aspect-ratio: 16/9;
+    border-radius: 2px;
+    background: var(--bg-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .hero-card-name {
+    font-family: 'Barlow', sans-serif;
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.2;
+    word-break: break-word;
+    width: 100%;
+  }
+
+  .hero-card.selected .hero-card-name {
     color: var(--gold);
   }
 
-  .hero-chip.disabled {
-    opacity: 0.4;
-    cursor: default;
+  .hero-card-check {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    font-size: 11px;
+    color: var(--gold);
+    line-height: 1;
+    text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  }
+
+  .no-results {
+    grid-column: 1 / -1;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px 0;
+    margin: 0;
   }
 
   .hint-text {
@@ -445,7 +572,8 @@
     }
 
     .hero-grid {
-      max-height: 220px;
+      max-height: 240px;
+      grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
     }
   }
 </style>
