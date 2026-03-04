@@ -47,6 +47,9 @@ pub struct Settings {
     /// Whether the background match parser should run automatically on startup
     #[serde(default = "Settings::default_background_parse_enabled")]
     pub background_parse_enabled: bool,
+    /// Whether the first-run onboarding flow has been completed
+    #[serde(default)]
+    pub onboarding_completed: bool,
 }
 
 impl Default for Settings {
@@ -61,6 +64,7 @@ impl Default for Settings {
             mental_health_intro_shown: false,
             checkin_frequency: Self::default_checkin_frequency(),
             background_parse_enabled: Self::default_background_parse_enabled(),
+            onboarding_completed: false,
         }
     }
 }

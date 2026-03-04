@@ -1444,6 +1444,15 @@ fn clear_matches() -> Result<String, String> {
     Ok("All matches cleared successfully.".to_string())
 }
 
+/// Mark onboarding as completed
+#[tauri::command]
+fn complete_onboarding() -> Result<settings::Settings, String> {
+    let mut s = settings::Settings::load();
+    s.onboarding_completed = true;
+    s.save()?;
+    Ok(s)
+}
+
 /// Toggle hero favorite status
 #[tauri::command]
 fn toggle_favorite_hero(hero_id: i32) -> Result<bool, String> {
@@ -2031,7 +2040,7 @@ pub fn run() {
             init_shared_db(conn);
             // Spawn the background parser; small delay lets the UI render first.
             let bg_app = app.handle().clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 background_parse_loop(bg_app).await;
             });
@@ -2065,6 +2074,7 @@ pub fn run() {
             clear_matches,
             toggle_favorite_hero,
             get_favorite_heroes,
+            complete_onboarding,
             get_all_items,
             get_match_item_timings,
             get_match_cs,

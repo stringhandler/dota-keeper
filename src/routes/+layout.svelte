@@ -9,6 +9,7 @@
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
+  import OnboardingFlow from "$lib/OnboardingFlow.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
   import WindowResize from "$lib/WindowResize.svelte";
   import BottomNav from "$lib/BottomNav.svelte";
@@ -18,6 +19,7 @@
   let isLoading = $state(true);
   let isMobile = $state(false);
   let isLoggedIn = $state(false);
+  let showOnboarding = $state(false);
   let currentSteamId = $state("");
   let steamId = $state("");
   let error = $state("");
@@ -81,6 +83,9 @@
     isLoggedIn = true;
     currentSteamId = settings.steam_id;
     await loadDailyChallenge();
+    if (!settings.onboarding_completed) {
+      showOnboarding = true;
+    }
   }
 
   async function handleLogin(event) {
@@ -349,6 +354,11 @@
   {#if isMobile}
     <BottomNav />
   {/if}
+{/if}
+
+<!-- First-run onboarding overlay -->
+{#if showOnboarding}
+  <OnboardingFlow steamId={currentSteamId} onComplete={() => showOnboarding = false} />
 {/if}
 
 <!-- Analytics Consent Modal -->
