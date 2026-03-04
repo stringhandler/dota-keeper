@@ -62,7 +62,7 @@ jobs:
 
       - name: Create cargo-tauri wrapper
         run: |
-          printf '#!/bin/sh\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
+          printf '#!/bin/sh\nshift\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
           chmod +x ~/.cargo/bin/cargo-tauri
 
       - name: Get version from package.json
