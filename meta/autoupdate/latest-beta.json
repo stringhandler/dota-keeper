@@ -1,23 +1,23 @@
 {
-  "version": "0.2.9",
-  "notes": "Beta release v0.2.9",
-  "pub_date": "2026-03-03T19:27:13Z",
+  "version": "0.2.11",
+  "notes": "Beta release v0.2.11",
+  "pub_date": "2026-03-04T19:11:18Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.9-beta/Dota.Keeper.Beta_0.2.9_x64_en-US.msi"
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.11-beta/Dota.Keeper.Beta_0.2.11_x64_en-US.msi"
     },
     "linux-x86_64": {
       "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.9-beta/Dota.Keeper.Beta_0.2.9_amd64.AppImage.tar.gz"
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.11-beta/Dota.Keeper.Beta_0.2.11_amd64.AppImage.tar.gz"
     },
     "darwin-x86_64": {
       "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.9-beta/Dota.Keeper.Beta_x64.app.tar.gz"
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.11-beta/Dota.Keeper.Beta_x64.app.tar.gz"
     },
     "darwin-aarch64": {
       "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.9-beta/Dota.Keeper.Beta_aarch64.app.tar.gz"
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.2.11-beta/Dota.Keeper.Beta_aarch64.app.tar.gz"
     }
   }
 }
