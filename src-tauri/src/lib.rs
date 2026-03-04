@@ -23,7 +23,7 @@ fn get_session_id() -> String {
 }
 
 use database::{
-    accept_weekly_challenge, clear_all_matches, delete_goal, evaluate_match_goals,
+    accept_weekly_challenge, clear_all_matches, delete_goal, evaluate_match_goals, factory_reset_db,
     get_active_weekly_challenge, get_all_goals, get_all_matches, get_challenge_history,
     get_daily_challenge_progress, get_daily_streak, get_db_dir, get_db_conn, get_favorite_hero_ids,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_item_timings_for_match,
@@ -1444,6 +1444,17 @@ fn clear_matches() -> Result<String, String> {
     Ok("All matches cleared successfully.".to_string())
 }
 
+/// Factory reset: wipe all database data and settings, then exit the app.
+#[tauri::command]
+fn factory_reset(app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_conn()?;
+    factory_reset_db(&conn)?;
+    drop(conn); // release the mutex guard before deleting settings
+    settings::Settings::delete_settings_file()?;
+    app.exit(0);
+    Ok(())
+}
+
 /// Mark onboarding as completed
 #[tauri::command]
 fn complete_onboarding() -> Result<settings::Settings, String> {
@@ -2103,7 +2114,8 @@ pub fn run() {
             get_tilt_assessment,
             get_checkin_history,
             get_background_parse_status,
-            save_background_parse_enabled
+            save_background_parse_enabled,
+            factory_reset
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

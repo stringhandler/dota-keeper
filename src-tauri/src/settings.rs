@@ -169,4 +169,16 @@ impl Settings {
     pub fn is_first_run(&self) -> bool {
         self.steam_id.is_none()
     }
+
+    /// Delete the settings file from disk (factory reset).
+    pub fn delete_settings_file() -> Result<(), String> {
+        let Some(path) = Self::get_settings_path() else {
+            return Ok(()); // nothing to delete
+        };
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete settings file: {}", e))?;
+        }
+        Ok(())
+    }
 }

@@ -626,6 +626,32 @@ pub fn clear_all_matches(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Delete all data from every table (factory reset).
+/// Settings are managed separately; this only clears the SQLite database.
+pub fn factory_reset_db(conn: &Connection) -> Result<(), String> {
+    // Order matters: child tables (FK → matches) must be cleared before matches itself.
+    let tables = [
+        "match_cs",
+        "goal_progress",
+        "item_timings",
+        "player_networth",
+        "mood_checkins",
+        "matches",
+        "goals",
+        "hero_favorites",
+        "hero_goal_suggestions",
+        "daily_challenges",
+        "challenge_history",
+        "challenge_options",
+        "weekly_challenges",
+    ];
+    for table in &tables {
+        conn.execute(&format!("DELETE FROM {}", table), [])
+            .map_err(|e| format!("Failed to clear table {}: {}", table, e))?;
+    }
+    Ok(())
+}
+
 /// Get all matches from the database, ordered by start_time descending
 pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
     let mut stmt = conn

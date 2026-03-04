@@ -34,6 +34,8 @@
   let updateError = $state("");
   let isInstalling = $state(false);
 
+  let isResetting = $state(false);
+
   let unlistenBgParse;
 
   onMount(async () => {
@@ -345,6 +347,27 @@
       error = `Failed to clear matches: ${e}`;
     } finally {
       isClearing = false;
+    }
+  }
+
+  async function handleFactoryReset() {
+    const confirmed = confirm(
+      "FACTORY RESET\n\n" +
+      "This will permanently delete ALL data:\n" +
+      "• All match history\n" +
+      "• All goals and progress\n" +
+      "• All settings (Steam ID, preferences)\n" +
+      "• All mood check-ins and challenges\n\n" +
+      "The app will close immediately after. This cannot be undone.\n\n" +
+      "Are you absolutely sure?"
+    );
+    if (!confirmed) return;
+    isResetting = true;
+    try {
+      await invoke("factory_reset");
+    } catch (e) {
+      error = `Factory reset failed: ${e}`;
+      isResetting = false;
     }
   }
 
@@ -690,6 +713,25 @@
         onclick={handleLogout}
       >
         Log Out
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Factory Reset</h3>
+        <p class="setting-description">
+          Delete all data and reset the app to its initial state. Useful for testing the first-run experience.
+        </p>
+        <p class="warning-text">
+          ⚠️ This permanently deletes all matches, goals, settings, and check-ins. The app will close immediately.
+        </p>
+      </div>
+      <button
+        class="factory-reset-btn"
+        onclick={handleFactoryReset}
+        disabled={isResetting}
+      >
+        {isResetting ? "Resetting..." : "Factory Reset"}
       </button>
     </div>
   </div>
@@ -1067,6 +1109,33 @@
 
 .radio-label span {
   font-weight: 500;
+}
+
+.factory-reset-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 8px 16px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+}
+
+.factory-reset-btn:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.25);
+  border-color: var(--red);
+}
+
+.factory-reset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .logout-btn-destructive {
