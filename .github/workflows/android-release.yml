@@ -78,12 +78,10 @@ jobs:
           if [ "${{ github.ref }}" = "refs/heads/beta" ]; then
             echo "IS_BETA=true" >> $GITHUB_ENV
             echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}-beta" >> $GITHUB_ENV
-            echo "TAURI_CONFIG=src-tauri/tauri.beta.conf.json" >> $GITHUB_ENV
             echo "ANDROID_APP_ID=com.volthawk.dota_keeper_beta" >> $GITHUB_ENV
           else
             echo "IS_BETA=false" >> $GITHUB_ENV
             echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
-            echo "TAURI_CONFIG=" >> $GITHUB_ENV
             echo "ANDROID_APP_ID=com.volthawk.dota_keeper" >> $GITHUB_ENV
           fi
 
@@ -103,12 +101,7 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
-        run: |
-          if [ -n "$TAURI_CONFIG" ]; then
-            yarn tauri android build --aab true --config "$TAURI_CONFIG"
-          else
-            yarn tauri android build --aab true
-          fi
+        run: yarn tauri android build --aab true
 
       - name: Sign AAB
         run: |
