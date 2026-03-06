@@ -105,9 +105,9 @@ jobs:
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           if [ -n "$TAURI_CONFIG" ]; then
-            yarn tauri android build --aab --config "$TAURI_CONFIG"
+            yarn tauri android build --aab true --config "$TAURI_CONFIG"
           else
-            yarn tauri android build --aab
+            yarn tauri android build --aab true
           fi
 
       - name: Sign AAB
