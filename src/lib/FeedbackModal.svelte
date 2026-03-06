@@ -3,7 +3,9 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
   import { showToast } from "$lib/toast.js";
-  import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from "$env/static/public";
+
+  const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL ?? "";
+  const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY ?? "";
 
   let { onClose = () => {} } = $props();
 
@@ -38,7 +40,7 @@
   async function handleSubmit() {
     if (!category || !feedbackText.trim()) return;
 
-    if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       showToast("Feedback is not configured yet.", "error");
       return;
     }
@@ -54,11 +56,11 @@
         platform: getPlatform(),
       };
 
-      const res = await fetch(`${PUBLIC_SUPABASE_URL}/rest/v1/feedback`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
         method: "POST",
         headers: {
-          apikey: PUBLIC_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${PUBLIC_SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },

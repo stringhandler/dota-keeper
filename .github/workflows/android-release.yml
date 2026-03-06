@@ -62,7 +62,7 @@ jobs:
 
       - name: Create cargo-tauri wrapper
         run: |
-          printf '#!/bin/sh\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
+          printf '#!/bin/sh\nshift\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
           chmod +x ~/.cargo/bin/cargo-tauri
 
       - name: Get version from package.json
@@ -72,61 +72,54 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > "$RUNNER_TEMP/release.keystore"
 
-      # ── APK (for sideloading / GitHub release) ────────────────────────────
-
-      - name: Build release APK (arm64)
-        env:
-          NDK_HOME: ${{ env.NDK_HOME }}
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: yarn tauri android build --apk --target aarch64
-
-      - name: Sign APK
+      - name: Set build variant (beta vs release)
+        id: variant
         run: |
-          UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "Found unsigned APK: $UNSIGNED"
+          if [ "${{ github.ref }}" = "refs/heads/beta" ]; then
+            echo "IS_BETA=true" >> $GITHUB_ENV
+            echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}-beta" >> $GITHUB_ENV
+            echo "TAURI_CONFIG=src-tauri/tauri.beta.conf.json" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.volthawk.dota_keeper_beta" >> $GITHUB_ENV
+          else
+            echo "IS_BETA=false" >> $GITHUB_ENV
+            echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
+            echo "TAURI_CONFIG=" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.volthawk.dota_keeper" >> $GITHUB_ENV
+          fi
 
-          BUILD_TOOLS=$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
-          SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-android.apk"
-
-          "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner" sign \
-            --ks "$RUNNER_TEMP/release.keystore" \
-            --ks-key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            --ks-pass "pass:${{ secrets.ANDROID_STORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.ANDROID_KEY_PASSWORD }}" \
-            --out "$SIGNED" \
-            "$UNSIGNED"
-
-          echo "SIGNED_APK=$SIGNED" >> $GITHUB_ENV
-
-      - name: Upload APK as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dota-keeper-${{ steps.version.outputs.VERSION }}-android
-          path: ${{ env.SIGNED_APK }}
-          retention-days: 30
-
-      - name: Attach APK to GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch applicationId for beta
+        if: env.IS_BETA == 'true'
         run: |
-          gh release upload "v${{ steps.version.outputs.VERSION }}" "${{ env.SIGNED_APK }}" --clobber || \
-            echo "⚠️  Could not upload to release (may not exist yet). APK is available as a workflow artifact."
+          sed -i \
+            's/applicationId = "com.volthawk.dota_keeper"/applicationId = "com.volthawk.dota_keeper_beta"/' \
+            src-tauri/gen/android/app/build.gradle.kts
+          echo "applicationId patched to com.volthawk.dota_keeper_beta"
 
       # ── AAB (for Google Play Store) ────────────────────────────────────────
 
       - name: Build release AAB (all ABIs)
-        if: ${{ inputs.upload_to_play_store == true }}
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: yarn tauri android build --aab
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$TAURI_CONFIG" ]; then
+            yarn tauri android build --aab --config "$TAURI_CONFIG"
+          else
+            yarn tauri android build --aab
+          fi
 
       - name: Sign AAB
-        if: ${{ inputs.upload_to_play_store == true }}
         run: |
           UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/bundle -name "*.aab" | head -1)
           echo "Found unsigned AAB: $UNSIGNED"
-          SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}.aab"
+
+          if [ "$IS_BETA" = "true" ]; then
+            SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-beta-android.aab"
+          else
+            SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-android.aab"
+          fi
 
           jarsigner -verbose \
             -sigalg SHA256withRSA \
@@ -140,12 +133,26 @@ jobs:
 
           echo "SIGNED_AAB=$SIGNED" >> $GITHUB_ENV
 
+      - name: Upload AAB as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dota-keeper-${{ steps.version.outputs.VERSION }}-android
+          path: ${{ env.SIGNED_AAB }}
+          retention-days: 30
+
+      - name: Attach AAB to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" "$SIGNED_AAB" --clobber || \
+            echo "⚠️  Could not upload to release (may not exist yet). AAB is available as a workflow artifact."
+
       - name: Upload AAB to Google Play (internal track)
         if: ${{ inputs.upload_to_play_store == true }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.volthawk.dota_keeper
+          packageName: ${{ env.ANDROID_APP_ID }}
           releaseFiles: ${{ env.SIGNED_AAB }}
           track: internal
           status: completed
