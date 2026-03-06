@@ -597,57 +597,83 @@
     /* Hide table header on mobile */
     .table-head { display: none; }
 
-    /* Card layout using flexbox + order */
+    /* Card layout — two-row mobile card */
     .match-row {
       display: flex !important;
       flex-wrap: wrap !important;
-      padding: 12px 14px !important;
+      padding: 14px 16px !important;
       gap: 0 !important;
       align-items: center;
     }
 
-    /* Row 1: hero (fills left) + result (right) */
+    /* Row 1: hero name spans full width */
     .match-hero {
       order: 1;
-      flex: 1;
+      flex: 1 1 100%;
       min-width: 0;
       font-size: 14px;
       font-weight: 600;
+      align-items: center;
     }
+
+    /* Row 2: result tag + mode tag + date flow left, kda pushes right */
     .td-result {
       order: 2;
       flex: none;
-      font-size: 12px;
+      margin-top: 8px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 3px;
+      display: inline-block;
     }
-
-    /* Row 2: mode + date flow left, kda pushes right */
+    .td-result.result-win {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(74, 222, 128, 0.15);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      color: var(--green);
+    }
+    .td-result.result-loss {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      color: var(--red);
+    }
     .td-mode {
       order: 3;
       flex: none;
-      margin-top: 6px;
-      margin-right: 8px;
+      margin-top: 8px;
+      margin-left: 6px;
     }
     .td-date {
       order: 4;
       flex: none;
-      margin-top: 6px;
+      margin-top: 8px;
+      margin-left: auto;
       color: var(--text-muted);
       font-size: 11px;
-      margin-right: 8px;
+      align-self: center;
     }
     .td-kda {
       order: 5;
       flex: none;
-      margin-top: 6px;
-      margin-left: auto;
+      margin-top: 8px;
+      margin-left: 12px;
       font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
-    /* Row 3: goals right-aligned */
+    /* Row 3: parse/goals right-aligned */
     .td-goals {
       order: 6;
       width: 100%;
-      margin-top: 6px;
+      margin-top: 10px;
       display: flex !important;
       justify-content: flex-end;
     }

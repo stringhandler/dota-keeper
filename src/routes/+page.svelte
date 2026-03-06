@@ -371,24 +371,7 @@
         {/if}
       </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Goals Hit (7d)</div>
-        {#if goalsHit7d.total > 0}
-          <div class="stat-value">{goalsHit7d.hit}<span class="stat-unit">/{goalsHit7d.total}</span></div>
-          <div class="stat-sub">{Math.round((goalsHit7d.hit / goalsHit7d.total) * 100)}% success rate</div>
-        {:else}
-          <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">No goal attempts yet</div>
-        {/if}
-      </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Active Goals</div>
-        <div class="stat-value">{goals.length}</div>
-        <div class="stat-sub">
-          {#if goals.length === 0}No goals set{:else}being tracked{/if}
-        </div>
-      </div>
     </div>
 
     <!-- WEEKLY CHALLENGE -->
@@ -596,7 +579,7 @@
   /* ── QUICK STATS ── */
   .stats-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 16px;
     margin-bottom: 28px;
   }
