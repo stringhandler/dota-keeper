@@ -14,6 +14,7 @@
   let error = $state("");
   let isSaving = $state(false);
   let items = $state([]);
+  let showFormMobile = $state(false);
 
   // Form state
   let editingGoal = $state(null);
@@ -114,6 +115,7 @@
     formItemMinutes = "";
     formItemSeconds = "";
     formGameMode = "Ranked";
+    showFormMobile = false;
   }
 
   function editGoal(goal) {
@@ -292,8 +294,15 @@
     <div class="error-banner">{error}</div>
   {/if}
 
+  <!-- NEW GOAL TOGGLE (mobile only) -->
+  <div class="mobile-new-goal-row">
+    <button class="btn btn-primary" onclick={() => { showFormMobile = !showFormMobile; editingGoal = null; }}>
+      {showFormMobile ? '✕ Cancel' : '+ New Goal'}
+    </button>
+  </div>
+
   <!-- INLINE CREATE FORM -->
-  <div class="create-form">
+  <div class="create-form" class:form-hidden-mobile={!showFormMobile && !editingGoal}>
     <div class="create-form-title">
       {editingGoal ? 'Edit Goal' : 'Create New Goal'}
     </div>
@@ -453,6 +462,7 @@
       {/each}
     </div>
   {/if}
+
 </div>
 
 <style>
@@ -606,5 +616,23 @@
     align-items: center;
     gap: 5px;
     flex-wrap: wrap;
+  }
+
+  /* ── MOBILE NEW GOAL TOGGLE ── */
+  .mobile-new-goal-row {
+    display: none;
+    margin-bottom: 16px;
+  }
+
+  .mobile-new-goal-row .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .mobile-new-goal-row { display: block; }
+
+    .form-hidden-mobile { display: none; }
   }
 </style>

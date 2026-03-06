@@ -429,6 +429,12 @@
     gap: 16px;
   }
 
+  @media (max-width: 640px) {
+    .analysis-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* ── CHANGE CHIP ── */
   .change-chip {
     font-family: 'Barlow Condensed', sans-serif;

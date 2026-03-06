@@ -2,7 +2,6 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { listen } from '@tauri-apps/api/event';
@@ -13,6 +12,7 @@
   import TitleBar from "$lib/TitleBar.svelte";
   import WindowResize from "$lib/WindowResize.svelte";
   import BottomNav from "$lib/BottomNav.svelte";
+  import FeedbackModal from "$lib/FeedbackModal.svelte";
   import Toast from "$lib/Toast.svelte";
   import '../app.css';
 
@@ -26,9 +26,9 @@
   let updateAvailable = $state(false);
   let updateVersion = $state("");
   let isUpdating = $state(false);
-  let dailyProgress = $state(null);
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
+  let showFeedbackModal = $state(false);
 
   onMount(async () => {
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
@@ -54,20 +54,11 @@
       if (settings.steam_id) {
         isLoggedIn = true;
         currentSteamId = settings.steam_id;
-        await loadDailyChallenge();
       }
     } catch (e) {
       error = `Failed to load settings: ${e}`;
     } finally {
       isLoading = false;
-    }
-  }
-
-  async function loadDailyChallenge() {
-    try {
-      dailyProgress = await invoke("get_daily_challenge_progress_cmd");
-    } catch (e) {
-      // non-fatal
     }
   }
 
@@ -82,7 +73,6 @@
     const settings = await invoke("save_steam_id", { steamId: id64 });
     isLoggedIn = true;
     currentSteamId = settings.steam_id;
-    await loadDailyChallenge();
     if (!settings.onboarding_completed) {
       showOnboarding = true;
     }
@@ -322,6 +312,12 @@
             <div class="rank-value">N/A</div>
           </div>
         </div>
+        <button class="feedback-link" onclick={() => showFeedbackModal = true} type="button">
+          <svg class="feedback-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-6 4h4M5 4h14a2 2 0 012 2v10a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2z" />
+          </svg>
+          Feedback
+        </button>
       </div>
     </aside>
 
@@ -331,16 +327,7 @@
       <div class="topbar">
         <div class="page-title">{getPageTitle($page.url.pathname)}</div>
         <div class="topbar-actions">
-          {#if dailyProgress}
-            <button class="challenge-badge" onclick={() => goto('/challenges')}>
-              ⚡ Daily Challenge: {dailyProgress.current_value}/{dailyProgress.target}
-            </button>
-          {:else}
-            <button class="challenge-badge" onclick={() => goto('/challenges')}>
-              ⚡ Challenges
-            </button>
-          {/if}
-          <a href="/goals" class="btn btn-primary">+ New Goal</a>
+          <a href="/goals" class="btn btn-primary new-goal-btn">+ New Goal</a>
         </div>
       </div>
 
@@ -353,6 +340,11 @@
 
   {#if isMobile}
     <BottomNav />
+    <button class="feedback-fab" onclick={() => showFeedbackModal = true} type="button" aria-label="Send feedback">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" width="18" height="18">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-6 4h4M5 4h14a2 2 0 012 2v10a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2z" />
+      </svg>
+    </button>
   {/if}
 {/if}
 
@@ -364,6 +356,11 @@
 <!-- Analytics Consent Modal -->
 {#if showConsentModal}
   <AnalyticsConsentModal onClose={() => showConsentModal = false} />
+{/if}
+
+<!-- Feedback Modal -->
+{#if showFeedbackModal}
+  <FeedbackModal onClose={() => showFeedbackModal = false} />
 {/if}
 
 <!-- Global toast notifications -->
@@ -700,6 +697,62 @@
     font-size: 14px;
   }
 
+  /* ── FEEDBACK ── */
+  .feedback-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    width: 100%;
+  }
+
+  .feedback-link:hover {
+    color: var(--text-secondary);
+    border-color: rgba(240, 180, 41, 0.3);
+  }
+
+  .feedback-icon {
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  /* Floating button on mobile */
+  .feedback-fab {
+    position: fixed;
+    right: 14px;
+    bottom: calc(var(--sab, 0px) + 68px);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .feedback-fab:hover {
+    color: var(--gold);
+    border-color: rgba(240, 180, 41, 0.5);
+  }
+
   /* ── MAIN AREA ── */
   .main {
     flex: 1;
@@ -735,25 +788,6 @@
     align-items: center;
     gap: 12px;
   }
-
-  .challenge-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(240, 180, 41, 0.08);
-    border: 1px solid rgba(240, 180, 41, 0.25);
-    border-radius: 4px;
-    padding: 6px 12px;
-    font-size: 11px;
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 600;
-    letter-spacing: 1px;
-    color: var(--gold);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .challenge-badge:hover { background: rgba(240, 180, 41, 0.14); }
 
   /* ── CONTENT AREA ── */
   .content-area {
@@ -794,9 +828,8 @@
       flex-shrink: 0;
     }
 
-    .challenge-badge {
-      font-size: 10px;
-      padding: 5px 8px;
+    .new-goal-btn {
+      display: none;
     }
 
     .update-banner {

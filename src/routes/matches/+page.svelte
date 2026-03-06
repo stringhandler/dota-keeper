@@ -498,6 +498,7 @@
 
 <!-- GOAL DETAILS MODAL -->
 {#if selectedMatch}
+  {@const mid = selectedMatch.match_id}
   <div class="modal-overlay" onclick={closeGoalDetails}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
@@ -549,6 +550,18 @@
             {/each}
           </div>
         {/if}
+
+        <div class="modal-footer-actions">
+          <a class="modal-action-btn" href="/matches/{mid}" onclick={closeGoalDetails}>
+            🔍 View Details
+          </a>
+          <button class="modal-action-btn" onclick={() => copyMatchId(mid)}>
+            {copiedMatchId === mid ? '✓ Copied!' : '📋 Copy ID'}
+          </button>
+          <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
+            🔗 OpenDota
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -595,61 +608,87 @@
     .refresh-btn { width: 100%; justify-content: center; }
 
     /* Hide table header on mobile */
-    .table-head { display: none; }
+    .table-head { display: none !important; }
 
-    /* Card layout using flexbox + order */
+    /* Card layout — two-row mobile card */
     .match-row {
       display: flex !important;
       flex-wrap: wrap !important;
-      padding: 12px 14px !important;
+      padding: 14px 16px !important;
       gap: 0 !important;
       align-items: center;
     }
 
-    /* Row 1: hero (fills left) + result (right) */
+    /* Row 1: hero name spans full width */
     .match-hero {
       order: 1;
-      flex: 1;
+      flex: 1 1 100%;
       min-width: 0;
       font-size: 14px;
       font-weight: 600;
+      align-items: center;
     }
+
+    /* Row 2: result tag + mode tag + date flow left, kda pushes right */
     .td-result {
       order: 2;
       flex: none;
-      font-size: 12px;
+      margin-top: 8px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 3px;
+      display: inline-block;
     }
-
-    /* Row 2: mode + date flow left, kda pushes right */
+    .td-result.result-win {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(74, 222, 128, 0.15);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      color: var(--green);
+    }
+    .td-result.result-loss {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      color: var(--red);
+    }
     .td-mode {
       order: 3;
       flex: none;
-      margin-top: 6px;
-      margin-right: 8px;
+      margin-top: 8px;
+      margin-left: 6px;
     }
     .td-date {
       order: 4;
       flex: none;
-      margin-top: 6px;
+      margin-top: 8px;
+      margin-left: auto;
       color: var(--text-muted);
       font-size: 11px;
-      margin-right: 8px;
+      align-self: center;
     }
     .td-kda {
       order: 5;
       flex: none;
-      margin-top: 6px;
-      margin-left: auto;
+      margin-top: 8px;
+      margin-left: 12px;
       font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
-    /* Row 3: goals right-aligned */
+    /* Inline with date + kda on row 2 */
     .td-goals {
       order: 6;
-      width: 100%;
-      margin-top: 6px;
+      flex: none;
+      margin-top: 8px;
+      margin-left: 8px;
       display: flex !important;
-      justify-content: flex-end;
     }
 
     /* Hide on mobile */
@@ -1014,6 +1053,48 @@
     background: var(--bg-elevated);
     border-radius: 6px;
     font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .modal-footer-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-action-btn:hover {
+    border-color: var(--border-active);
+    color: var(--gold);
   }
 
   .no-applicable-goals {

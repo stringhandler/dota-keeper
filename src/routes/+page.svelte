@@ -371,24 +371,7 @@
         {/if}
       </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Goals Hit (7d)</div>
-        {#if goalsHit7d.total > 0}
-          <div class="stat-value">{goalsHit7d.hit}<span class="stat-unit">/{goalsHit7d.total}</span></div>
-          <div class="stat-sub">{Math.round((goalsHit7d.hit / goalsHit7d.total) * 100)}% success rate</div>
-        {:else}
-          <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">No goal attempts yet</div>
-        {/if}
-      </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Active Goals</div>
-        <div class="stat-value">{goals.length}</div>
-        <div class="stat-sub">
-          {#if goals.length === 0}No goals set{:else}being tracked{/if}
-        </div>
-      </div>
     </div>
 
     <!-- WEEKLY CHALLENGE -->
@@ -424,13 +407,13 @@
       </a>
     {/if}
 
-    <!-- TODAY'S CHALLENGE -->
+    <!-- TODAY'S CHALLENGE (hidden on mobile) -->
     {#if dailyProgress}
-      <div class="section-header" style="margin-top: 28px;">
+      <div class="section-header hide-mobile" style="margin-top: 28px;">
         <div class="section-title">⚡ Today's Challenge</div>
         <div class="reset-text">Resets in {timeUntilMidnight}</div>
       </div>
-      <div class="challenge-card" class:completed={dailyProgress.completed}>
+      <div class="challenge-card hide-mobile" class:completed={dailyProgress.completed}>
         <div class="challenge-icon">
           {#if dailyProgress.challenge.hero_id !== null}
             <HeroIcon heroId={dailyProgress.challenge.hero_id} size="small" showName={false} />
@@ -546,6 +529,11 @@
       </div>
     {/if}
 
+    <!-- NEW GOAL BUTTON (mobile only) -->
+    <div class="mobile-new-goal">
+      <a href="/goals" class="btn btn-primary" style="width:100%;justify-content:center;padding:14px;">+ New Goal</a>
+    </div>
+
     <!-- HERO SUGGESTION -->
     {#if heroSuggestion && !isSuggestionAdopted}
       <div class="section-header" style="margin-top: 28px;">
@@ -591,7 +579,7 @@
   /* ── QUICK STATS ── */
   .stats-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 16px;
     margin-bottom: 28px;
   }
@@ -614,6 +602,10 @@
     .stat-label {
       font-size: 9px;
       letter-spacing: 1px;
+    }
+
+    .hide-mobile {
+      display: none !important;
     }
   }
 
@@ -929,5 +921,32 @@
     flex-direction: column;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  @media (max-width: 640px) {
+    .suggestion-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .suggestion-actions {
+      flex-direction: row;
+      width: 100%;
+    }
+
+    .suggestion-actions .btn {
+      flex: 1;
+      justify-content: center;
+    }
+  }
+
+  /* ── MOBILE NEW GOAL ── */
+  .mobile-new-goal {
+    display: none;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 640px) {
+    .mobile-new-goal { display: block; }
   }
 </style>

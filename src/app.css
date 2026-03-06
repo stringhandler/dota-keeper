@@ -296,6 +296,49 @@ input, select, textarea { font-family: inherit; }
   border-style: dashed;
 }
 
+@media (max-width: 640px) {
+  .goal-row {
+    grid-template-columns: 36px 1fr;
+    grid-template-rows: auto auto;
+    padding: 14px 16px;
+    gap: 10px 12px;
+  }
+
+  /* Row 1: avatar (col 1) + info (col 2) */
+  .hero-avatar {
+    grid-column: 1;
+    grid-row: 1;
+    width: 36px;
+    height: 36px;
+  }
+
+  .goal-info {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* Row 2: sparkline + dots span both columns */
+  .goal-spark-col {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    height: 36px;
+  }
+
+  .goal-dots {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+
+  .dot {
+    flex: 1;
+    max-width: 36px;
+    height: 28px;
+  }
+}
+
 /* Mode tags */
 .mode-tag {
   font-family: 'Barlow Condensed', sans-serif;
