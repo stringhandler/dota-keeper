@@ -30,8 +30,7 @@
 
   // Filters
   let selectedHeroId = $state("");
-  let startDate = $state("");
-  let endDate = $state("");
+  let selectedPeriod = $state("");
 
   // Get sorted hero list for dropdown
   const allHeroesSorted = Object.entries(heroes)
@@ -48,15 +47,11 @@
       data = data.filter((d) => d.hero_id === heroIdNum);
     }
 
-    // Filter by date range
-    if (startDate) {
-      const startTimestamp = new Date(startDate).getTime() / 1000;
-      data = data.filter((d) => d.start_time >= startTimestamp);
-    }
-
-    if (endDate) {
-      const endTimestamp = new Date(endDate).getTime() / 1000 + 86400; // End of day
-      data = data.filter((d) => d.start_time < endTimestamp);
+    // Filter by period
+    if (selectedPeriod) {
+      const days = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 365;
+      const cutoff = (Date.now() / 1000) - days * 86400;
+      data = data.filter((d) => d.start_time >= cutoff);
     }
 
     return data;
@@ -247,8 +242,7 @@
 
   function resetFilters() {
     selectedHeroId = "";
-    startDate = "";
-    endDate = "";
+    selectedPeriod = "";
   }
 
   function getMetricLabel(metric) {
@@ -517,82 +511,27 @@
       </div>
     </div>
 
-    <div class="content-grid">
-      <!-- Filters Section -->
-      <section class="filters-section">
-        <h2>Filters</h2>
-        <div class="filters-form">
-          <div class="form-group">
-            <label for="hero-filter">Hero</label>
-            <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="All Heroes" />
-          </div>
-
-          <div class="form-group">
-            <label for="start-date">Start Date</label>
-            <input id="start-date" type="date" bind:value={startDate} />
-          </div>
-
-          <div class="form-group">
-            <label for="end-date">End Date</label>
-            <input id="end-date" type="date" bind:value={endDate} />
-          </div>
-
-          <button class="reset-btn" onclick={resetFilters}>Reset Filters</button>
+    <!-- Filters Row -->
+    <div class="filters-row">
+      {#if goal.hero_id === null}
+        <div class="filter-group">
+          <div class="filter-label">Hero</div>
+          <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="All Heroes" />
         </div>
-      </section>
-
-      <!-- Statistics Section -->
-      <section class="stats-section">
-        <h2>Statistics</h2>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Total Matches</div>
-            <div class="stat-value">{stats().total}</div>
-          </div>
-          <div class="stat-card success">
-            <div class="stat-label">Achieved</div>
-            <div class="stat-value">{stats().achieved}</div>
-          </div>
-          <div class="stat-card failure">
-            <div class="stat-label">Failed</div>
-            <div class="stat-value">{stats().failed}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Success Rate</div>
-            <div class="stat-value">{stats().achievementRate}%</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Average</div>
-            <div class="stat-value">{formatStatValue(stats().avgValue, goal.metric)} {goal.metric !== "ItemTiming" ? getMetricUnit(goal.metric) : ""}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Range</div>
-            <div class="stat-value">
-              {formatStatValue(stats().minValue, goal.metric)} – {formatStatValue(stats().maxValue, goal.metric)}
-            </div>
-          </div>
+      {/if}
+      <div class="filter-group">
+        <div class="filter-label">Period</div>
+        <div class="period-buttons">
+          {#each [['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['1y', 'Last Year']] as [val, label]}
+            <button
+              class="period-btn"
+              class:active={selectedPeriod === val}
+              onclick={() => selectedPeriod = selectedPeriod === val ? '' : val}
+            >{label}</button>
+          {/each}
         </div>
-
-        {#if achievementStatus()}
-          <div class="achievement-rate-card">
-            <div class="achievement-rate-row">
-              <div class="achievement-rate-info">
-                <span class="achievement-rate-label">Achievement Rate</span>
-                <span class="achievement-rate-value">{stats().achievementRate}%</span>
-                <span class="achievement-rate-count">({stats().achieved}/{stats().total} games)</span>
-              </div>
-              <div class="achievement-target">Target: ~75%</div>
-            </div>
-            <div class="achievement-status" style="color: {achievementStatus().color}">
-              {achievementStatus().label} — {achievementStatus().desc}
-            </div>
-            <div class="achievement-bar-track">
-              <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats().achievementRate))}%; background: {achievementStatus().color}"></div>
-              <div class="achievement-bar-target"></div>
-            </div>
-          </div>
-        {/if}
-      </section>
+      </div>
+      <button class="reset-btn" onclick={resetFilters}>Reset</button>
     </div>
 
     <!-- Histogram Section -->
@@ -899,6 +838,59 @@
         </div>
       {/if}
     </section>
+
+    <!-- Statistics Section -->
+    <section class="stats-section">
+      <h2>Statistics</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Matches</div>
+          <div class="stat-value">{stats().total}</div>
+        </div>
+        <div class="stat-card success">
+          <div class="stat-label">Achieved</div>
+          <div class="stat-value">{stats().achieved}</div>
+        </div>
+        <div class="stat-card failure">
+          <div class="stat-label">Failed</div>
+          <div class="stat-value">{stats().failed}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value">{stats().achievementRate}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Average</div>
+          <div class="stat-value">{formatStatValue(stats().avgValue, goal.metric)} {goal.metric !== "ItemTiming" ? getMetricUnit(goal.metric) : ""}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Range</div>
+          <div class="stat-value">
+            {formatStatValue(stats().minValue, goal.metric)} – {formatStatValue(stats().maxValue, goal.metric)}
+          </div>
+        </div>
+      </div>
+
+      {#if achievementStatus()}
+        <div class="achievement-rate-card">
+          <div class="achievement-rate-row">
+            <div class="achievement-rate-info">
+              <span class="achievement-rate-label">Achievement Rate</span>
+              <span class="achievement-rate-value">{stats().achievementRate}%</span>
+              <span class="achievement-rate-count">({stats().achieved}/{stats().total} games)</span>
+            </div>
+            <div class="achievement-target">Target: ~75%</div>
+          </div>
+          <div class="achievement-status" style="color: {achievementStatus().color}">
+            {achievementStatus().label} — {achievementStatus().desc}
+          </div>
+          <div class="achievement-bar-track">
+            <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats().achievementRate))}%; background: {achievementStatus().color}"></div>
+            <div class="achievement-bar-target"></div>
+          </div>
+        </div>
+      {/if}
+    </section>
   </div>
 {/if}
 
@@ -1129,11 +1121,59 @@
     color: var(--text-primary);
   }
 
-  .content-grid {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 24px;
-    margin-bottom: 24px;
+  /* ── FILTERS ROW ── */
+  .filters-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .filter-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .period-buttons {
+    display: flex;
+    gap: 4px;
+  }
+
+  .period-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .period-btn:hover {
+    border-color: var(--border-active);
+    color: var(--text-primary);
+  }
+
+  .period-btn.active {
+    background: rgba(240, 180, 41, 0.12);
+    border-color: var(--gold);
+    color: var(--gold);
   }
 
   section {
@@ -1158,27 +1198,6 @@
     margin: 0 0 20px 0;
     border-bottom: 1px solid var(--border);
     padding-bottom: 12px;
-  }
-
-  .filters-form {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .form-group label {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    color: var(--text-muted);
-    text-transform: uppercase;
   }
 
   input,
@@ -1264,7 +1283,7 @@
   }
 
   .histogram-section {
-    grid-column: 1 / -1;
+    margin-bottom: 24px;
   }
 
   .no-data {
@@ -1595,10 +1614,6 @@
   }
 
   @media (max-width: 768px) {
-    .content-grid {
-      grid-template-columns: 1fr;
-    }
-
     .stats-grid {
       grid-template-columns: repeat(2, 1fr);
     }
