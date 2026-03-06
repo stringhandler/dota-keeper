@@ -12,6 +12,7 @@
   import TitleBar from "$lib/TitleBar.svelte";
   import WindowResize from "$lib/WindowResize.svelte";
   import BottomNav from "$lib/BottomNav.svelte";
+  import FeedbackModal from "$lib/FeedbackModal.svelte";
   import Toast from "$lib/Toast.svelte";
   import '../app.css';
 
@@ -27,6 +28,7 @@
   let isUpdating = $state(false);
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
+  let showFeedbackModal = $state(false);
 
   onMount(async () => {
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
@@ -310,6 +312,12 @@
             <div class="rank-value">N/A</div>
           </div>
         </div>
+        <button class="feedback-link" onclick={() => showFeedbackModal = true} type="button">
+          <svg class="feedback-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-6 4h4M5 4h14a2 2 0 012 2v10a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2z" />
+          </svg>
+          Feedback
+        </button>
       </div>
     </aside>
 
@@ -332,6 +340,11 @@
 
   {#if isMobile}
     <BottomNav />
+    <button class="feedback-fab" onclick={() => showFeedbackModal = true} type="button" aria-label="Send feedback">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" width="18" height="18">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-6 4h4M5 4h14a2 2 0 012 2v10a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2z" />
+      </svg>
+    </button>
   {/if}
 {/if}
 
@@ -343,6 +356,11 @@
 <!-- Analytics Consent Modal -->
 {#if showConsentModal}
   <AnalyticsConsentModal onClose={() => showConsentModal = false} />
+{/if}
+
+<!-- Feedback Modal -->
+{#if showFeedbackModal}
+  <FeedbackModal onClose={() => showFeedbackModal = false} />
 {/if}
 
 <!-- Global toast notifications -->
@@ -677,6 +695,62 @@
     font-weight: 700;
     color: var(--text-primary);
     font-size: 14px;
+  }
+
+  /* ── FEEDBACK ── */
+  .feedback-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    width: 100%;
+  }
+
+  .feedback-link:hover {
+    color: var(--text-secondary);
+    border-color: rgba(240, 180, 41, 0.3);
+  }
+
+  .feedback-icon {
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  /* Floating button on mobile */
+  .feedback-fab {
+    position: fixed;
+    right: 14px;
+    bottom: calc(var(--sab, 0px) + 68px);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .feedback-fab:hover {
+    color: var(--gold);
+    border-color: rgba(240, 180, 41, 0.5);
   }
 
   /* ── MAIN AREA ── */
