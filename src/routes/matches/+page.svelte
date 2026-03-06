@@ -498,6 +498,7 @@
 
 <!-- GOAL DETAILS MODAL -->
 {#if selectedMatch}
+  {@const mid = selectedMatch.match_id}
   <div class="modal-overlay" onclick={closeGoalDetails}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
@@ -549,6 +550,18 @@
             {/each}
           </div>
         {/if}
+
+        <div class="modal-footer-actions">
+          <a class="modal-action-btn" href="/matches/{mid}" onclick={closeGoalDetails}>
+            🔍 View Details
+          </a>
+          <button class="modal-action-btn" onclick={() => copyMatchId(mid)}>
+            {copiedMatchId === mid ? '✓ Copied!' : '📋 Copy ID'}
+          </button>
+          <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
+            🔗 OpenDota
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -595,7 +608,7 @@
     .refresh-btn { width: 100%; justify-content: center; }
 
     /* Hide table header on mobile */
-    .table-head { display: none; }
+    .table-head { display: none !important; }
 
     /* Card layout — two-row mobile card */
     .match-row {
@@ -669,13 +682,13 @@
       color: var(--text-primary);
     }
 
-    /* Row 3: parse/goals right-aligned */
+    /* Inline with date + kda on row 2 */
     .td-goals {
       order: 6;
-      width: 100%;
-      margin-top: 10px;
+      flex: none;
+      margin-top: 8px;
+      margin-left: 8px;
       display: flex !important;
-      justify-content: flex-end;
     }
 
     /* Hide on mobile */
@@ -1040,6 +1053,48 @@
     background: var(--bg-elevated);
     border-radius: 6px;
     font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .modal-footer-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-action-btn:hover {
+    border-color: var(--border-active);
+    color: var(--gold);
   }
 
   .no-applicable-goals {
