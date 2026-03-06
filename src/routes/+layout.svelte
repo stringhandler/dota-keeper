@@ -2,7 +2,6 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { listen } from '@tauri-apps/api/event';
@@ -26,7 +25,6 @@
   let updateAvailable = $state(false);
   let updateVersion = $state("");
   let isUpdating = $state(false);
-  let dailyProgress = $state(null);
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
 
@@ -54,20 +52,11 @@
       if (settings.steam_id) {
         isLoggedIn = true;
         currentSteamId = settings.steam_id;
-        await loadDailyChallenge();
       }
     } catch (e) {
       error = `Failed to load settings: ${e}`;
     } finally {
       isLoading = false;
-    }
-  }
-
-  async function loadDailyChallenge() {
-    try {
-      dailyProgress = await invoke("get_daily_challenge_progress_cmd");
-    } catch (e) {
-      // non-fatal
     }
   }
 
@@ -82,7 +71,6 @@
     const settings = await invoke("save_steam_id", { steamId: id64 });
     isLoggedIn = true;
     currentSteamId = settings.steam_id;
-    await loadDailyChallenge();
     if (!settings.onboarding_completed) {
       showOnboarding = true;
     }
@@ -331,16 +319,7 @@
       <div class="topbar">
         <div class="page-title">{getPageTitle($page.url.pathname)}</div>
         <div class="topbar-actions">
-          {#if dailyProgress}
-            <button class="challenge-badge" onclick={() => goto('/challenges')}>
-              ⚡ Daily Challenge: {dailyProgress.current_value}/{dailyProgress.target}
-            </button>
-          {:else}
-            <button class="challenge-badge" onclick={() => goto('/challenges')}>
-              ⚡ Challenges
-            </button>
-          {/if}
-          <a href="/goals" class="btn btn-primary">+ New Goal</a>
+          <a href="/goals" class="btn btn-primary new-goal-btn">+ New Goal</a>
         </div>
       </div>
 
@@ -736,25 +715,6 @@
     gap: 12px;
   }
 
-  .challenge-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(240, 180, 41, 0.08);
-    border: 1px solid rgba(240, 180, 41, 0.25);
-    border-radius: 4px;
-    padding: 6px 12px;
-    font-size: 11px;
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 600;
-    letter-spacing: 1px;
-    color: var(--gold);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .challenge-badge:hover { background: rgba(240, 180, 41, 0.14); }
-
   /* ── CONTENT AREA ── */
   .content-area {
     flex: 1;
@@ -794,9 +754,8 @@
       flex-shrink: 0;
     }
 
-    .challenge-badge {
-      font-size: 10px;
-      padding: 5px 8px;
+    .new-goal-btn {
+      display: none;
     }
 
     .update-banner {
