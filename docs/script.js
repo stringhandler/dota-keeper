@@ -453,6 +453,43 @@ function setupRippleEffect() {
 }
 
 // ================================
+// POST-DOWNLOAD COMMUNITY MODAL
+// ================================
+function setupDownloadModal() {
+    const modal = document.getElementById('community-modal');
+    if (!modal) return;
+
+    const closeModal = () => {
+        modal.classList.remove('visible');
+        setTimeout(() => { modal.hidden = true; }, 300);
+    };
+
+    const openModal = () => {
+        modal.hidden = false;
+        // Force reflow so the transition plays
+        modal.offsetHeight;
+        modal.classList.add('visible');
+    };
+
+    // Trigger on any download button click — let the download proceed normally
+    const downloadBtns = document.querySelectorAll('.btn-download, #dl-windows, #dl-macos-arm, #dl-macos-x64, #dl-linux');
+    downloadBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            setTimeout(openModal, 800);
+        });
+    });
+
+    modal.querySelector('.modal-close').addEventListener('click', closeModal);
+    document.getElementById('modal-skip').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+}
+
+// ================================
 // INITIALIZE EVERYTHING
 // ================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -476,6 +513,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Setup button ripple effects
     setupRippleEffect();
+
+    // Setup post-download community modal
+    setupDownloadModal();
 
     // Log welcome message
     console.log('%c⚔️ DOTA KEEPER ⚔️', 'font-size: 24px; font-weight: bold; color: #f4c430;');
