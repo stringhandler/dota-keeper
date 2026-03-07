@@ -1071,3 +1071,93 @@ button:focus {
     outline: 2px solid var(--gold);
     outline-offset: 2px;
 }
+
+/* Discord hero button */
+.btn-discord {
+    background: rgba(88, 101, 242, 0.15);
+    color: var(--text-primary);
+    border: 2px solid rgba(88, 101, 242, 0.5);
+}
+
+.btn-discord:hover {
+    background: rgba(88, 101, 242, 0.25);
+    border-color: #5865F2;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(88, 101, 242, 0.3);
+}
+
+/* Community strip */
+.community-strip {
+    background: linear-gradient(135deg, rgba(88, 101, 242, 0.12), rgba(88, 101, 242, 0.06));
+    border-top: 1px solid rgba(88, 101, 242, 0.25);
+    border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+    padding: 1.5rem 0;
+}
+
+.community-strip-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.community-strip-text {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    flex: 1;
+    min-width: 200px;
+}
+
+.community-strip-text strong {
+    color: var(--text-primary);
+}
+
+.community-strip-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.btn-discord-strip,
+.btn-twitter-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.btn-discord-strip {
+    background: rgba(88, 101, 242, 0.2);
+    color: #a5abf5;
+    border: 1px solid rgba(88, 101, 242, 0.4);
+}
+
+.btn-discord-strip:hover {
+    background: rgba(88, 101, 242, 0.35);
+    border-color: #5865F2;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.btn-twitter-strip {
+    background: rgba(29, 161, 242, 0.12);
+    color: #6bb8f5;
+    border: 1px solid rgba(29, 161, 242, 0.3);
+}
+
+.btn-twitter-strip:hover {
+    background: rgba(29, 161, 242, 0.25);
+    border-color: #1DA1F2;
+    color: #fff;
+    transform: translateY(-1px);
+}
