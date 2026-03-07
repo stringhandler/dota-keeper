@@ -14,6 +14,8 @@
   import BottomNav from "$lib/BottomNav.svelte";
   import FeedbackModal from "$lib/FeedbackModal.svelte";
   import Toast from "$lib/Toast.svelte";
+  import { showToast } from "$lib/toast.js";
+  import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
   import '../app.css';
 
   let isLoading = $state(true);
@@ -37,6 +39,10 @@
 
     await loadSettings();
     await checkForUpdates();
+
+    if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
+      showToast("Feedback is not configured. Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY.", "error", 8000);
+    }
 
     // Check analytics consent on every startup
     const consent = await getAnalyticsConsent();

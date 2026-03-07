@@ -5,6 +5,15 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16] - 2026-03-06
+
+### Added
+- **Feedback Button**: Send feedback directly from within the app without leaving. Tap the chat icon above the bottom navigation bar to report a bug, request a missing feature, or share what you like. Feedback is submitted instantly and includes the current screen, app version, and platform automatically — no extra steps needed.
+
+### Changed
+- **Android build format**: Switched from APK to AAB (Android App Bundle) for smaller installs and better Play Store compatibility.
+- **Separate beta app**: The beta build now installs as a distinct app (`Dota Keeper Beta`) alongside the production app, so you can run both without conflict.
+
 ## [0.2.12] - 2026-03-06
 
 ### Added

@@ -4,8 +4,7 @@
   import { onMount } from "svelte";
   import { showToast } from "$lib/toast.js";
 
-  const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL ?? "";
-  const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY ?? "";
+  import { PUBLIC_SUPABASE_URL as SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY as SUPABASE_ANON_KEY } from '$env/static/public';
 
   let { onClose = () => {} } = $props();
 

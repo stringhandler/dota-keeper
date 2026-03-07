@@ -70,3 +70,16 @@ Feature: Feedback Button
     When I click the "Feedback" button
     And I select a category
     Then the "Send Feedback" button should be disabled until I type something
+
+  Scenario: Error shown on startup when Supabase is not configured in the build
+    Given the app was built without PUBLIC_SUPABASE_URL or PUBLIC_SUPABASE_ANON_KEY env vars
+    When the app starts
+    Then an error toast should appear indicating feedback is not configured
+
+  Scenario: Feedback fails gracefully when Supabase is not configured
+    Given the app was built without PUBLIC_SUPABASE_URL or PUBLIC_SUPABASE_ANON_KEY env vars
+    When I click the "Feedback" button
+    And I select a category and fill in the follow-up
+    And I click "Send Feedback"
+    Then I should see an error toast "Feedback is not configured yet."
+    And the modal should remain open
