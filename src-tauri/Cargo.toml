@@ -2,7 +2,8 @@
 name = "dota-keeper"
 version = "0.3.0"
 description = "A Tauri App"
-authors = ["stringhandler"]
+authors = ["Volthawk Software (Pty) Ltd"]
+license = "Apache-2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
