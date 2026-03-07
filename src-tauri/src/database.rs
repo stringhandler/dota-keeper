@@ -920,10 +920,16 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
                 }
             }
         }
-        GoalMetric::Networth | GoalMetric::Level => {
-            // These require per-minute data which we don't have in the current schema
-            // For now, we'll need to skip these or mark them as not evaluable
-            // Return None to indicate we can't evaluate this goal with current data
+        GoalMetric::Networth => {
+            // Query the player's own per-minute networth from player_networth table
+            // (gold_t is stored for all players including ourselves, keyed by player_slot)
+            match get_partner_networth_at_minute(conn, match_data.match_id, match_data.player_slot, target_minutes) {
+                Ok(Some(nw)) => nw,
+                _ => return None,
+            }
+        }
+        GoalMetric::Level => {
+            // Level requires per-minute data which is not currently stored
             return None;
         }
     };
