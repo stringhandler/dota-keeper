@@ -25,7 +25,7 @@ Position 1 (Carry): Safe lane farmer, highest farm priority
 Position 2 (Mid): Middle lane, second farm priority
 Position 3 (Offlane): Offlane, third farm priority
 Position 4 (Soft Support): Roaming/lane support, fourth priority
-Position 5 (Hard Support): Ward bitch, lowest farm priority
+Position 5 (Hard Support): Ward, lowest farm priority
 ```
 
 #### Display Requirements
