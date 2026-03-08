@@ -19,9 +19,11 @@
   let copiedMatchId = $state(null);
   let parsingMatches = $state(new Set());
   let parseErrors = $state(new Map());
+  let retryCountdowns = $state(new Map()); // matchId -> seconds until retry
   let currentSteamId = $state("");
   let unlistenMatchStateChanged = null;
   let autoRefreshTimer = null;
+  let countdownTimer = null;
 
   // Filter
   let activeFilter = $state('all');
@@ -57,6 +59,20 @@
       await autoRefreshAndParse();
     }, 30000);
 
+    countdownTimer = setInterval(() => {
+      if (retryCountdowns.size === 0) return;
+      const next = new Map();
+      const toRetry = [];
+      for (const [matchId, secs] of retryCountdowns) {
+        if (secs <= 1) toRetry.push(matchId);
+        else next.set(matchId, secs - 1);
+      }
+      retryCountdowns = next;
+      for (const matchId of toRetry) {
+        parseMatch(matchId).catch(() => {});
+      }
+    }, 1000);
+
     // Track page view
     trackPageView("Matches");
   });
@@ -64,6 +80,7 @@
   onDestroy(() => {
     if (unlistenMatchStateChanged) unlistenMatchStateChanged();
     if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
   });
 
   async function autoRefreshAndParse() {
@@ -229,25 +246,52 @@
     }
   }
 
+  function isPendingError(msg) {
+    return msg.includes('not yet') || msg.includes('next sync') || msg.includes('will be') || msg.includes('per-minute');
+  }
+
   async function parseMatch(matchId) {
     parsingMatches = new Set([...parsingMatches, matchId]);
-    // Clear previous error for this match
+    // Clear previous error and any pending retry for this match
     if (parseErrors.has(matchId)) {
       const m = new Map(parseErrors);
       m.delete(matchId);
       parseErrors = m;
     }
+    if (retryCountdowns.has(matchId)) {
+      const m = new Map(retryCountdowns);
+      m.delete(matchId);
+      retryCountdowns = m;
+    }
     try {
       await invoke("parse_match", { matchId, steamId: currentSteamId });
       await loadMatches();
     } catch (e) {
+      const errMsg = String(e);
       const m = new Map(parseErrors);
-      m.set(matchId, String(e));
+      m.set(matchId, errMsg);
       parseErrors = m;
+      // Schedule auto-retry if OpenDota hasn't finished parsing yet
+      if (isPendingError(errMsg)) {
+        const rc = new Map(retryCountdowns);
+        rc.set(matchId, 60);
+        retryCountdowns = rc;
+      }
     } finally {
       const newSet = new Set(parsingMatches);
       newSet.delete(matchId);
       parsingMatches = newSet;
+    }
+  }
+
+  async function handleParseAll() {
+    const toParse = matches.filter(m =>
+      (m.parse_state === "Unparsed" || m.parse_state === "Failed") &&
+      !parsingMatches.has(m.match_id) &&
+      !retryCountdowns.has(m.match_id)
+    );
+    for (const match of toParse) {
+      parseMatch(match.match_id).catch(() => {});
     }
   }
 
@@ -345,6 +389,11 @@
         </button>
       {/each}
     </div>
+    {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !parsingMatches.has(m.match_id) && !retryCountdowns.has(m.match_id))}
+      <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
+        Parse All
+      </button>
+    {/if}
     <button class="btn btn-primary refresh-btn" onclick={handleRefresh} disabled={isRefreshing}>
       ↻ {isRefreshing ? 'Refreshing...' : 'Refresh Matches'}
     </button>
@@ -435,13 +484,21 @@
               <span class="parsing-spinner">⏳</span>
             {:else if parseErrors.has(match.match_id)}
               {@const errMsg = parseErrors.get(match.match_id)}
-              {@const isPending = errMsg.includes('next sync') || errMsg.includes('not yet') || errMsg.includes('will be')}
-              <span
-                class="parse-status-icon {isPending ? 'parse-pending' : 'parse-warn'}"
-                title={errMsg}
-                role="img"
-                aria-label={errMsg}
-              >{isPending ? '🕐' : '⚠'}</span>
+              {@const pending = isPendingError(errMsg)}
+              {@const countdown = retryCountdowns.get(match.match_id)}
+              {#if pending}
+                <span
+                  class="not-ready-text"
+                  title={countdown ? `will retry in ${countdown}s` : errMsg}
+                >Not ready</span>
+              {:else}
+                <span
+                  class="parse-status-icon parse-warn"
+                  title={errMsg}
+                  role="img"
+                  aria-label={errMsg}
+                >⚠</span>
+              {/if}
             {:else if match.parse_state === "Unparsed" || match.parse_state === "Failed"}
               <button
                 class="parse-btn"
@@ -865,6 +922,19 @@
 
   .parse-warn { color: var(--red); }
   .parse-pending { color: var(--text-muted); }
+
+  .not-ready-text {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    cursor: help;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .parse-all-btn { flex-shrink: 0; }
 
   @keyframes spin {
     from { transform: rotate(0deg); }
