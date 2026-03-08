@@ -10,9 +10,11 @@ fn main() {
     // for env!() in the crate code to see it.
     let posthog_key = std::env::var("POSTHOG_API_KEY").unwrap_or_default();
     println!("cargo:rustc-env=POSTHOG_API_KEY={}", posthog_key);
-
-    // Tell Cargo to rerun this build script if POSTHOG_API_KEY changes
     println!("cargo:rerun-if-env-changed=POSTHOG_API_KEY");
+
+    let sentry_dsn = std::env::var("SENTRY_DSN").unwrap_or_default();
+    println!("cargo:rustc-env=SENTRY_DSN={}", sentry_dsn);
+    println!("cargo:rerun-if-env-changed=SENTRY_DSN");
 
     tauri_build::build()
 }

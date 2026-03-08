@@ -458,7 +458,7 @@
           {@const spark = getSparklineData(goalData)}
           {@const sparkColor = hitRate >= 70 ? '#4ade80' : '#f0b429'}
           {@const gradId = `sg${goalData.goal.id}`}
-          <div class="goal-row" onclick={() => goto(`/goals/${goalData.goal.id}`)}>
+          <div class="goal-row" role="button" tabindex="0" onclick={() => goto(`/goals/${goalData.goal.id}`)} onkeydown={(e) => e.key === 'Enter' && goto(`/goals/${goalData.goal.id}`)}>
             <div class="hero-avatar">
               {#if goalData.goal.hero_id !== null}
                 <HeroIcon heroId={goalData.goal.hero_id} size="small" showName={false} />

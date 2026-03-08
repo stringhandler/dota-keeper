@@ -2032,8 +2032,31 @@ async fn background_parse_loop(app: tauri::AppHandle) {
 
 // ── end Background match parser ───────────────────────────────────────────────
 
+// DSN baked in at compile time from the SENTRY_DSN env var (via build.rs).
+const SENTRY_DSN: &str = env!("SENTRY_DSN");
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Keep the guard alive for the full lifetime of the app.
+    // sentry::init returns a ClientInitGuard that flushes the event queue on drop.
+    let _sentry_guard = if !SENTRY_DSN.is_empty() {
+        Some(sentry::init((
+            SENTRY_DSN,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                environment: if cfg!(debug_assertions) {
+                    Some("development".into())
+                } else {
+                    Some("production".into())
+                },
+                traces_sample_rate: 0.1,
+                ..Default::default()
+            },
+        )))
+    } else {
+        None
+    };
+
     tauri::Builder::default()
         .setup(|app| {
             // Initialise storage directories from Tauri's platform-aware path API.

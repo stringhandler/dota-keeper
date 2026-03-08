@@ -7,6 +7,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { getAnalyticsConsent, identifyUser } from "$lib/analytics.js";
+  import { initSentry } from "$lib/sentry.js";
   import AnalyticsConsentModal from "$lib/AnalyticsConsentModal.svelte";
   import OnboardingFlow from "$lib/OnboardingFlow.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
@@ -36,6 +37,9 @@
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
     checkMobile();
     window.addEventListener('resize', checkMobile);
+
+    // Initialise Sentry as early as possible so it catches startup errors too
+    initSentry();
 
     await loadSettings();
     await checkForUpdates();

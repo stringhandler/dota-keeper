@@ -13,6 +13,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "@sentry/browser": "^10.42.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2",
