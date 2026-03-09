@@ -120,7 +120,10 @@
     <p class="loading">Loading challenges...</p>
   {:else if progress && activeChallenge}
     <!-- Active challenge progress view -->
-    <div class="active-challenge">
+    <div class="active-challenge" class:challenge-completed={progress.completed}>
+      {#if progress.completed}
+        <div class="completed-banner">✓ Challenge Complete!</div>
+      {/if}
       <div class="active-header">
         <div class="difficulty-badge" style="color: {difficultyColor(activeChallenge.challenge_type)}">
           {difficultyLabel(activeChallenge.challenge_type)}
@@ -148,13 +151,15 @@
       </div>
 
       <div class="meta-row">
+        {#if !progress.completed}
+          <div class="meta-item">
+            <span class="meta-label">Games counted</span>
+            <span class="meta-value">{progress.games_counted}</span>
+          </div>
+        {/if}
         <div class="meta-item">
-          <span class="meta-label">Games counted</span>
-          <span class="meta-value">{progress.games_counted}</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">Days remaining</span>
-          <span class="meta-value">{progress.days_remaining}</span>
+          <span class="meta-label">{progress.completed ? "Resets in" : "Days remaining"}</span>
+          <span class="meta-value">{progress.days_remaining}d</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">Status</span>
@@ -441,6 +446,24 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 28px;
+    overflow: hidden;
+  }
+
+  .active-challenge.challenge-completed {
+    border-color: rgba(74, 222, 128, 0.35);
+  }
+
+  .completed-banner {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+    background: rgba(74, 222, 128, 0.08);
+    border-bottom: 1px solid rgba(74, 222, 128, 0.2);
+    padding: 10px 28px;
+    margin: -28px -28px 20px -28px;
   }
 
   .active-header {

@@ -396,6 +396,7 @@
         <div class="weekly-meta">
           {#if weeklyProgress.completed}
             <span class="complete-tag">✓ Complete!</span>
+            <span class="reset-text">Resets in {weeklyProgress.days_remaining}d</span>
           {:else}
             <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
           {/if}
@@ -857,7 +858,7 @@
     font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .weekly-meta { font-size: 11px; }
+  .weekly-meta { font-size: 11px; display: flex; align-items: center; gap: 8px; }
 
   /* ── HERO SUGGESTION ── */
   .suggestion-card {

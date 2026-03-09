@@ -76,11 +76,12 @@ impl GoalMetric {
     }
 }
 
-/// Game mode for goals (Ranked or Turbo)
+/// Game mode for goals (Ranked, Turbo, or All)
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum GoalGameMode {
     Ranked,
     Turbo,
+    All,
 }
 
 impl GoalGameMode {
@@ -88,6 +89,7 @@ impl GoalGameMode {
         match self {
             GoalGameMode::Ranked => "ranked",
             GoalGameMode::Turbo => "turbo",
+            GoalGameMode::All => "all",
         }
     }
 
@@ -95,6 +97,7 @@ impl GoalGameMode {
         match s {
             "ranked" => Some(GoalGameMode::Ranked),
             "turbo" => Some(GoalGameMode::Turbo),
+            "all" => Some(GoalGameMode::All),
             _ => None,
         }
     }
@@ -755,7 +758,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
                 metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
                 target_value: row.get(3)?,
                 target_time_minutes: row.get(4)?,
-                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::All),
                 created_at: row.get(6)?,
                 item_id: row.get(7)?,
                 hero_scope: row.get(8).unwrap_or(None),
@@ -848,6 +851,7 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
     let mode_matches = match goal.game_mode {
         GoalGameMode::Ranked => is_ranked,
         GoalGameMode::Turbo => is_turbo,
+        GoalGameMode::All => true,
     };
 
     if !mode_matches {
@@ -1308,7 +1312,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
                 metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
                 target_value: row.get(3)?,
                 target_time_minutes: row.get(4)?,
-                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::All),
                 created_at: row.get(6)?,
                 item_id: row.get(7)?,
                 hero_scope: row.get(8).unwrap_or(None),

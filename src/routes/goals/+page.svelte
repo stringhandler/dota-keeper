@@ -25,7 +25,7 @@
   let formItemId = $state("");
   let formItemMinutes = $state("");
   let formItemSeconds = $state("");
-  let formGameMode = $state("Ranked");
+  let formGameMode = $state("All");
 
   // Analysis data for contextual warnings
   let analysisData = $state(null);
@@ -361,6 +361,7 @@
         <div class="fg fg-narrow">
           <div class="form-label">Mode</div>
           <select class="form-select" bind:value={formGameMode}>
+            <option value="All">Any</option>
             <option value="Ranked">Ranked</option>
             <option value="Turbo">Turbo</option>
           </select>
@@ -435,7 +436,7 @@
             </div>
             <div class="goal-meta">
               <span class="goal-tag {tag.cls}">{tag.label}</span>
-              <span>{goal.game_mode}</span>
+              <span>{goal.game_mode === 'All' ? 'Any' : goal.game_mode}</span>
               {#if warning}
                 <span class="warning-tag">⚠ {warning}</span>
               {/if}

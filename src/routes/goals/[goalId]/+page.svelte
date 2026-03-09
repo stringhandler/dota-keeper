@@ -26,7 +26,7 @@
   let editItemId = $state("");
   let editItemMinutes = $state("");
   let editItemSeconds = $state("");
-  let editGameMode = $state("Ranked");
+  let editGameMode = $state("All");
 
   // Filters
   let selectedHeroId = $state("");
@@ -298,7 +298,7 @@
   function formatGoalDescription(g) {
     if (!g) return "";
     const heroName = getHeroLabel(g);
-    const modeStr = g.game_mode ? ` (${g.game_mode})` : "";
+    const modeStr = g.game_mode && g.game_mode !== 'All' ? ` (${g.game_mode})` : "";
     if (g.metric === "ItemTiming") {
       const itemName = g.item_id !== null ? getItemName(g.item_id) : "Unknown Item";
       const timeStr = formatSeconds(g.target_value);
@@ -446,6 +446,7 @@
               <label style="flex: 1;">
                 Game Mode
                 <select bind:value={editGameMode} class="form-select">
+                  <option value="All">Any</option>
                   <option value="Ranked">Ranked</option>
                   <option value="Turbo">Turbo</option>
                 </select>
