@@ -20,6 +20,15 @@
 
     <link rel="stylesheet" href="style.css">
 
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX');
+    </script>
+
     <style>
         /* Privacy Policy specific styles */
         .policy-header {
@@ -290,7 +299,7 @@
                 <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 2rem; text-align: center;">This policy applies to the Dota Keeper application and website, developed by <strong style="color: var(--text-secondary);">Volthawk Software (Pty) Ltd</strong> ("we", "us", or "our").</p>
 
                 <div class="highlight-box">
-                    <p><strong>TL;DR:</strong> Dota Keeper stores all your data locally on your device. We do not sell or share your personal information. When you choose to sync match data, your Steam ID and IP address are sent to OpenDota's public API — this is the only external data transmission, and it only happens when you initiate it.</p>
+                    <p><strong>TL;DR:</strong> The Dota Keeper <em>app</em> stores all your data locally — nothing leaves your device. This <em>website</em> uses Google Analytics to collect anonymous visitor statistics (pages visited, country, browser). We do not sell or share your personal information.</p>
                 </div>
 
                 <!-- Table of Contents -->
@@ -343,7 +352,12 @@
                                 <td><span class="tag tag-local">Local only</span></td>
                             </tr>
                             <tr>
-                                <td>Analytics, crash reports, or telemetry</td>
+                                <td>Website analytics (pages visited, country, browser)</td>
+                                <td>Google Analytics (website only)</td>
+                                <td><span class="tag tag-external">Google — anonymised</span></td>
+                            </tr>
+                            <tr>
+                                <td>App analytics, crash reports, or telemetry</td>
                                 <td>N/A</td>
                                 <td><span class="tag tag-none">Not collected</span></td>
                             </tr>
@@ -403,8 +417,15 @@
                         <li>Google Privacy Policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a></li>
                     </ul>
 
+                    <h3>Google Analytics</h3>
+                    <p>This website (not the app) uses Google Analytics 4 to collect anonymous usage statistics — such as pages visited, time on page, country, and browser type. This helps us understand how visitors use the site so we can improve it.</p>
+                    <p>Google Analytics uses cookies and may collect your IP address, which Google anonymises before storage. No personally identifiable information is collected. You can opt out using the <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener noreferrer">Google Analytics Opt-out Browser Add-on</a>.</p>
+                    <ul>
+                        <li>Google Privacy Policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a></li>
+                    </ul>
+
                     <div class="highlight-box">
-                        <p><strong>No other third-party services are used in the Dota Keeper app.</strong> There are no advertising networks, analytics platforms, social media SDKs, or tracking pixels.</p>
+                        <p><strong>No other third-party services are used in the Dota Keeper app.</strong> There are no advertising networks, social media SDKs, or tracking pixels in the app itself.</p>
                     </div>
                 </div>
 
@@ -452,7 +473,7 @@
                     </ul>
                 </div>
 
-                <p class="last-updated">Last updated: March 2026</p>
+                <p class="last-updated">Last updated: March 2026 — added Google Analytics disclosure</p>
             </div>
         </div>
     </section>
