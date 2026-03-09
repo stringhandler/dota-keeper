@@ -275,7 +275,17 @@
     "filter_daily": "Ежедневные",
     "history_loading": "Загрузка истории...",
     "history_empty": "Историй испытаний пока нет. Выполните испытания, чтобы увидеть их здесь!",
-    "week_of": "Неделя от {date}"
+    "week_of": "Неделя от {date}",
+    "desc_kills": "Получить {n}+ убийств за игру",
+    "desc_gpm": "Достичь {n}+ GPM за игру",
+    "desc_low_deaths": "Умереть {n} раз или меньше за игру",
+    "desc_hero_damage": "Нанести {n}+ урона героям за игру",
+    "desc_cs_at_10": "Получить {n}+ CS к 10 минутам",
+    "desc_kills_total": "Получить {n}+ убийств за неделю",
+    "desc_avg_gpm": "Средний {n}+ GPM за {g} игр",
+    "desc_low_deaths_games": "Умирать {n} раз или меньше в {g} играх",
+    "desc_hero_damage_total": "Нанести {n}+ урона героям за неделю",
+    "desc_cs_at_10_avg": "Средний {n}+ CS к 10 минутам за {g} игр"
   },
   "mental_health": {
     "title": "Психологическое здоровье",
@@ -488,6 +498,19 @@
     "saving": "Сохранение..."
   },
   "hero_select": {
-    "any_hero": "Любой герой"
+    "any_hero": "Любой герой",
+    "by_role": "По роли",
+    "favorites": "⭐ Избранные",
+    "all_heroes": "Все герои"
+  },
+  "goals_detail": {
+    "hero_filter": "Герой",
+    "all_heroes": "Все герои",
+    "period": "Период",
+    "period_7d": "7 дней",
+    "period_30d": "30 дней",
+    "period_1y": "Год",
+    "reset": "Сбросить",
+    "distribution": "Распределение"
   }
 }

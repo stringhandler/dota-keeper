@@ -105,7 +105,11 @@
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 9px;
     font-weight: 600;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.1;
+    word-break: break-word;
   }
 </style>

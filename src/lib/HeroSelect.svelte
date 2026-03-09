@@ -1,5 +1,6 @@
 <script>
   import { getHeroIconUrl } from './heroes.js';
+  import { _ } from "svelte-i18n";
 
   let {
     value = $bindable(''),
@@ -138,7 +139,7 @@
       </div>
 
       {#if groupOptions.length > 0}
-        <div class="group-label">By Role</div>
+        <div class="group-label">{$_('hero_select.by_role')}</div>
         {#each groupOptions as opt}
           <div
             class="hero-option"
@@ -155,13 +156,13 @@
       {/if}
 
       {#if favoriteHeroList.length > 0}
-        <div class="group-label">⭐ Favorites</div>
+        <div class="group-label">{$_('hero_select.favorites')}</div>
         {#each favoriteHeroList as hero (hero.id)}
           {@render heroOptionRow(hero, hero.id == value)}
         {/each}
       {/if}
 
-      <div class="group-label">All Heroes</div>
+      <div class="group-label">{$_('hero_select.all_heroes')}</div>
       {#each otherHeroList as hero (hero.id)}
         {@render heroOptionRow(hero, hero.id == value)}
       {/each}

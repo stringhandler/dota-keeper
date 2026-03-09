@@ -104,6 +104,25 @@
     if (target <= 0) return 0;
     return Math.min(100, Math.round((current / target) * 100));
   }
+
+  function challengeDesc(metric, target, targetGames, fallback) {
+    const g = targetGames ?? 5;
+    const keyMap = {
+      kills: 'challenges.desc_kills',
+      gpm: 'challenges.desc_gpm',
+      low_deaths: 'challenges.desc_low_deaths',
+      hero_damage: 'challenges.desc_hero_damage',
+      cs_at_10: 'challenges.desc_cs_at_10',
+      kills_total: 'challenges.desc_kills_total',
+      avg_gpm: 'challenges.desc_avg_gpm',
+      low_deaths_games: 'challenges.desc_low_deaths_games',
+      hero_damage_total: 'challenges.desc_hero_damage_total',
+      cs_at_10_avg: 'challenges.desc_cs_at_10_avg',
+    };
+    const key = keyMap[metric];
+    if (!key) return fallback;
+    return $_( key, { values: { n: target, g } });
+  }
 </script>
 
 <div class="challenges-content">
@@ -129,7 +148,7 @@
         <div class="difficulty-badge" style="color: {difficultyColor(activeChallenge.challenge_type)}">
           {difficultyTKey(activeChallenge.challenge_type) ? $_(difficultyTKey(activeChallenge.challenge_type)) : activeChallenge.challenge_type}
         </div>
-        <h2>{activeChallenge.challenge_description}</h2>
+        <h2>{challengeDesc(activeChallenge.metric, activeChallenge.challenge_target, activeChallenge.challenge_target_games, activeChallenge.challenge_description)}</h2>
         {#if activeChallenge.hero_id !== null}
           <p class="hero-label">{$_('challenges.hero_label', { values: { name: getHeroName(activeChallenge.hero_id) } })}</p>
         {/if}
@@ -204,7 +223,7 @@
               </span>
               <span class="option-type">{option.metric.replace(/_/g, ' ')}</span>
             </div>
-            <p class="option-description">{option.challenge_description}</p>
+            <p class="option-description">{challengeDesc(option.metric, option.challenge_target, option.challenge_target_games, option.challenge_description)}</p>
             {#if option.hero_id !== null}
               <p class="option-hero">{$_('challenges.hero_label', { values: { name: getHeroName(option.hero_id) } })}</p>
             {/if}

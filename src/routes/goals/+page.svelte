@@ -326,7 +326,7 @@
       <div class="form-row">
         <div class="fg">
           <div class="form-label">{$_('goals.hero')}</div>
-          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
+          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals.any_hero')} groupOptions={HERO_GROUP_OPTIONS} />
         </div>
 
         <div class="fg">

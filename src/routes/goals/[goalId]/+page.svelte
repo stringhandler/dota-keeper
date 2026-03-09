@@ -517,28 +517,28 @@
     <div class="filters-row">
       {#if goal.hero_id === null}
         <div class="filter-group">
-          <div class="filter-label">Hero</div>
-          <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="All Heroes" />
+          <div class="filter-label">{$_('goals_detail.hero_filter')}</div>
+          <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals_detail.all_heroes')} />
         </div>
       {/if}
       <div class="filter-group">
-        <div class="filter-label">Period</div>
+        <div class="filter-label">{$_('goals_detail.period')}</div>
         <div class="period-buttons">
-          {#each [['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['1y', 'Last Year']] as [val, label]}
+          {#each [['7d', 'goals_detail.period_7d'], ['30d', 'goals_detail.period_30d'], ['1y', 'goals_detail.period_1y']] as [val, tkey]}
             <button
               class="period-btn"
               class:active={selectedPeriod === val}
               onclick={() => selectedPeriod = selectedPeriod === val ? '' : val}
-            >{label}</button>
+            >{$_(tkey)}</button>
           {/each}
         </div>
       </div>
-      <button class="reset-btn" onclick={resetFilters}>Reset</button>
+      <button class="reset-btn" onclick={resetFilters}>{$_('goals_detail.reset')}</button>
     </div>
 
     <!-- Histogram Section -->
     <section class="histogram-section">
-      <h2>Distribution</h2>
+      <h2>{$_('goals_detail.distribution')}</h2>
 
       <!-- Goal suggestion banner -->
       {#if goalSuggestion() && !bannerDismissed}

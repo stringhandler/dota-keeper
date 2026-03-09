@@ -275,7 +275,17 @@
     "filter_daily": "Daily",
     "history_loading": "Loading history...",
     "history_empty": "No challenge history yet. Complete some challenges to see them here!",
-    "week_of": "Week of {date}"
+    "week_of": "Week of {date}",
+    "desc_kills": "Get {n}+ kills in one game",
+    "desc_gpm": "Achieve {n}+ GPM in one game",
+    "desc_low_deaths": "Die {n} times or less in one game",
+    "desc_hero_damage": "Deal {n}+ hero damage in one game",
+    "desc_cs_at_10": "Get {n}+ CS at 10 minutes",
+    "desc_kills_total": "Get {n}+ total kills this week",
+    "desc_avg_gpm": "Average {n}+ GPM across {g} games",
+    "desc_low_deaths_games": "Die {n} or fewer times in {g} games",
+    "desc_hero_damage_total": "Deal {n}+ total hero damage this week",
+    "desc_cs_at_10_avg": "Average {n}+ CS at 10 minutes across {g} games"
   },
   "mental_health": {
     "title": "Mental Wellbeing",
@@ -488,6 +498,19 @@
     "saving": "Saving..."
   },
   "hero_select": {
-    "any_hero": "Any Hero"
+    "any_hero": "Any Hero",
+    "by_role": "By Role",
+    "favorites": "⭐ Favorites",
+    "all_heroes": "All Heroes"
+  },
+  "goals_detail": {
+    "hero_filter": "Hero",
+    "all_heroes": "All Heroes",
+    "period": "Period",
+    "period_7d": "Last 7 Days",
+    "period_30d": "Last 30 Days",
+    "period_1y": "Last Year",
+    "reset": "Reset",
+    "distribution": "Distribution"
   }
 }
