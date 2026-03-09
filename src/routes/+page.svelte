@@ -8,6 +8,7 @@
   import { trackPageView } from "$lib/analytics.js";
   import MoodCheckin from "$lib/MoodCheckin.svelte";
   import { pendingCheckinStore } from "$lib/checkin-store.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -282,9 +283,9 @@
     const earlierRate = earlierTotal > 0
       ? earlier.reduce((s, d) => s + d.achieved, 0) / earlierTotal
       : 0;
-    if (recentRate > earlierRate + 0.15) return { label: 'Improving', cls: 'improving' };
-    if (recentRate < earlierRate - 0.15) return { label: 'Declining', cls: 'declining' };
-    return { label: 'Stable', cls: 'stable' };
+    if (recentRate > earlierRate + 0.15) return { label: $_('dashboard.improving'), cls: 'improving' };
+    if (recentRate < earlierRate - 0.15) return { label: $_('dashboard.declining'), cls: 'declining' };
+    return { label: $_('dashboard.stable'), cls: 'stable' };
   }
 
   function getSparklineData(goalData) {
@@ -328,15 +329,15 @@
     today.setHours(0, 0, 0, 0);
     const diffTime = date.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return "Today";
-    if (diffDays === -1) return "Yesterday";
+    if (diffDays === 0) return $_('dashboard.today');
+    if (diffDays === -1) return $_('dashboard.yesterday');
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
 </script>
 
 <div class="dashboard">
   {#if isLoading}
-    <div class="loading-state">Loading...</div>
+    <div class="loading-state">{$_('dashboard.loading')}</div>
   {:else}
     {#if error}
       <div class="error-banner">{error}</div>
@@ -350,24 +351,24 @@
     <!-- QUICK STATS STRIP -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Win Rate (7d)</div>
+        <div class="stat-label">{$_('dashboard.win_rate')}</div>
         {#if winRate7d}
           <div class="stat-value">{winRate7d.rate}<span class="stat-unit">%</span></div>
-          <div class="stat-sub">{winRate7d.count} games</div>
+          <div class="stat-sub">{$_('dashboard.games', { values: { count: winRate7d.count } })}</div>
         {:else}
           <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">No recent games</div>
+          <div class="stat-sub">{$_('dashboard.no_recent_games')}</div>
         {/if}
       </div>
 
       <div class="stat-card">
-        <div class="stat-label">Avg CS @ 10min</div>
+        <div class="stat-label">{$_('dashboard.avg_cs')}</div>
         {#if avgCS !== null}
           <div class="stat-value">{avgCS.toFixed(1)}</div>
-          <div class="stat-sub">last {analysisData?.current_period?.count || 0} games</div>
+          <div class="stat-sub">{$_('dashboard.last_games', { values: { count: analysisData?.current_period?.count || 0 } })}</div>
         {:else}
           <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">Parse matches to track</div>
+          <div class="stat-sub">{$_('dashboard.parse_to_track')}</div>
         {/if}
       </div>
 
@@ -376,7 +377,7 @@
 
     <!-- WEEKLY CHALLENGE -->
     <div class="section-header">
-      <div class="section-title">🏆 Weekly Challenge</div>
+      <div class="section-title">{$_('dashboard.weekly_challenge')}</div>
     </div>
     {#if weeklyProgress}
       <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
@@ -395,24 +396,24 @@
         </div>
         <div class="weekly-meta">
           {#if weeklyProgress.completed}
-            <span class="complete-tag">✓ Complete!</span>
-            <span class="reset-text">Resets in {weeklyProgress.days_remaining}d</span>
+            <span class="complete-tag">{$_('dashboard.complete_tag')}</span>
+            <span class="reset-text">{$_('dashboard.resets_in', { values: { days: weeklyProgress.days_remaining } })}</span>
           {:else}
-            <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
+            <span class="reset-text">{$_('dashboard.days_left', { values: { days: weeklyProgress.days_remaining } })}</span>
           {/if}
         </div>
       </a>
     {:else}
       <a href="/challenges" class="weekly-card empty">
-        <span class="weekly-empty-text">Choose this week's challenge →</span>
+        <span class="weekly-empty-text">{$_('dashboard.choose_challenge')}</span>
       </a>
     {/if}
 
     <!-- TODAY'S CHALLENGE (hidden on mobile) -->
     {#if dailyProgress}
       <div class="section-header hide-mobile" style="margin-top: 28px;">
-        <div class="section-title">⚡ Today's Challenge</div>
-        <div class="reset-text">Resets in {timeUntilMidnight}</div>
+        <div class="section-title">{$_('dashboard.todays_challenge')}</div>
+        <div class="reset-text">{$_('dashboard.resets_in_time', { values: { time: timeUntilMidnight } })}</div>
       </div>
       <div class="challenge-card hide-mobile" class:completed={dailyProgress.completed}>
         <div class="challenge-icon">
@@ -428,28 +429,28 @@
             <div class="challenge-bar-fill" style="width: {getDailyProgressPct(dailyProgress)}%"></div>
           </div>
           <div class="challenge-meta">
-            <span>{dailyProgress.current_value} / {dailyProgress.target} completed</span>
+            <span>{$_('dashboard.completed', { values: { current: dailyProgress.current_value, target: dailyProgress.target } })}</span>
             {#if dailyProgress.completed}
-              <span class="complete-tag">✓ Complete!</span>
+              <span class="complete-tag">{$_('dashboard.complete_tag')}</span>
             {:else if dailyStreak > 0}
-              <span class="streak-tag">🔥 {dailyStreak} day streak</span>
+              <span class="streak-tag">{$_('dashboard.streak', { values: { count: dailyStreak } })}</span>
             {/if}
           </div>
         </div>
-        <a href="/challenges" class="btn btn-ghost">View Stats</a>
+        <a href="/challenges" class="btn btn-ghost">{$_('dashboard.view_stats')}</a>
       </div>
     {/if}
 
     <!-- GOAL PROGRESS -->
     <div class="section-header" style="margin-top: 28px;">
-      <div class="section-title">Goal Progress — Last 7 Days</div>
-      <a href="/goals" class="btn btn-ghost">Manage Goals</a>
+      <div class="section-title">{$_('dashboard.goal_progress')}</div>
+      <a href="/goals" class="btn btn-ghost">{$_('dashboard.manage_goals')}</a>
     </div>
 
     {#if goalCalendar.length === 0}
       <div class="empty-goals">
-        <p>No goals yet.</p>
-        <a href="/goals" class="btn btn-primary" style="margin-top:12px">Create your first goal →</a>
+        <p>{$_('dashboard.no_goals')}</p>
+        <a href="/goals" class="btn btn-primary" style="margin-top:12px">{$_('dashboard.create_first_goal')}</a>
       </div>
     {:else}
       <div class="goals-grid">
@@ -532,13 +533,13 @@
 
     <!-- NEW GOAL BUTTON (mobile only) -->
     <div class="mobile-new-goal">
-      <a href="/goals" class="btn btn-primary" style="width:100%;justify-content:center;padding:14px;">+ New Goal</a>
+      <a href="/goals" class="btn btn-primary" style="width:100%;justify-content:center;padding:14px;">{$_('layout.new_goal')}</a>
     </div>
 
     <!-- HERO SUGGESTION -->
     {#if heroSuggestion && !isSuggestionAdopted}
       <div class="section-header" style="margin-top: 28px;">
-        <div class="section-title">🎯 Suggested Goal</div>
+        <div class="section-title">{$_('dashboard.suggested_goal')}</div>
       </div>
       <div class="suggestion-card">
         <div class="suggestion-hero">
@@ -548,23 +549,23 @@
           <div class="suggestion-hero-name">{getHeroName(heroSuggestion.hero_id)}</div>
           <div class="suggestion-stats">
             <div class="sug-stat">
-              <div class="sug-label">Current Avg</div>
+              <div class="sug-label">{$_('dashboard.current_avg')}</div>
               <div class="sug-value">{Math.round(heroSuggestion.current_average)} CS</div>
             </div>
             <div class="sug-stat">
-              <div class="sug-label">Suggested</div>
+              <div class="sug-label">{$_('dashboard.suggested')}</div>
               <div class="sug-value gold">{heroSuggestion.suggested_last_hits} CS</div>
             </div>
             <div class="sug-stat">
-              <div class="sug-label">Improvement</div>
+              <div class="sug-label">{$_('dashboard.improvement')}</div>
               <div class="sug-value green">+{heroSuggestion.suggested_last_hits - Math.round(heroSuggestion.current_average)} CS</div>
             </div>
           </div>
-          <div class="sug-games">Based on {heroSuggestion.games_analyzed} games</div>
+          <div class="sug-games">{$_('dashboard.based_on', { values: { count: heroSuggestion.games_analyzed } })}</div>
         </div>
         <div class="suggestion-actions">
-          <button class="btn btn-ghost" onclick={() => refreshSuggestion()}>🔄 Refresh</button>
-          <button class="btn btn-primary" onclick={() => acceptSuggestion(heroSuggestion)}>Create Goal</button>
+          <button class="btn btn-ghost" onclick={() => refreshSuggestion()}>🔄 {$_('dashboard.refresh')}</button>
+          <button class="btn btn-primary" onclick={() => acceptSuggestion(heroSuggestion)}>{$_('dashboard.create_goal')}</button>
         </div>
       </div>
     {/if}

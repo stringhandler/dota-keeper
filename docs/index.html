@@ -75,9 +75,52 @@
       "description": "Track your Dota 2 matches, set custom performance goals, and improve your gameplay with data-driven insights."
     }
     </script>
+
+    <style>
+        .lang-switcher {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            gap: 4px;
+            background: rgba(13, 19, 24, 0.85);
+            border: 1px solid rgba(240, 180, 41, 0.3);
+            border-radius: 4px;
+            padding: 4px;
+            backdrop-filter: blur(8px);
+        }
+        .lang-btn {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            padding: 4px 10px;
+            border: none;
+            background: transparent;
+            color: rgba(184, 168, 149, 0.7);
+            cursor: pointer;
+            border-radius: 2px;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+        .lang-btn.active {
+            background: rgba(240, 180, 41, 0.15);
+            color: #f0b429;
+        }
+        .lang-btn:hover:not(.active) {
+            color: #e8dcc8;
+        }
+    </style>
 </head>
 
 <body>
+    <!-- Language Switcher -->
+    <div class="lang-switcher" role="navigation" aria-label="Language switcher">
+        <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" data-lang="ru" onclick="setLang('ru')">RU</button>
+    </div>
+
     <!-- WebGL Animated Background -->
     <canvas id="webgl-bg" class="webgl-background"></canvas>
 
@@ -86,14 +129,14 @@
         <div class="container">
             <div class="hero-badge">
                 <span class="badge-icon">⚡</span>
-                <span class="badge-text">Free & Open Source</span>
+                <span class="badge-text" data-i18n="badge_free_open">Free &amp; Open Source</span>
             </div>
             <h1 class="hero-title">
                 <span class="title-line">DOTA</span>
                 <span class="title-line title-highlight">KEEPER</span>
             </h1>
-            <p class="hero-tagline">Level Up Your Dota 2 Performance</p>
-            <p class="hero-description">
+            <p class="hero-tagline" data-i18n="hero_tagline">Level Up Your Dota 2 Performance</p>
+            <p class="hero-description" data-i18n-html="hero_description">
                 Track matches automatically, set custom goals, and dominate the game with data-driven insights.
                 <strong>No subscriptions. No ads. Your data stays private.</strong>
             </p>
@@ -101,7 +144,7 @@
             <div class="cta-group">
                 <a href="#download" class="btn-primary">
                     <span class="btn-icon">⬇</span>
-                    <span>Download Now</span>
+                    <span data-i18n="download_now">Download Now</span>
                 </a>
                 <a href="https://discord.gg/pgNrDSXV" target="_blank" rel="noopener" class="btn-secondary btn-discord">
                     <span class="btn-icon">
@@ -111,27 +154,27 @@
                                 d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
                         </svg>
                     </span>
-                    <span>Join Discord</span>
+                    <span data-i18n="join_discord">Join Discord</span>
                 </a>
                 <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener"
                     class="btn-secondary">
                     <span class="btn-icon">★</span>
-                    <span>Star on GitHub</span>
+                    <span data-i18n="star_github">Star on GitHub</span>
                 </a>
             </div>
 
             <div class="hero-stats">
                 <div class="stat-item">
                     <div class="stat-number">100%</div>
-                    <div class="stat-label">Free Forever</div>
+                    <div class="stat-label" data-i18n="stat_free">Free Forever</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-number">0</div>
-                    <div class="stat-label">Ads or Tracking</div>
+                    <div class="stat-label" data-i18n="stat_ads">Ads or Tracking</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-number">3</div>
-                    <div class="stat-label">Platforms</div>
+                    <div class="stat-label" data-i18n="stat_platforms">Platforms</div>
                 </div>
             </div>
 
@@ -148,8 +191,8 @@
     <section class="download" id="download">
         <div class="container">
             <div class="section-header">
-                <h2>Choose Your Platform</h2>
-                <p class="section-subtitle">Available for all major operating systems. Start tracking in minutes.</p>
+                <h2 data-i18n="download_title">Choose Your Platform</h2>
+                <p class="section-subtitle" data-i18n="download_subtitle">Available for all major operating systems. Start tracking in minutes.</p>
             </div>
             <div class="download-grid">
                 <div class="download-card" data-platform="windows">
@@ -162,17 +205,17 @@
                             </svg>
                         </div>
                         <h3>Windows</h3>
-                        <p class="platform-desc">Windows 10/11 • 64-bit</p>
+                        <p class="platform-desc" data-i18n="win_desc">Windows 10/11 • 64-bit</p>
                         <a href="https://github.com/stringhandler/dota-keeper/releases/latest" id="dl-windows"
                             class="btn-download">
                             <span class="btn-icon">⬇</span>
-                            <span>Download .MSI</span>
+                            <span data-i18n="win_download">Download .MSI</span>
                         </a>
-                        <div class="download-meta">Installer Package • ~45MB</div>
+                        <div class="download-meta" data-i18n="win_meta">Installer Package • ~45MB</div>
                     </div>
                 </div>
                 <div class="download-card featured" data-platform="macos">
-                    <div class="featured-badge">Most Popular</div>
+                    <div class="featured-badge" data-i18n="featured_badge">Most Popular</div>
                     <div class="card-inner">
                         <div class="platform-icon-wrapper">
                             <svg class="platform-icon" viewBox="0 0 48 48" fill="none"
@@ -183,19 +226,19 @@
                             </svg>
                         </div>
                         <h3>macOS</h3>
-                        <p class="platform-desc">macOS 11+ • Universal</p>
+                        <p class="platform-desc" data-i18n="mac_desc">macOS 11+ • Universal</p>
                         <div class="btn-group">
                             <a href="https://github.com/stringhandler/dota-keeper/releases/latest" id="dl-macos-arm"
                                 class="btn-download">
                                 <span class="btn-icon">⬇</span>
-                                <span>Apple Silicon</span>
+                                <span data-i18n="mac_silicon">Apple Silicon</span>
                             </a>
                             <a href="https://github.com/stringhandler/dota-keeper/releases/latest" id="dl-macos-x64"
                                 class="btn-download btn-outline">
-                                <span>Intel</span>
+                                <span data-i18n="mac_intel">Intel</span>
                             </a>
                         </div>
-                        <div class="download-meta">App Bundle • ~42MB</div>
+                        <div class="download-meta" data-i18n="mac_meta">App Bundle • ~42MB</div>
                     </div>
                 </div>
                 <div class="download-card" data-platform="linux">
@@ -209,23 +252,23 @@
                             </svg>
                         </div>
                         <h3>Linux</h3>
-                        <p class="platform-desc">Ubuntu, Fedora, Arch & more</p>
+                        <p class="platform-desc" data-i18n="linux_desc">Ubuntu, Fedora, Arch &amp; more</p>
                         <a href="https://github.com/stringhandler/dota-keeper/releases/latest" id="dl-linux"
                             class="btn-download">
                             <span class="btn-icon">⬇</span>
-                            <span>Download AppImage</span>
+                            <span data-i18n="linux_download">Download AppImage</span>
                         </a>
-                        <div class="download-meta">Portable App • ~48MB</div>
+                        <div class="download-meta" data-i18n="linux_meta">Portable App • ~48MB</div>
                     </div>
                 </div>
             </div>
             <p class="version-info">
                 <span class="version-badge">
                     <span class="version">v0.2.2</span>
-                    <span class="version-date">• Released Feb 2026</span>
+                    <span class="version-date" data-i18n="released_date">• Released Feb 2026</span>
                 </span>
                 <br>
-                <span class="license-info">MIT Licensed • 100% Open Source • <a
+                <span class="license-info" data-i18n-html="license_info">MIT Licensed • 100% Open Source • <a
                         href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">View Source
                         Code</a></span>
             </p>
@@ -236,7 +279,7 @@
     <section class="community-strip">
         <div class="container">
             <div class="community-strip-inner">
-                <div class="community-strip-text">
+                <div class="community-strip-text" data-i18n-html="community_text">
                     <strong>Just downloaded?</strong> Come say hello — share your stats, get goal ideas, and help shape
                     what gets built next.
                 </div>
@@ -246,7 +289,7 @@
                             <path
                                 d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
                         </svg>
-                        Join the Discord
+                        <span data-i18n="join_discord_community">Join the Discord</span>
                     </a>
                     <a href="https://twitter.com/dotakeeperapp" target="_blank" rel="noopener"
                         class="btn-twitter-strip">
@@ -254,7 +297,7 @@
                             <path
                                 d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                         </svg>
-                        Follow Updates
+                        <span data-i18n="follow_updates">Follow Updates</span>
                     </a>
                 </div>
             </div>
@@ -262,11 +305,11 @@
     </section>
 
     <!-- Features Section -->
-    <section class="features">
+    <section class="features" id="features">
         <div class="container">
             <div class="section-header">
-                <h2>Everything You Need to Improve</h2>
-                <p class="section-subtitle">Powerful features designed to help you reach your Dota 2 goals</p>
+                <h2 data-i18n="features_title">Everything You Need to Improve</h2>
+                <p class="section-subtitle" data-i18n="features_subtitle">Powerful features designed to help you reach your Dota 2 goals</p>
             </div>
             <div class="features-grid">
                 <div class="feature-card" data-feature="tracking">
@@ -280,17 +323,16 @@
                             <rect x="30" y="8" width="6" height="8" rx="1" fill="currentColor" />
                         </svg>
                     </div>
-                    <h3>Automatic Match Tracking</h3>
-                    <p>Sync seamlessly with OpenDota to track your entire match history. Zero manual input—just play and
-                        improve.</p>
+                    <h3 data-i18n="feat_tracking_title">Automatic Match Tracking</h3>
+                    <p data-i18n="feat_tracking_desc">Sync seamlessly with OpenDota to track your entire match history. Zero manual input—just play and improve.</p>
                     <ul class="feature-list">
-                        <li>Real-time match data</li>
-                        <li>Detailed performance metrics</li>
-                        <li>Hero-specific statistics</li>
+                        <li data-i18n="feat_tracking_li1">Real-time match data</li>
+                        <li data-i18n="feat_tracking_li2">Detailed performance metrics</li>
+                        <li data-i18n="feat_tracking_li3">Hero-specific statistics</li>
                     </ul>
                 </div>
                 <div class="feature-card highlighted" data-feature="goals">
-                    <div class="feature-badge">Core Feature</div>
+                    <div class="feature-badge" data-i18n="feat_core_badge">Core Feature</div>
                     <div class="feature-icon">
                         <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2" fill="none" />
@@ -299,13 +341,12 @@
                             <circle cx="24" cy="24" r="2" fill="currentColor" />
                         </svg>
                     </div>
-                    <h3>Custom Performance Goals</h3>
-                    <p>Define your own success metrics. Track CS, KDA, GPM, XPM, hero winrates, and create goals that
-                        match your playstyle.</p>
+                    <h3 data-i18n="feat_goals_title">Custom Performance Goals</h3>
+                    <p data-i18n="feat_goals_desc">Define your own success metrics. Track CS, KDA, GPM, XPM, hero winrates, and create goals that match your playstyle.</p>
                     <ul class="feature-list">
-                        <li>Unlimited custom goals</li>
-                        <li>Smart achievement tracking</li>
-                        <li>Progress visualization</li>
+                        <li data-i18n="feat_goals_li1">Unlimited custom goals</li>
+                        <li data-i18n="feat_goals_li2">Smart achievement tracking</li>
+                        <li data-i18n="feat_goals_li3">Progress visualization</li>
                     </ul>
                 </div>
                 <div class="feature-card" data-feature="analysis">
@@ -317,13 +358,12 @@
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                     </div>
-                    <h3>Advanced Analytics</h3>
-                    <p>Beautiful charts and distributions reveal patterns in your gameplay. Identify strengths and
-                        weaknesses at a glance.</p>
+                    <h3 data-i18n="feat_analytics_title">Advanced Analytics</h3>
+                    <p data-i18n="feat_analytics_desc">Beautiful charts and distributions reveal patterns in your gameplay. Identify strengths and weaknesses at a glance.</p>
                     <ul class="feature-list">
-                        <li>Interactive data visualizations</li>
-                        <li>Trend analysis over time</li>
-                        <li>Performance heatmaps</li>
+                        <li data-i18n="feat_analytics_li1">Interactive data visualizations</li>
+                        <li data-i18n="feat_analytics_li2">Trend analysis over time</li>
+                        <li data-i18n="feat_analytics_li3">Performance heatmaps</li>
                     </ul>
                 </div>
                 <div class="feature-card" data-feature="suggestions">
@@ -334,13 +374,12 @@
                             <circle cx="24" cy="24" r="4" fill="currentColor" />
                         </svg>
                     </div>
-                    <h3>Smart Weekly Challenges</h3>
-                    <p>Get personalized goal suggestions based on your recent performance. Keep yourself motivated with
-                        fresh challenges.</p>
+                    <h3 data-i18n="feat_challenges_title">Smart Weekly Challenges</h3>
+                    <p data-i18n="feat_challenges_desc">Get personalized goal suggestions based on your recent performance. Keep yourself motivated with fresh challenges.</p>
                     <ul class="feature-list">
-                        <li>AI-powered recommendations</li>
-                        <li>Adaptive difficulty</li>
-                        <li>Weekly refreshes</li>
+                        <li data-i18n="feat_challenges_li1">AI-powered recommendations</li>
+                        <li data-i18n="feat_challenges_li2">Adaptive difficulty</li>
+                        <li data-i18n="feat_challenges_li3">Weekly refreshes</li>
                     </ul>
                 </div>
                 <div class="feature-card" data-feature="privacy">
@@ -352,13 +391,12 @@
                                 stroke-linejoin="round" />
                         </svg>
                     </div>
-                    <h3>Privacy First</h3>
-                    <p>Your data belongs to you. Everything runs locally on your machine—no cloud storage, no tracking,
-                        no subscriptions.</p>
+                    <h3 data-i18n="feat_privacy_title">Privacy First</h3>
+                    <p data-i18n="feat_privacy_desc">Your data belongs to you. Everything runs locally on your machine—no cloud storage, no tracking, no subscriptions.</p>
                     <ul class="feature-list">
-                        <li>100% local storage</li>
-                        <li>No data collection</li>
-                        <li>Open source code</li>
+                        <li data-i18n="feat_privacy_li1">100% local storage</li>
+                        <li data-i18n="feat_privacy_li2">No data collection</li>
+                        <li data-i18n="feat_privacy_li3">Open source code</li>
                     </ul>
                 </div>
                 <div class="feature-card" data-feature="theme">
@@ -370,13 +408,12 @@
                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                         </svg>
                     </div>
-                    <h3>Dota 2 Inspired Design</h3>
-                    <p>Immersive UI that captures the essence of Dota 2. Beautiful, functional, and built for gamers.
-                    </p>
+                    <h3 data-i18n="feat_design_title">Dota 2 Inspired Design</h3>
+                    <p data-i18n="feat_design_desc">Immersive UI that captures the essence of Dota 2. Beautiful, functional, and built for gamers.</p>
                     <ul class="feature-list">
-                        <li>Dark mode optimized</li>
-                        <li>Game-inspired colors</li>
-                        <li>Smooth animations</li>
+                        <li data-i18n="feat_design_li1">Dark mode optimized</li>
+                        <li data-i18n="feat_design_li2">Game-inspired colors</li>
+                        <li data-i18n="feat_design_li3">Smooth animations</li>
                     </ul>
                 </div>
             </div>
@@ -387,56 +424,44 @@
     <section class="faq" id="faq">
         <div class="container">
             <div class="section-header">
-                <h2>Frequently Asked Questions</h2>
-                <p class="section-subtitle">Everything you need to know about Dota Keeper.</p>
+                <h2 data-i18n="faq_title">Frequently Asked Questions</h2>
+                <p class="section-subtitle" data-i18n="faq_subtitle">Everything you need to know about Dota Keeper.</p>
             </div>
             <div class="faq-list">
                 <details class="faq-item">
-                    <summary class="faq-question">What does Dota Keeper do?</summary>
+                    <summary class="faq-question" data-i18n="faq_q1">What does Dota Keeper do?</summary>
                     <div class="faq-answer">
-                        <p>Dota Keeper tracks your Dota 2 match history and measures your performance against goals you
-                            define. Set a target — like "100 last hits by 10 minutes" or "die fewer than 5 times" — and
-                            Dota Keeper shows how often you're hitting it across your recent games.</p>
+                        <p data-i18n="faq_a1">Dota Keeper tracks your Dota 2 match history and measures your performance against goals you define. Set a target — like "100 last hits by 10 minutes" or "die fewer than 5 times" — and Dota Keeper shows how often you're hitting it across your recent games.</p>
                     </div>
                 </details>
                 <details class="faq-item">
-                    <summary class="faq-question">How does it get my match data?</summary>
+                    <summary class="faq-question" data-i18n="faq_q2">How does it get my match data?</summary>
                     <div class="faq-answer">
-                        <p>Dota Keeper fetches your match history from <a href="https://www.opendota.com"
-                                target="_blank" rel="noopener">OpenDota</a> using your Steam ID. No login required —
-                            just enter your Steam ID in the settings and click sync.</p>
+                        <p data-i18n-html="faq_a2">Dota Keeper fetches your match history from <a href="https://www.opendota.com" target="_blank" rel="noopener">OpenDota</a> using your Steam ID. No login required — just enter your Steam ID in the settings and click sync.</p>
                     </div>
                 </details>
                 <details class="faq-item">
-                    <summary class="faq-question">What kinds of goals can I set?</summary>
+                    <summary class="faq-question" data-i18n="faq_q3">What kinds of goals can I set?</summary>
                     <div class="faq-answer">
-                        <p>You can set goals for last hits, denies, net worth, kills, level, and item timing — all
-                            filterable by hero and game mode (Ranked, Turbo, or Any). Goals are designed to be hit
-                            roughly 75% of the time: challenging enough to matter, achievable enough to stay motivating.
-                        </p>
+                        <p data-i18n="faq_a3">You can set goals for last hits, denies, net worth, kills, level, and item timing — all filterable by hero and game mode (Ranked, Turbo, or Any). Goals are designed to be hit roughly 75% of the time: challenging enough to matter, achievable enough to stay motivating.</p>
                     </div>
                 </details>
                 <details class="faq-item">
-                    <summary class="faq-question">Is my data private?</summary>
+                    <summary class="faq-question" data-i18n="faq_q4">Is my data private?</summary>
                     <div class="faq-answer">
-                        <p>Yes. All data is stored locally on your machine in a SQLite database. Nothing is uploaded to
-                            any server. Dota Keeper contains no ads, no tracking, and no accounts.</p>
+                        <p data-i18n="faq_a4">Yes. All data is stored locally on your machine in a SQLite database. Nothing is uploaded to any server. Dota Keeper contains no ads, no tracking, and no accounts.</p>
                     </div>
                 </details>
                 <details class="faq-item">
-                    <summary class="faq-question">Is it free?</summary>
+                    <summary class="faq-question" data-i18n="faq_q5">Is it free?</summary>
                     <div class="faq-answer">
-                        <p>Completely free, forever. Dota Keeper is open source under the Apache 2.0 license. You can
-                            view, fork, or contribute to the code on <a
-                                href="https://github.com/stringhandler/dota-keeper" target="_blank"
-                                rel="noopener">GitHub</a>.</p>
+                        <p data-i18n-html="faq_a5">Completely free, forever. Dota Keeper is open source under the Apache 2.0 license. You can view, fork, or contribute to the code on <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">GitHub</a>.</p>
                     </div>
                 </details>
                 <details class="faq-item">
-                    <summary class="faq-question">What platforms does it run on?</summary>
+                    <summary class="faq-question" data-i18n="faq_q6">What platforms does it run on?</summary>
                     <div class="faq-answer">
-                        <p>Windows, macOS, and Linux. Download the installer for your platform from the <a
-                                href="#download">download section</a> above.</p>
+                        <p data-i18n-html="faq_a6">Windows, macOS, and Linux. Download the installer for your platform from the <a href="#download">download section</a> above.</p>
                     </div>
                 </details>
             </div>
@@ -447,12 +472,12 @@
     <section class="cta-section">
         <div class="container">
             <div class="cta-content">
-                <h2>Ready to Level Up?</h2>
-                <p>Join thousands of players tracking their performance and achieving their Dota 2 goals.</p>
+                <h2 data-i18n="cta_title">Ready to Level Up?</h2>
+                <p data-i18n="cta_desc">Join thousands of players tracking their performance and achieving their Dota 2 goals.</p>
                 <div class="cta-buttons">
                     <a href="#download" class="btn-primary btn-large">
                         <span class="btn-icon">⬇</span>
-                        <span>Download Free</span>
+                        <span data-i18n="download_free">Download Free</span>
                     </a>
                     <a href="https://discord.gg/pgNrDSXV" target="_blank" rel="noopener"
                         class="btn-secondary btn-large">
@@ -461,15 +486,15 @@
                             <path
                                 d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
                         </svg>
-                        <span>Join Discord</span>
+                        <span data-i18n="join_discord">Join Discord</span>
                     </a>
                 </div>
                 <p class="cta-footer-text">
-                    <span class="checkmark">✓</span> No credit card required
+                    <span class="checkmark">✓</span> <span data-i18n="cta_no_cc">No credit card required</span>
                     <span class="separator">•</span>
-                    <span class="checkmark">✓</span> Free forever
+                    <span class="checkmark">✓</span> <span data-i18n="cta_free_forever">Free forever</span>
                     <span class="separator">•</span>
-                    <span class="checkmark">✓</span> Open source
+                    <span class="checkmark">✓</span> <span data-i18n="cta_open_source">Open source</span>
                 </p>
             </div>
         </div>
@@ -481,8 +506,7 @@
             <div class="footer-grid">
                 <div class="footer-col">
                     <h4>Dota Keeper</h4>
-                    <p class="footer-desc">Your personal Dota 2 performance tracker. Free, open source, and built for
-                        gamers.</p>
+                    <p class="footer-desc" data-i18n="footer_desc">Your personal Dota 2 performance tracker. Free, open source, and built for gamers.</p>
                     <div class="social-links">
                         <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener"
                             aria-label="GitHub">
@@ -506,36 +530,35 @@
                     </div>
                 </div>
                 <div class="footer-col">
-                    <h4>Product</h4>
+                    <h4 data-i18n="footer_product">Product</h4>
                     <ul class="footer-links">
-                        <li><a href="#download">Download</a></li>
-                        <li><a href="#features">Features</a></li>
-                        <li><a href="#faq">FAQ</a></li>
+                        <li><a href="#download" data-i18n="footer_download">Download</a></li>
+                        <li><a href="#features" data-i18n="footer_features">Features</a></li>
+                        <li><a href="#faq" data-i18n="footer_faq">FAQ</a></li>
                         <li><a href="https://github.com/stringhandler/dota-keeper/releases" target="_blank"
-                                rel="noopener">Changelog</a></li>
+                                rel="noopener" data-i18n="footer_changelog">Changelog</a></li>
                         <li><a href="https://github.com/stringhandler/dota-keeper/blob/main/README.md" target="_blank"
-                                rel="noopener">Documentation</a></li>
+                                rel="noopener" data-i18n="footer_docs">Documentation</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
-                    <h4>Support</h4>
+                    <h4 data-i18n="footer_support">Support</h4>
                     <ul class="footer-links">
                         <li><a href="https://github.com/stringhandler/dota-keeper/issues" target="_blank"
-                                rel="noopener">Report an Issue</a></li>
-                        <li><a href="https://discord.gg/pgNrDSXV" target="_blank" rel="noopener">Discord Community</a>
+                                rel="noopener" data-i18n="footer_report">Report an Issue</a></li>
+                        <li><a href="https://discord.gg/pgNrDSXV" target="_blank" rel="noopener" data-i18n="footer_discord_community">Discord Community</a>
                         </li>
                         <li><a href="https://github.com/stringhandler/dota-keeper/blob/main/CONTRIBUTING.md"
-                                target="_blank" rel="noopener">Contributing</a></li>
+                                target="_blank" rel="noopener" data-i18n="footer_contributing">Contributing</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
-                    <h4>Legal</h4>
+                    <h4 data-i18n="footer_legal">Legal</h4>
                     <ul class="footer-links">
-                        <li><a href="privacy-policy.html">Privacy Policy</a></li>
+                        <li><a href="privacy-policy.html" data-i18n="footer_privacy">Privacy Policy</a></li>
                         <li><a href="https://github.com/stringhandler/dota-keeper/blob/main/LICENSE" target="_blank"
-                                rel="noopener">Apache 2.0 License</a></li>
-                        <li><a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">Source
-                                Code</a></li>
+                                rel="noopener" data-i18n="footer_license">Apache 2.0 License</a></li>
+                        <li><a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener" data-i18n="footer_source">Source Code</a></li>
                     </ul>
                 </div>
             </div>
@@ -545,9 +568,9 @@
                         <span class="version">v0.2.2</span>
                     </span>
                     <span class="separator">•</span>
-                    Made with ❤️ for the Dota 2 community
+                    <span data-i18n="footer_made_with">Made with ❤️ for the Dota 2 community</span>
                 </p>
-                <p class="footer-note">
+                <p class="footer-note" data-i18n="footer_legal_note">
                     Dota 2 is a registered trademark of Valve Corporation.
                     This project is not affiliated with or endorsed by Valve Corporation.
                 </p>
@@ -566,8 +589,8 @@
                         d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
                 </svg>
             </div>
-            <h2 id="modal-title" class="modal-title">Your download is starting!</h2>
-            <p class="modal-subtitle">While you wait — come hang out with other Dota Keeper players.</p>
+            <h2 id="modal-title" class="modal-title" data-i18n="modal_title">Your download is starting!</h2>
+            <p class="modal-subtitle" data-i18n="modal_subtitle">While you wait — come hang out with other Dota Keeper players.</p>
             <div class="modal-actions">
                 <a href="https://discord.gg/pgNrDSXV" target="_blank" rel="noopener"
                     class="modal-btn modal-btn-discord">
@@ -575,7 +598,7 @@
                         <path
                             d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
                     </svg>
-                    Join the Discord
+                    <span data-i18n="join_discord_community">Join the Discord</span>
                 </a>
                 <a href="https://twitter.com/dotakeeperapp" target="_blank" rel="noopener"
                     class="modal-btn modal-btn-twitter">
@@ -583,12 +606,253 @@
                         <path
                             d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                     </svg>
-                    Follow on X
+                    <span data-i18n="follow_on_x">Follow on X</span>
                 </a>
             </div>
-            <button class="modal-skip" id="modal-skip">Maybe later</button>
+            <button class="modal-skip" id="modal-skip" data-i18n="maybe_later">Maybe later</button>
         </div>
     </div>
+
+    <script>
+    // ── i18n translations ──────────────────────────────────────────────────────
+    const SITE_TRANSLATIONS = {
+      en: {
+        badge_free_open: 'Free &amp; Open Source',
+        hero_tagline: 'Level Up Your Dota 2 Performance',
+        hero_description: 'Track matches automatically, set custom goals, and dominate the game with data-driven insights. <strong>No subscriptions. No ads. Your data stays private.</strong>',
+        download_now: 'Download Now',
+        join_discord: 'Join Discord',
+        star_github: 'Star on GitHub',
+        stat_free: 'Free Forever',
+        stat_ads: 'Ads or Tracking',
+        stat_platforms: 'Platforms',
+        download_title: 'Choose Your Platform',
+        download_subtitle: 'Available for all major operating systems. Start tracking in minutes.',
+        win_desc: 'Windows 10/11 \u2022 64-bit',
+        win_download: 'Download .MSI',
+        win_meta: 'Installer Package \u2022 ~45MB',
+        featured_badge: 'Most Popular',
+        mac_desc: 'macOS 11+ \u2022 Universal',
+        mac_silicon: 'Apple Silicon',
+        mac_intel: 'Intel',
+        mac_meta: 'App Bundle \u2022 ~42MB',
+        linux_desc: 'Ubuntu, Fedora, Arch &amp; more',
+        linux_download: 'Download AppImage',
+        linux_meta: 'Portable App \u2022 ~48MB',
+        released_date: '\u2022 Released Feb 2026',
+        license_info: 'MIT Licensed \u2022 100% Open Source \u2022 <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">View Source Code</a>',
+        community_text: '<strong>Just downloaded?</strong> Come say hello \u2014 share your stats, get goal ideas, and help shape what gets built next.',
+        join_discord_community: 'Join the Discord',
+        follow_updates: 'Follow Updates',
+        features_title: 'Everything You Need to Improve',
+        features_subtitle: 'Powerful features designed to help you reach your Dota 2 goals',
+        feat_tracking_title: 'Automatic Match Tracking',
+        feat_tracking_desc: 'Sync seamlessly with OpenDota to track your entire match history. Zero manual input\u2014just play and improve.',
+        feat_tracking_li1: 'Real-time match data',
+        feat_tracking_li2: 'Detailed performance metrics',
+        feat_tracking_li3: 'Hero-specific statistics',
+        feat_core_badge: 'Core Feature',
+        feat_goals_title: 'Custom Performance Goals',
+        feat_goals_desc: 'Define your own success metrics. Track CS, KDA, GPM, XPM, hero winrates, and create goals that match your playstyle.',
+        feat_goals_li1: 'Unlimited custom goals',
+        feat_goals_li2: 'Smart achievement tracking',
+        feat_goals_li3: 'Progress visualization',
+        feat_analytics_title: 'Advanced Analytics',
+        feat_analytics_desc: 'Beautiful charts and distributions reveal patterns in your gameplay. Identify strengths and weaknesses at a glance.',
+        feat_analytics_li1: 'Interactive data visualizations',
+        feat_analytics_li2: 'Trend analysis over time',
+        feat_analytics_li3: 'Performance heatmaps',
+        feat_challenges_title: 'Smart Weekly Challenges',
+        feat_challenges_desc: 'Get personalized goal suggestions based on your recent performance. Keep yourself motivated with fresh challenges.',
+        feat_challenges_li1: 'AI-powered recommendations',
+        feat_challenges_li2: 'Adaptive difficulty',
+        feat_challenges_li3: 'Weekly refreshes',
+        feat_privacy_title: 'Privacy First',
+        feat_privacy_desc: 'Your data belongs to you. Everything runs locally on your machine\u2014no cloud storage, no tracking, no subscriptions.',
+        feat_privacy_li1: '100% local storage',
+        feat_privacy_li2: 'No data collection',
+        feat_privacy_li3: 'Open source code',
+        feat_design_title: 'Dota 2 Inspired Design',
+        feat_design_desc: 'Immersive UI that captures the essence of Dota 2. Beautiful, functional, and built for gamers.',
+        feat_design_li1: 'Dark mode optimized',
+        feat_design_li2: 'Game-inspired colors',
+        feat_design_li3: 'Smooth animations',
+        faq_title: 'Frequently Asked Questions',
+        faq_subtitle: 'Everything you need to know about Dota Keeper.',
+        faq_q1: 'What does Dota Keeper do?',
+        faq_a1: 'Dota Keeper tracks your Dota 2 match history and measures your performance against goals you define. Set a target \u2014 like \u201c100 last hits by 10 minutes\u201d or \u201cdie fewer than 5 times\u201d \u2014 and Dota Keeper shows how often you\u2019re hitting it across your recent games.',
+        faq_q2: 'How does it get my match data?',
+        faq_a2: 'Dota Keeper fetches your match history from <a href="https://www.opendota.com" target="_blank" rel="noopener">OpenDota</a> using your Steam ID. No login required \u2014 just enter your Steam ID in the settings and click sync.',
+        faq_q3: 'What kinds of goals can I set?',
+        faq_a3: 'You can set goals for last hits, denies, net worth, kills, level, and item timing \u2014 all filterable by hero and game mode (Ranked, Turbo, or Any). Goals are designed to be hit roughly 75% of the time: challenging enough to matter, achievable enough to stay motivating.',
+        faq_q4: 'Is my data private?',
+        faq_a4: 'Yes. All data is stored locally on your machine in a SQLite database. Nothing is uploaded to any server. Dota Keeper contains no ads, no tracking, and no accounts.',
+        faq_q5: 'Is it free?',
+        faq_a5: 'Completely free, forever. Dota Keeper is open source under the Apache 2.0 license. You can view, fork, or contribute to the code on <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">GitHub</a>.',
+        faq_q6: 'What platforms does it run on?',
+        faq_a6: 'Windows, macOS, and Linux. Download the installer for your platform from the <a href="#download">download section</a> above.',
+        cta_title: 'Ready to Level Up?',
+        cta_desc: 'Join thousands of players tracking their performance and achieving their Dota 2 goals.',
+        download_free: 'Download Free',
+        cta_no_cc: 'No credit card required',
+        cta_free_forever: 'Free forever',
+        cta_open_source: 'Open source',
+        footer_desc: 'Your personal Dota 2 performance tracker. Free, open source, and built for gamers.',
+        footer_product: 'Product',
+        footer_download: 'Download',
+        footer_features: 'Features',
+        footer_faq: 'FAQ',
+        footer_changelog: 'Changelog',
+        footer_docs: 'Documentation',
+        footer_support: 'Support',
+        footer_report: 'Report an Issue',
+        footer_discord_community: 'Discord Community',
+        footer_contributing: 'Contributing',
+        footer_legal: 'Legal',
+        footer_privacy: 'Privacy Policy',
+        footer_license: 'Apache 2.0 License',
+        footer_source: 'Source Code',
+        footer_made_with: 'Made with \u2764\ufe0f for the Dota 2 community',
+        footer_legal_note: 'Dota 2 is a registered trademark of Valve Corporation. This project is not affiliated with or endorsed by Valve Corporation.',
+        modal_title: 'Your download is starting!',
+        modal_subtitle: 'While you wait \u2014 come hang out with other Dota Keeper players.',
+        follow_on_x: 'Follow on X',
+        maybe_later: 'Maybe later',
+      },
+      ru: {
+        badge_free_open: 'Бесплатно и с открытым кодом',
+        hero_tagline: 'Прокачайте свою игру в Dota 2',
+        hero_description: 'Автоматически отслеживайте матчи, ставьте цели и доминируйте в игре с помощью аналитики. <strong>Без подписок. Без рекламы. Ваши данные только у вас.</strong>',
+        download_now: 'Скачать',
+        join_discord: 'Discord',
+        star_github: 'GitHub',
+        stat_free: 'Бесплатно',
+        stat_ads: 'Рекламы и слежки',
+        stat_platforms: 'Платформы',
+        download_title: 'Выберите платформу',
+        download_subtitle: 'Доступно для всех основных операционных систем. Начните отслеживать за минуты.',
+        win_desc: 'Windows 10/11 \u2022 64-бит',
+        win_download: 'Скачать .MSI',
+        win_meta: 'Установщик \u2022 ~45МБ',
+        featured_badge: 'Популярно',
+        mac_desc: 'macOS 11+ \u2022 Универсальный',
+        mac_silicon: 'Apple Silicon',
+        mac_intel: 'Intel',
+        mac_meta: 'App Bundle \u2022 ~42МБ',
+        linux_desc: 'Ubuntu, Fedora, Arch и другие',
+        linux_download: 'Скачать AppImage',
+        linux_meta: 'Портативное приложение \u2022 ~48МБ',
+        released_date: '\u2022 Выпущено февраль 2026',
+        license_info: 'Лицензия MIT \u2022 100% открытый код \u2022 <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">Посмотреть исходный код</a>',
+        community_text: '<strong>Только что скачали?</strong> Приходите познакомиться \u2014 делитесь статистикой, берите идеи для целей и помогайте формировать следующие функции.',
+        join_discord_community: 'Присоединиться к Discord',
+        follow_updates: 'Следить за обновлениями',
+        features_title: 'Всё необходимое для роста',
+        features_subtitle: 'Мощные инструменты для достижения ваших целей в Dota 2',
+        feat_tracking_title: 'Автоматическое отслеживание матчей',
+        feat_tracking_desc: 'Синхронизируйтесь с OpenDota для отслеживания всей истории матчей. Никакого ручного ввода — просто играйте и улучшайтесь.',
+        feat_tracking_li1: 'Данные матчей в реальном времени',
+        feat_tracking_li2: 'Подробные показатели производительности',
+        feat_tracking_li3: 'Статистика по героям',
+        feat_core_badge: 'Ключевая функция',
+        feat_goals_title: 'Персональные цели',
+        feat_goals_desc: 'Определите свои метрики успеха. Отслеживайте CS, KDA, GPM, XPM, винрейт героев и создавайте цели под свой стиль игры.',
+        feat_goals_li1: 'Неограниченное количество целей',
+        feat_goals_li2: 'Умное отслеживание достижений',
+        feat_goals_li3: 'Визуализация прогресса',
+        feat_analytics_title: 'Продвинутая аналитика',
+        feat_analytics_desc: 'Красивые графики и распределения выявляют паттерны в вашей игре. Сильные и слабые стороны — с первого взгляда.',
+        feat_analytics_li1: 'Интерактивные диаграммы',
+        feat_analytics_li2: 'Анализ тенденций во времени',
+        feat_analytics_li3: 'Тепловые карты производительности',
+        feat_challenges_title: 'Умные еженедельные испытания',
+        feat_challenges_desc: 'Получайте персонализированные предложения на основе вашей последней игры. Сохраняйте мотивацию с новыми испытаниями.',
+        feat_challenges_li1: 'Рекомендации на основе ИИ',
+        feat_challenges_li2: 'Адаптивная сложность',
+        feat_challenges_li3: 'Еженедельное обновление',
+        feat_privacy_title: 'Конфиденциальность на первом месте',
+        feat_privacy_desc: 'Ваши данные принадлежат вам. Всё работает локально на вашем компьютере — никакого облачного хранилища, слежки и подписок.',
+        feat_privacy_li1: '100% локальное хранилище',
+        feat_privacy_li2: 'Без сбора данных',
+        feat_privacy_li3: 'Открытый исходный код',
+        feat_design_title: 'Дизайн в духе Dota 2',
+        feat_design_desc: 'Погружающий интерфейс, передающий дух Dota 2. Красиво, функционально и создано для геймеров.',
+        feat_design_li1: 'Оптимизирован для тёмной темы',
+        feat_design_li2: 'Цвета в стиле игры',
+        feat_design_li3: 'Плавные анимации',
+        faq_title: 'Часто задаваемые вопросы',
+        faq_subtitle: 'Всё, что нужно знать о Dota Keeper.',
+        faq_q1: 'Что делает Dota Keeper?',
+        faq_a1: 'Dota Keeper отслеживает историю ваших матчей в Dota 2 и измеряет вашу эффективность относительно заданных целей. Поставьте цель — например, «100 ластхитов к 10-й минуте» или «умирать меньше 5 раз» — и Dota Keeper покажет, как часто вы её выполняете.',
+        faq_q2: 'Откуда берутся данные о матчах?',
+        faq_a2: 'Dota Keeper получает историю матчей из <a href="https://www.opendota.com" target="_blank" rel="noopener">OpenDota</a> по вашему Steam ID. Никакой авторизации — просто введите Steam ID в настройках и нажмите синхронизацию.',
+        faq_q3: 'Какие цели можно ставить?',
+        faq_a3: 'Можно ставить цели по ластхитам, дenaiam, нетворту, убийствам, уровню и тайммингу предметов — с фильтрацией по герою и режиму (Рейтинговый, Турбо или Любой). Цели рассчитаны на выполнение примерно в 75% случаев: достаточно сложные, чтобы иметь значение, и достаточно достижимые, чтобы сохранять мотивацию.',
+        faq_q4: 'Мои данные в безопасности?',
+        faq_a4: 'Да. Все данные хранятся локально на вашем компьютере в базе данных SQLite. Ничего не отправляется на серверы. Dota Keeper не содержит рекламы, слежки и аккаунтов.',
+        faq_q5: 'Это бесплатно?',
+        faq_a5: 'Полностью бесплатно, навсегда. Dota Keeper — открытый исходный код под лицензией Apache 2.0. Вы можете просматривать, форкать или вносить вклад на <a href="https://github.com/stringhandler/dota-keeper" target="_blank" rel="noopener">GitHub</a>.',
+        faq_q6: 'На каких платформах работает?',
+        faq_a6: 'Windows, macOS и Linux. Скачайте установщик для вашей платформы из <a href="#download">раздела загрузки</a> выше.',
+        cta_title: 'Готовы прокачаться?',
+        cta_desc: 'Присоединяйтесь к тысячам игроков, отслеживающих свою производительность и достигающих своих целей в Dota 2.',
+        download_free: 'Скачать бесплатно',
+        cta_no_cc: 'Без кредитной карты',
+        cta_free_forever: 'Бесплатно навсегда',
+        cta_open_source: 'Открытый код',
+        footer_desc: 'Ваш личный трекер результатов в Dota 2. Бесплатно, с открытым кодом и для геймеров.',
+        footer_product: 'Продукт',
+        footer_download: 'Скачать',
+        footer_features: 'Функции',
+        footer_faq: 'ЧЗВ',
+        footer_changelog: 'Журнал изменений',
+        footer_docs: 'Документация',
+        footer_support: 'Поддержка',
+        footer_report: 'Сообщить о проблеме',
+        footer_discord_community: 'Сообщество Discord',
+        footer_contributing: 'Участие в разработке',
+        footer_legal: 'Правовая информация',
+        footer_privacy: 'Политика конфиденциальности',
+        footer_license: 'Лицензия Apache 2.0',
+        footer_source: 'Исходный код',
+        footer_made_with: 'Сделано с \u2764\ufe0f для сообщества Dota 2',
+        footer_legal_note: 'Dota 2 является зарегистрированным товарным знаком Valve Corporation. Этот проект не аффилирован с Valve Corporation и не одобрен ею.',
+        modal_title: 'Загрузка начинается!',
+        modal_subtitle: 'Пока ждёте \u2014 присоединяйтесь к другим игрокам Dota Keeper.',
+        follow_on_x: 'Следить на X',
+        maybe_later: 'Может, позже',
+      }
+    };
+
+    let currentLang = localStorage.getItem('site-lang') || 'en';
+
+    function applyTranslations(lang) {
+      const t = SITE_TRANSLATIONS[lang] || SITE_TRANSLATIONS.en;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key] !== undefined) el.textContent = t[key];
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        if (t[key] !== undefined) el.innerHTML = t[key];
+      });
+      document.documentElement.lang = lang;
+    }
+
+    function setLang(lang) {
+      currentLang = lang;
+      localStorage.setItem('site-lang', lang);
+      applyTranslations(lang);
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+      });
+    }
+
+    // Apply on load
+    document.addEventListener('DOMContentLoaded', function() {
+      setLang(currentLang);
+    });
+    </script>
 
     <script src="script.js"></script>
 </body>

@@ -5,6 +5,7 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -28,12 +29,12 @@
   // Goals (for insight generation)
   let goals = $state([]);
 
-  const gameModes = [
-    { value: null, label: "All Modes" },
-    { value: 22, label: "Ranked" },
-    { value: 23, label: "Turbo" },
-    { value: 2, label: "All Pick" },
-  ];
+  let gameModes = $derived([
+    { value: null, label: $_('analysis.all_modes') },
+    { value: 22, label: $_('analysis.mode_ranked') },
+    { value: 23, label: $_('analysis.mode_turbo') },
+    { value: 2, label: $_('analysis.mode_all_pick') },
+  ]);
 
   onMount(async () => {
     await Promise.all([
@@ -188,30 +189,30 @@
   <!-- HORIZONTAL FILTERS ROW -->
   <div class="filters-row">
     <div class="filter-group">
-      <div class="filter-label">Time Marker</div>
+      <div class="filter-label">{$_('analysis.filter_time')}</div>
       <select class="form-select" bind:value={timeMinutes} onchange={loadAnalysis}>
-        <option value={10}>10 minutes</option>
-        <option value={15}>15 minutes</option>
-        <option value={20}>20 minutes</option>
+        <option value={10}>{$_('analysis.min_10')}</option>
+        <option value={15}>{$_('analysis.min_15')}</option>
+        <option value={20}>{$_('analysis.min_20')}</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <div class="filter-label">Sample Size</div>
+      <div class="filter-label">{$_('analysis.filter_sample')}</div>
       <select class="form-select" bind:value={windowSize} onchange={loadAnalysis}>
-        <option value={20}>20 games</option>
-        <option value={30}>30 games</option>
-        <option value={50}>50 games</option>
+        <option value={20}>{$_('analysis.games_20')}</option>
+        <option value={30}>{$_('analysis.games_30')}</option>
+        <option value={50}>{$_('analysis.games_50')}</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <div class="filter-label">Hero</div>
-      <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroes} anyLabel="All Heroes" anyValue={null} onchange={loadAnalysis} />
+      <div class="filter-label">{$_('analysis.filter_hero')}</div>
+      <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroes} anyLabel={$_('analysis.all_heroes')} anyValue={null} onchange={loadAnalysis} />
     </div>
 
     <div class="filter-group">
-      <div class="filter-label">Game Mode</div>
+      <div class="filter-label">{$_('analysis.filter_mode')}</div>
       <select class="form-select" bind:value={selectedGameMode} onchange={loadAnalysis}>
         {#each gameModes as mode}
           <option value={mode.value}>{mode.label}</option>
@@ -221,13 +222,13 @@
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading analysis...</div>
+    <div class="loading-state">{$_('analysis.loading')}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if !analysis || analysis.current_period.count === 0}
     <div class="no-data">
-      <p>No data for the selected filters.</p>
-      <p class="hint">Make sure you have parsed matches with data at {timeMinutes} minutes.</p>
+      <p>{$_('analysis.no_data')}</p>
+      <p class="hint">{$_('analysis.no_data_hint', { values: { minutes: timeMinutes } })}</p>
     </div>
   {:else}
     {@const changeClass = getChangeClass()}
@@ -243,11 +244,11 @@
 
       <!-- CARD 1: Main stat -->
       <div class="analysis-card">
-        <div class="analysis-card-title">Last Hits @ {timeMinutes} min — Last {analysis.current_period.count} games</div>
+        <div class="analysis-card-title">{$_('analysis.main_title', { values: { minutes: timeMinutes, count: analysis.current_period.count } })}</div>
         <div class="big-stat">{analysis.current_period.average.toFixed(1)}</div>
         <div class="trend-label {changeClass}">
           {getChangeIndicator()}
-          {changeClass === 'improving' ? 'Improving' : changeClass === 'declining' ? 'Declining' : 'Stable'}
+          {changeClass === 'improving' ? $_('analysis.improving') : changeClass === 'declining' ? $_('analysis.declining') : $_('analysis.stable')}
         </div>
         {#if analysis.previous_period && analysis.previous_period.count > 0}
           {@const diff = analysis.current_period.average - analysis.previous_period.average}
@@ -274,9 +275,9 @@
 
       <!-- CARD 2: Hero breakdown -->
       <div class="analysis-card">
-        <div class="analysis-card-title">By Hero — Avg LH @ {timeMinutes} min</div>
+        <div class="analysis-card-title">{$_('analysis.hero_title', { values: { minutes: timeMinutes } })}</div>
         {#if heroStats.length === 0}
-          <p style="color:var(--text-muted);font-size:12px">No per-hero data available.</p>
+          <p style="color:var(--text-muted);font-size:12px">{$_('analysis.no_hero_data')}</p>
         {:else}
           <div class="hero-breakdown">
             {#each pagedHeroStats as hs}
@@ -286,9 +287,9 @@
                     class="fav-btn"
                     class:is-fav={favoriteHeroes.has(hs.hero_id)}
                     onclick={() => toggleFavorite(hs.hero_id)}
-                    title={favoriteHeroes.has(hs.hero_id) ? "Remove from favorites" : "Add to favorites"}
+                    title={favoriteHeroes.has(hs.hero_id) ? $_('analysis.fav_remove') : $_('analysis.fav_add')}
                   >{favoriteHeroes.has(hs.hero_id) ? '★' : '☆'}</button>
-                  <a href="/analysis/{hs.hero_id}" class="hero-link" title="View {getHeroName(hs.hero_id)} details">
+                  <a href="/analysis/{hs.hero_id}" class="hero-link" title={$_('analysis.view_hero', { values: { hero: getHeroName(hs.hero_id) } })}>
                     {getHeroName(hs.hero_id)}
                   </a>
                 </div>
@@ -316,7 +317,7 @@
           {/if}
           {#if insight}
             <div class="insight-box">
-              <div class="insight-label">💡 Insight</div>
+              <div class="insight-label">{$_('analysis.insight')}</div>
               <div class="insight-text">{insight}</div>
             </div>
           {/if}
@@ -325,18 +326,18 @@
 
       <!-- CARD 3: Performance range -->
       <div class="analysis-card">
-        <div class="analysis-card-title">Performance Range — {analysis.current_period.count} Games</div>
+        <div class="analysis-card-title">{$_('analysis.range_title', { values: { count: analysis.current_period.count } })}</div>
         <div class="range-stats">
           <div class="range-stat">
-            <div class="range-label">Avg</div>
+            <div class="range-label">{$_('analysis.avg')}</div>
             <div class="range-value" style="color:var(--gold)">{analysis.current_period.average.toFixed(1)}</div>
           </div>
           <div class="range-stat">
-            <div class="range-label">Best</div>
+            <div class="range-label">{$_('analysis.best')}</div>
             <div class="range-value" style="color:var(--green)">{analysis.current_period.max}</div>
           </div>
           <div class="range-stat">
-            <div class="range-label">Worst</div>
+            <div class="range-label">{$_('analysis.worst')}</div>
             <div class="range-value" style="color:var(--red)">{analysis.current_period.min}</div>
           </div>
         </div>
@@ -358,10 +359,10 @@
       <!-- CARD 4: Top hero trend -->
       {#if topHero}
         <div class="analysis-card">
-          <div class="analysis-card-title">{getHeroName(topHero.hero_id)} — Individual Trend</div>
+          <div class="analysis-card-title">{$_('analysis.hero_trend_title', { values: { hero: getHeroName(topHero.hero_id) } })}</div>
           <div class="big-stat" style="font-size:36px">{topHero.average.toFixed(1)}</div>
           <div class="trend-label {topHero.trend_percentage > 2 ? 'improving' : topHero.trend_percentage < -2 ? 'declining' : 'stable'}">
-            {topHero.trend_percentage > 2 ? '↗ Improving' : topHero.trend_percentage < -2 ? '↘ Declining' : '→ Stable'}
+            {topHero.trend_percentage > 2 ? '↗ ' + $_('analysis.improving') : topHero.trend_percentage < -2 ? '↘ ' + $_('analysis.declining') : '→ ' + $_('analysis.stable')}
           </div>
           <div class="mini-chart" style="margin-top:14px">
             <svg viewBox="0 0 300 100" preserveAspectRatio="none">
@@ -378,13 +379,13 @@
             </svg>
           </div>
           <div class="hero-stat-meta">
-            {topHero.count} games
+            {$_('analysis.games_count', { values: { count: topHero.count } })}
             {#if topHero.trend_percentage !== 0}
-              · {topHero.trend_percentage > 0 ? '+' : ''}{topHero.trend_percentage.toFixed(1)}% trend
+              · {$_('analysis.trend_pct', { values: { pct: (topHero.trend_percentage > 0 ? '+' : '') + topHero.trend_percentage.toFixed(1) } })}
             {/if}
           </div>
           <a href="/analysis/{topHero.hero_id}" class="btn btn-ghost" style="margin-top:12px;font-size:10px">
-            View Full Details →
+            {$_('analysis.view_full')}
           </a>
         </div>
       {/if}

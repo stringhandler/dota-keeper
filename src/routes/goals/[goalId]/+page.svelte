@@ -6,6 +6,7 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
+  import { _ } from "svelte-i18n";
 
   let goalId = $derived($page.params.goalId);
   let goal = $state(null);
@@ -398,22 +399,22 @@
 
 {#if isLoading}
   <div class="loading">
-    <p>Loading goal data...</p>
+    <p>{$_('goals.loading')}</p>
   </div>
 {:else if error}
   <div class="error-container">
     <p class="error">{error}</p>
-    <a href="/goals" class="back-link">← Back to Goals</a>
+    <a href="/goals" class="back-link">← {$_('nav.goals')}</a>
   </div>
 {:else if goal}
   <div class="goal-detail-content">
     <div class="page-header">
       <div class="header-content">
-        <a href="/goals" class="back-link">← Back to Goals</a>
+        <a href="/goals" class="back-link">← {$_('nav.goals')}</a>
         <div class="header-row">
           <h1>Goal Details</h1>
           {#if !isEditing}
-            <button class="edit-btn" onclick={startEdit}>✏️ Edit</button>
+            <button class="edit-btn" onclick={startEdit}>✏️ {$_('goals.edit')}</button>
           {/if}
         </div>
 
@@ -428,27 +429,27 @@
             {/if}
             <div class="form-row">
               <label style="flex: 2; min-width: 200px;">
-                Hero
-                <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
+                {$_('goals.hero')}
+                <HeroSelect bind:value={editHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals.any_hero')} groupOptions={HERO_GROUP_OPTIONS} />
               </label>
               <label style="flex: 1;">
-                Metric
+                {$_('goals.metric')}
                 <select bind:value={editMetric} class="form-select">
-                  <option value="LastHits">Last Hits (CS)</option>
-                  <option value="Denies">Denies</option>
-                  <option value="PartnerNetworth">Partner Networth</option>
-                  <option value="Networth">Net Worth</option>
-                  <option value="Kills">Kills</option>
-                  <option value="Level">Level</option>
-                  <option value="ItemTiming">Item Timing</option>
+                  <option value="LastHits">{$_('goals.metric_last_hits')}</option>
+                  <option value="Denies">{$_('goals.metric_denies')}</option>
+                  <option value="PartnerNetworth">{$_('goals.metric_partner_nw')}</option>
+                  <option value="Networth">{$_('goals.metric_networth')}</option>
+                  <option value="Kills">{$_('goals.metric_kills')}</option>
+                  <option value="Level">{$_('goals.metric_level')}</option>
+                  <option value="ItemTiming">{$_('goals.metric_item_timing')}</option>
                 </select>
               </label>
               <label style="flex: 1;">
-                Game Mode
+                {$_('goals.mode')}
                 <select bind:value={editGameMode} class="form-select">
-                  <option value="All">Any</option>
-                  <option value="Ranked">Ranked</option>
-                  <option value="Turbo">Turbo</option>
+                  <option value="All">{$_('goals.mode_any')}</option>
+                  <option value="Ranked">{$_('goals.mode_ranked')}</option>
+                  <option value="Turbo">{$_('goals.mode_turbo')}</option>
                 </select>
               </label>
             </div>
@@ -456,9 +457,9 @@
             {#if editMetric === "ItemTiming"}
               <div class="form-row">
                 <label>
-                  Item
+                  {$_('goals.item')}
                   <select bind:value={editItemId} class="form-select">
-                    <option value="">Select item...</option>
+                    <option value="">{$_('goals.item_select')}</option>
                     {#each items as item}
                       <option value={item.id}>{item.display_name}</option>
                     {/each}
@@ -488,10 +489,10 @@
 
             <div class="form-actions">
               <button class="save-edit-btn" onclick={saveEdit} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? $_('goals.saving') : $_('goals.update')}
               </button>
               <button class="cancel-edit-btn" onclick={cancelEdit} disabled={isSaving}>
-                Cancel
+                {$_('goals.cancel')}
               </button>
             </div>
           </div>

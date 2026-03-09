@@ -17,7 +17,12 @@
   import Toast from "$lib/Toast.svelte";
   import { showToast } from "$lib/toast.js";
   import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+  import { setupI18n, setLocale, locale } from "$lib/i18n.js";
+  import { _ } from "svelte-i18n";
   import '../app.css';
+
+  // Initialise i18n once on app load
+  setupI18n();
 
   let isLoading = $state(true);
   let isMobile = $state(false);
@@ -147,14 +152,14 @@
   }
 
   function getPageTitle(pathname) {
-    if (pathname === '/') return 'Dashboard';
-    if (pathname.startsWith('/matches')) return 'Match History';
-    if (pathname.startsWith('/analysis')) return 'Performance Analysis';
-    if (pathname.startsWith('/goals')) return 'Goal Management';
-    if (pathname.startsWith('/challenges')) return 'Challenges';
-    if (pathname.startsWith('/mental-health')) return 'Mental Wellbeing';
-    if (pathname.startsWith('/settings')) return 'Settings';
-    return 'Dota Keeper';
+    if (pathname === '/') return $_('page_title.dashboard');
+    if (pathname.startsWith('/matches')) return $_('page_title.matches');
+    if (pathname.startsWith('/analysis')) return $_('page_title.analysis');
+    if (pathname.startsWith('/goals')) return $_('page_title.goals');
+    if (pathname.startsWith('/challenges')) return $_('page_title.challenges');
+    if (pathname.startsWith('/mental-health')) return $_('page_title.mental_health');
+    if (pathname.startsWith('/settings')) return $_('page_title.settings');
+    return $_('page_title.app');
   }
 
   async function checkForUpdates() {
@@ -192,16 +197,16 @@
 
 {#if isLoading}
   <div class="loading-screen">
-    <p>Loading...</p>
+    <p>{$_('layout.loading')}</p>
   </div>
 {:else if !isLoggedIn}
   <div class="login-screen">
     <div class="login-box">
-      <div class="login-brand">Dota Keeper</div>
-      <p class="login-sub">Track your Dota 2 progress</p>
+      <div class="login-brand">{$_('login.brand')}</div>
+      <p class="login-sub">{$_('login.subtitle')}</p>
 
       <form class="login-form" onsubmit={handleLogin}>
-        <label class="form-label" for="steam-id">Steam ID</label>
+        <label class="form-label" for="steam-id">{$_('login.steam_id')}</label>
         <input
           class="form-input"
           id="steam-id"
@@ -209,17 +214,17 @@
           autocomplete="off"
           autocorrect="off"
           autocapitalize="none"
-          placeholder="Steam ID or profile URL"
+          placeholder={$_('login.placeholder')}
           bind:value={steamId}
         />
-        <p class="login-hint">Your Steam ID or steamcommunity.com/profiles/... URL</p>
+        <p class="login-hint">{$_('login.hint')}</p>
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
-          Save & Continue
+          {$_('login.save_continue')}
         </button>
       </form>
 
       <div class="login-divider">
-        <span>or</span>
+        <span>{$_('login.or')}</span>
       </div>
 
       <button
@@ -229,12 +234,12 @@
         disabled={steamLoginPending}
       >
         {#if steamLoginPending}
-          Waiting for Steam…
+          {$_('login.waiting_steam')}
         {:else}
           <svg viewBox="0 0 233 233" width="18" height="18" fill="currentColor" aria-hidden="true">
             <path d="M116.5 0C52.1 0 0 52.1 0 116.5c0 55.1 38.5 101.3 90.4 113.1l30.5-73.2c-1.3.1-2.5.1-3.8.1-26.7 0-48.4-21.7-48.4-48.4s21.7-48.4 48.4-48.4 48.4 21.7 48.4 48.4c0 23.6-16.9 43.3-39.4 47.5L96.7 228c6.4 1.6 13 2.5 19.8 2.5C180.9 230.5 233 178.4 233 114S180.9 0 116.5 0zM106.6 160.1l-14.5 34.8C63.7 183.6 43 152.3 43 116.5c0-40.5 32.9-73.5 73.5-73.5s73.5 32.9 73.5 73.5-32.9 73.5-73.5 73.5c-3.2 0-6.4-.2-9.5-.6l-.4-29.3zm9.9-93.6c-27.6 0-50 22.4-50 50s22.4 50 50 50 50-22.4 50-50-22.4-50-50-50zm0 80.7c-17 0-30.7-13.8-30.7-30.7s13.8-30.7 30.7-30.7 30.7 13.8 30.7 30.7-13.8 30.7-30.7 30.7z"/>
           </svg>
-          Sign in through Steam
+          {$_('login.sign_in_steam')}
         {/if}
       </button>
 
@@ -250,11 +255,11 @@
         <div class="update-content">
           <span class="update-icon">🔄</span>
           <div class="update-text">
-            <strong>Update Available!</strong>
-            <span>Version {updateVersion} is ready to install</span>
+            <strong>{$_('layout.update_available')}</strong>
+            <span>{$_('layout.update_ready', { values: { version: updateVersion } })}</span>
           </div>
           <button class="btn btn-primary" onclick={installUpdate} disabled={isUpdating}>
-            {isUpdating ? 'Installing...' : 'Install & Restart'}
+            {isUpdating ? $_('layout.installing') : $_('layout.install_restart')}
           </button>
         </div>
       </div>
@@ -264,7 +269,7 @@
     <aside class="sidebar" class:sidebar-hidden={isMobile}>
       <div class="brand">
         <div class="brand-name">Dota Keeper</div>
-        <div class="brand-id">Steam ID</div>
+        <div class="brand-id">{$_('layout.steam_id_label')}</div>
         <div class="steam-badge">{currentSteamId}</div>
       </div>
 
@@ -273,44 +278,44 @@
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
-          Dashboard
+          {$_('nav.dashboard')}
         </a>
         <a href="/matches" class="nav-item" class:active={isActivePath('/matches')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          Matches
+          {$_('nav.matches')}
         </a>
         <a href="/analysis" class="nav-item" class:active={isActivePath('/analysis')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          Analysis
+          {$_('nav.analysis')}
         </a>
         <a href="/goals" class="nav-item" class:active={isActivePath('/goals')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
           </svg>
-          Goals
+          {$_('nav.goals')}
         </a>
         <a href="/challenges" class="nav-item" class:active={isActivePath('/challenges')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
           </svg>
-          Challenges
+          {$_('nav.challenges')}
         </a>
         <a href="/mental-health" class="nav-item" class:active={isActivePath('/mental-health')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
           </svg>
-          Mind
+          {$_('nav.mind')}
         </a>
         <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          Settings
+          {$_('nav.settings')}
         </a>
       </nav>
 
@@ -318,15 +323,20 @@
         <div class="rank-pill">
           <div class="rank-star">★</div>
           <div>
-            <div class="rank-text">Rank</div>
-            <div class="rank-value">N/A</div>
+            <div class="rank-text">{$_('layout.rank')}</div>
+            <div class="rank-value">{$_('layout.rank_na')}</div>
           </div>
+        </div>
+        <!-- Language switcher -->
+        <div class="lang-switcher">
+          <button class="lang-btn" class:active={$locale === 'en'} onclick={() => setLocale('en')}>EN</button>
+          <button class="lang-btn" class:active={$locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
         </div>
         <button class="feedback-link" onclick={() => showFeedbackModal = true} type="button">
           <svg class="feedback-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h6m-6 4h4M5 4h14a2 2 0 012 2v10a2 2 0 01-2 2H7l-4 4V6a2 2 0 012-2z" />
           </svg>
-          Feedback
+          {$_('layout.feedback')}
         </button>
       </div>
     </aside>
@@ -337,7 +347,7 @@
       <div class="topbar">
         <div class="page-title">{getPageTitle($page.url.pathname)}</div>
         <div class="topbar-actions">
-          <a href="/goals" class="btn btn-primary new-goal-btn">+ New Goal</a>
+          <a href="/goals" class="btn btn-primary new-goal-btn">{$_('layout.new_goal')}</a>
         </div>
       </div>
 
@@ -705,6 +715,38 @@
     font-weight: 700;
     color: var(--text-primary);
     font-size: 14px;
+  }
+
+  /* ── LANGUAGE SWITCHER ── */
+  .lang-switcher {
+    display: flex;
+    gap: 4px;
+  }
+
+  .lang-btn {
+    flex: 1;
+    padding: 5px 8px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .lang-btn:hover {
+    color: var(--text-secondary);
+    border-color: rgba(240, 180, 41, 0.3);
+  }
+
+  .lang-btn.active {
+    color: var(--gold);
+    border-color: rgba(240, 180, 41, 0.5);
+    background: rgba(240, 180, 41, 0.06);
   }
 
   /* ── FEEDBACK ── */

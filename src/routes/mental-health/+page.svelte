@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -57,11 +58,11 @@
     return "";
   }
 
-  function trendLabel(trend) {
-    if (trend === "improving") return "Improving over recent sessions";
-    if (trend === "declining") return "Declining — see suggestion below";
-    if (trend === "stable")    return "Stable";
-    return "";
+  function trendTKey(trend) {
+    if (trend === "improving") return 'mental_health.trend_improving';
+    if (trend === "declining") return 'mental_health.trend_declining';
+    if (trend === "stable")    return 'mental_health.trend_stable';
+    return null;
   }
 
   function trendColor(trend) {
@@ -79,18 +80,18 @@
 
 <div class="page">
   <header class="page-header">
-    <h1>Mental Wellbeing</h1>
+    <h1>{$_('mental_health.title')}</h1>
   </header>
 
   {#if isLoading}
-    <div class="loading-state">Loading...</div>
+    <div class="loading-state">{$_('mental_health.loading')}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if !trackingEnabled}
     <div class="card disabled-state">
       <div class="disabled-icon">🧠</div>
-      <h3>Mood tracking is off</h3>
-      <p>Enable post-game mood check-ins in <a href="/settings">Settings → Mental Wellbeing</a> to start building your history.</p>
+      <h3>{$_('mental_health.disabled_title')}</h3>
+      <p>{$_('mental_health.disabled_body')}</p>
     </div>
   {:else}
 
@@ -99,7 +100,7 @@
       <div class="card assessment-card">
         <div class="assessment-header">
           <span class="assessment-icon">🧠</span>
-          <h2 class="assessment-title">Mental State</h2>
+          <h2 class="assessment-title">{$_('mental_health.mental_state')}</h2>
           {#if assessment.tilt_score > 55}
             <span class="warn-badge">⚠</span>
           {/if}
@@ -107,39 +108,39 @@
 
         {#if !assessment.has_sufficient_data && assessment.energy_avg_7d == null}
           <!-- Not enough data yet -->
-          <p class="muted-note">Complete more check-ins to see your mood trends.</p>
+          <p class="muted-note">{$_('mental_health.need_more')}</p>
           <div class="data-progress">
             {#each Array(3) as _, i}
               <span class="dot" class:filled={completedCheckins > i}></span>
             {/each}
-            <span class="dot-count">{Math.min(completedCheckins, 3)} of 3 needed</span>
+            <span class="dot-count">{$_('mental_health.needed', { values: { done: Math.min(completedCheckins, 3), total: 3 } })}</span>
           </div>
         {:else}
           <!-- Averages -->
           <div class="avg-grid">
             {#if assessment.energy_avg_7d != null}
               <div class="avg-row">
-                <span class="avg-label">Energy</span>
+                <span class="avg-label">{$_('mental_health.energy')}</span>
                 <div class="bar-track">
                   <div class="bar-fill" style="width: {barPct(assessment.energy_avg_7d)}"></div>
                 </div>
-                <span class="avg-value">{assessment.energy_avg_7d.toFixed(1)} avg (7d)</span>
+                <span class="avg-value">{$_('mental_health.avg_7d', { values: { value: assessment.energy_avg_7d.toFixed(1) } })}</span>
               </div>
             {/if}
             {#if assessment.calm_avg_7d != null}
               <div class="avg-row">
-                <span class="avg-label">Calm</span>
+                <span class="avg-label">{$_('mental_health.calm')}</span>
                 <div class="bar-track">
                   <div class="bar-fill" style="width: {barPct(assessment.calm_avg_7d)}"></div>
                 </div>
-                <span class="avg-value">{assessment.calm_avg_7d.toFixed(1)} avg (7d)</span>
+                <span class="avg-value">{$_('mental_health.avg_7d', { values: { value: assessment.calm_avg_7d.toFixed(1) } })}</span>
               </div>
             {/if}
           </div>
 
           {#if assessment.trend !== "insufficient_data"}
             <div class="trend-line" style="color: {trendColor(assessment.trend)}">
-              {trendArrow(assessment.trend)} {trendLabel(assessment.trend)}
+              {trendArrow(assessment.trend)} {trendTKey(assessment.trend) ? $_(trendTKey(assessment.trend)) : ''}
             </div>
           {/if}
         {/if}
@@ -166,11 +167,11 @@
     {/if}
 
     <!-- ─── Check-in History ───────────────────────────────────── -->
-    <h2 class="section-title">Check-in History</h2>
+    <h2 class="section-title">{$_('mental_health.history_title')}</h2>
 
     {#if history.length === 0}
       <div class="card empty-history">
-        <p>No check-ins yet. After your next match a prompt may appear based on your frequency setting.</p>
+        <p>{$_('mental_health.history_empty')}</p>
       </div>
     {:else}
       <div class="history-list">
@@ -195,7 +196,7 @@
 
             <div class="row-right">
               {#if item.skipped}
-                <span class="skipped-tag">Skipped</span>
+                <span class="skipped-tag">{$_('mental_health.skipped')}</span>
               {:else}
                 {#if item.energy}
                   <span class="mood-cell" title="{energyLabels[item.energy]}">

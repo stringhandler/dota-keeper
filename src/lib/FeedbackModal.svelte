@@ -3,6 +3,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
   import { showToast } from "$lib/toast.js";
+  import { _ } from "svelte-i18n";
 
   import { PUBLIC_SUPABASE_URL as SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY as SUPABASE_ANON_KEY } from '$env/static/public';
 
@@ -22,10 +23,10 @@
     }
   });
 
-  const followUpPrompts = {
-    bug: "What happened? What did you expect?",
-    feature: "What were you trying to do that wasn't possible?",
-    positive: "What specifically do you like? Why is it useful?",
+  const followUpPromptKeys = {
+    bug: "feedback.prompt_bug",
+    feature: "feedback.prompt_feature",
+    positive: "feedback.prompt_positive",
   };
 
   function getPlatform() {
@@ -40,7 +41,7 @@
     if (!category || !feedbackText.trim()) return;
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      showToast("Feedback is not configured yet.", "error");
+      showToast($_('feedback.not_configured'), "error");
       return;
     }
 
@@ -68,13 +69,13 @@
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      showToast("Feedback submitted — thank you!", "success");
+      showToast($_('feedback.toast_success'), "success");
       category = "";
       feedbackText = "";
       priority = "";
       onClose();
     } catch (e) {
-      showToast("Failed to submit feedback. Please try again.", "error");
+      showToast($_('feedback.toast_error'), "error");
     } finally {
       isSubmitting = false;
     }
@@ -85,14 +86,14 @@
   <div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Send feedback">
 
     <div class="modal-header">
-      <h2>Send Feedback</h2>
+      <h2>{$_('feedback.title')}</h2>
       <button class="close-btn" onclick={onClose} aria-label="Close">✕</button>
     </div>
 
     <div class="modal-body">
       <!-- Step 1: Category -->
       <div class="field-group">
-        <label class="field-label">What kind of feedback is this?</label>
+        <label class="field-label">{$_('feedback.category_label')}</label>
         <div class="category-options">
           <button
             class="category-btn"
@@ -101,7 +102,7 @@
             type="button"
           >
             <span class="cat-icon">🐛</span>
-            <span>Bug / Something broken</span>
+            <span>{$_('feedback.bug')}</span>
           </button>
           <button
             class="category-btn"
@@ -110,7 +111,7 @@
             type="button"
           >
             <span class="cat-icon">💡</span>
-            <span>Missing feature or improvement</span>
+            <span>{$_('feedback.feature')}</span>
           </button>
           <button
             class="category-btn"
@@ -119,7 +120,7 @@
             type="button"
           >
             <span class="cat-icon">⭐</span>
-            <span>Works great — tell us what you like</span>
+            <span>{$_('feedback.positive')}</span>
           </button>
         </div>
       </div>
@@ -128,13 +129,13 @@
       {#if category}
         <div class="field-group">
           <label class="field-label" for="feedback-text">
-            {followUpPrompts[category]}
+            {$_(followUpPromptKeys[category])}
           </label>
           <textarea
             id="feedback-text"
             class="feedback-textarea"
             bind:value={feedbackText}
-            placeholder="Your answer..."
+            placeholder={$_('feedback.placeholder')}
             rows="3"
             maxlength="500"
           ></textarea>
@@ -143,12 +144,12 @@
         <!-- Step 3: Priority (only for bug / feature) -->
         {#if category !== "positive"}
           <div class="field-group">
-            <label class="field-label">How much is this affecting your use of the app? <span class="optional">(optional)</span></label>
+            <label class="field-label">{$_('feedback.priority_label')} <span class="optional">{$_('feedback.optional')}</span></label>
             <div class="priority-options">
               {#each [
-                { value: "blocking", label: "Blocking — I can't use the app properly" },
-                { value: "annoying", label: "Annoying — I work around it" },
-                { value: "minor",    label: "Minor — Nice to have" },
+                { value: "blocking", tkey: "feedback.priority_blocking" },
+                { value: "annoying", tkey: "feedback.priority_annoying" },
+                { value: "minor",    tkey: "feedback.priority_minor" },
               ] as opt}
                 <label class="priority-radio">
                   <input
@@ -157,7 +158,7 @@
                     value={opt.value}
                     bind:group={priority}
                   />
-                  <span>{opt.label}</span>
+                  <span>{$_(opt.tkey)}</span>
                 </label>
               {/each}
             </div>
@@ -167,14 +168,14 @@
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick={onClose} type="button">Cancel</button>
+      <button class="btn btn-ghost" onclick={onClose} type="button">{$_('feedback.cancel')}</button>
       <button
         class="btn btn-primary"
         onclick={handleSubmit}
         disabled={!category || !feedbackText.trim() || isSubmitting}
         type="button"
       >
-        {isSubmitting ? "Sending..." : "Send Feedback"}
+        {isSubmitting ? $_('feedback.sending') : $_('feedback.send')}
       </button>
     </div>
   </div>

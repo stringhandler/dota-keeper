@@ -6,6 +6,7 @@
   import { onMount, onDestroy } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
+  import { _ } from "svelte-i18n";
 
   let databasePath = $state("");
   let isLoading = $state(true);
@@ -396,8 +397,8 @@
 
 <div class="settings-content">
   <div class="page-header">
-    <h1>Settings</h1>
-    <p class="subtitle">Manage your application settings</p>
+    <h1>{$_('settings.title')}</h1>
+    <p class="subtitle">{$_('settings.subtitle')}</p>
   </div>
 
   {#if error}
@@ -409,44 +410,44 @@
   {/if}
 
   <div class="settings-section">
-    <h2>Database</h2>
+    <h2>{$_('settings.section_database')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Database Location</h3>
+        <h3>{$_('settings.db_location_title')}</h3>
         <p class="setting-description">
-          Your Dota 2 match data and goals are stored in a SQLite database.
+          {$_('settings.db_location_desc')}
         </p>
         {#if isLoading}
-          <p class="database-path loading">Loading...</p>
+          <p class="database-path loading">{$_('settings.db_loading')}</p>
         {:else}
           <p class="database-path">{databasePath}</p>
         {/if}
       </div>
       <button class="open-folder-btn" onclick={openDatabaseFolder} disabled={isLoading}>
-        Open Folder
+        {$_('settings.open_folder')}
       </button>
     </div>
   </div>
 
   <div class="settings-section">
-    <h2>Goal Suggestions</h2>
+    <h2>{$_('settings.section_suggestions')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Suggestion Difficulty</h3>
+        <h3>{$_('settings.suggestion_difficulty_title')}</h3>
         <p class="setting-description">
-          Controls how ambitious your CS goal suggestions will be. Medium targets 5–10% improvement over your recent average.
+          {$_('settings.suggestion_difficulty_desc')}
         </p>
         <div class="difficulty-controls">
           <select class="difficulty-select" bind:value={suggestionDifficulty}>
-            <option value="Easy">Easy (3–5% improvement)</option>
-            <option value="Medium">Medium (5–10% improvement)</option>
-            <option value="Hard">Hard (10–15% improvement)</option>
-            <option value="Custom">Custom</option>
+            <option value="Easy">{$_('settings.difficulty_easy')}</option>
+            <option value="Medium">{$_('settings.difficulty_medium')}</option>
+            <option value="Hard">{$_('settings.difficulty_hard')}</option>
+            <option value="Custom">{$_('settings.difficulty_custom')}</option>
           </select>
           {#if suggestionDifficulty === "Custom"}
             <div class="custom-pct">
               <label>
-                Target improvement:
+                {$_('settings.target_improvement')}
                 <input
                   type="number"
                   min="1"
@@ -464,24 +465,24 @@
         onclick={saveDifficulty}
         disabled={isSavingDifficulty}
       >
-        {isSavingDifficulty ? "Saving..." : "Save"}
+        {isSavingDifficulty ? $_('settings.saving') : $_('settings.save')}
       </button>
     </div>
   </div>
 
   <div class="settings-section">
-    <h2>Privacy</h2>
+    <h2>{$_('settings.section_privacy')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Anonymous Analytics</h3>
+        <h3>{$_('settings.analytics_title')}</h3>
         <p class="setting-description">
-          Help improve Dota Keeper by sending anonymous usage data. We track page views, feature usage, and errors to understand how the app is used.
+          {$_('settings.analytics_desc')}
         </p>
         <p class="setting-description" style="margin-top: 0.5rem;">
-          <strong>What we collect:</strong> App version, platform, page views, feature usage events (e.g. "goal created", "challenge accepted").
+          <strong>{$_('settings.analytics_collect')}</strong> {$_('settings.analytics_collect_detail')}
         </p>
         <p class="setting-description" style="margin-top: 0.5rem;">
-          <strong>What we DON'T collect:</strong> Steam ID, match IDs, hero choices, goal descriptions, or any personally identifiable information.
+          <strong>{$_('settings.analytics_not_collect')}</strong> {$_('settings.analytics_not_collect_detail')}
         </p>
         <div class="analytics-options" style="margin-top: 1rem;">
           <label class="radio-label">
@@ -493,7 +494,7 @@
               onchange={() => saveAnalytics("Accepted")}
               disabled={isSavingAnalytics}
             />
-            <span>Accept — Help improve Dota Keeper</span>
+            <span>{$_('settings.analytics_accept')}</span>
           </label>
           <label class="radio-label">
             <input
@@ -504,7 +505,7 @@
               onchange={() => saveAnalytics("Declined")}
               disabled={isSavingAnalytics}
             />
-            <span>Decline — Don't send usage data</span>
+            <span>{$_('settings.analytics_decline')}</span>
           </label>
         </div>
       </div>
@@ -512,15 +513,15 @@
   </div>
 
   <div class="settings-section">
-    <h2>Match History</h2>
+    <h2>{$_('settings.section_matches')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Backfill Historical Matches</h3>
+        <h3>{$_('settings.backfill_title')}</h3>
         <p class="setting-description">
-          Download and parse 100 matches from before your oldest stored match. This helps build up your historical data for better analysis and trends.
+          {$_('settings.backfill_desc')}
         </p>
         <p class="warning-text">
-          ⚠️ This process may take several minutes as it fetches and parses each match individually.
+          {$_('settings.backfill_warning')}
         </p>
       </div>
       <button
@@ -528,18 +529,18 @@
         onclick={backfillMatches}
         disabled={isBackfilling || !steamId}
       >
-        {isBackfilling ? 'Backfilling...' : 'Backfill 100 Matches'}
+        {isBackfilling ? $_('settings.backfilling') : $_('settings.backfill_btn')}
       </button>
     </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Background Auto-Parse</h3>
+        <h3>{$_('settings.bg_parse_title')}</h3>
         <p class="setting-description">
-          Automatically parse unparsed matches in the background at startup — one at a time, every 10 seconds — so your history is always up to date without manual intervention.
+          {$_('settings.bg_parse_desc')}
         </p>
         {#if bgParseActive}
-          <p class="bg-parse-status">Parsing in background — {bgParsePending} match{bgParsePending === 1 ? '' : 'es'} remaining…</p>
+          <p class="bg-parse-status">{$_('settings.bg_parse_status', { values: { count: bgParsePending, plural: bgParsePending === 1 ? '' : 'es' } })}</p>
         {/if}
         <div class="toggle-row">
           <button
@@ -547,7 +548,7 @@
             class:active={backgroundParseEnabled}
             onclick={() => toggleBackgroundParse(!backgroundParseEnabled)}
           >
-            {backgroundParseEnabled ? 'Enabled' : 'Disabled'}
+            {backgroundParseEnabled ? $_('settings.enabled') : $_('settings.disabled')}
           </button>
         </div>
       </div>
@@ -555,12 +556,12 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Reparse Pending Matches</h3>
+        <h3>{$_('settings.reparse_title')}</h3>
         <p class="setting-description">
-          Retry parsing all matches that failed or haven't been parsed yet. This is useful for matches that couldn't be parsed initially due to API issues.
+          {$_('settings.reparse_desc')}
         </p>
         <p class="warning-text">
-          ⚠️ This will attempt to parse all unparsed/failed matches, which may take several minutes.
+          {$_('settings.reparse_warning')}
         </p>
       </div>
       <button
@@ -568,18 +569,18 @@
         onclick={reparsePendingMatches}
         disabled={isReparsing || !steamId}
       >
-        {isReparsing ? 'Reparsing...' : 'Reparse Pending'}
+        {isReparsing ? $_('settings.reparsing') : $_('settings.reparse_btn')}
       </button>
     </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Clear All Matches</h3>
+        <h3>{$_('settings.clear_matches_title')}</h3>
         <p class="setting-description">
-          Permanently delete all match data from the database. This will remove all matches and their associated parsed data.
+          {$_('settings.clear_matches_desc')}
         </p>
         <p class="warning-text">
-          ⚠️ WARNING: This action cannot be undone! All match history will be permanently deleted.
+          {$_('settings.clear_matches_warning')}
         </p>
       </div>
       <button
@@ -587,29 +588,29 @@
         onclick={clearAllMatches}
         disabled={isClearing}
       >
-        {isClearing ? 'Clearing...' : 'Clear All Matches'}
+        {isClearing ? $_('settings.clearing') : $_('settings.clear_matches_btn')}
       </button>
     </div>
   </div>
 
   <div class="settings-section">
-    <h2>Updates</h2>
+    <h2>{$_('settings.section_updates')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Application Updates</h3>
+        <h3>{$_('settings.updates_title')}</h3>
         <p class="setting-description">
-          Manually check for a new version of Dota Keeper at any time.
+          {$_('settings.updates_desc')}
         </p>
         {#if appVersion}
-          <p class="version-label">Current version: <span class="version-value">v{appVersion}</span></p>
+          <p class="version-label">{$_('settings.current_version')} <span class="version-value">v{appVersion}</span></p>
         {/if}
         {#if updateError}
           <p class="update-error">{updateError}</p>
         {:else if updateResult !== null}
           {#if updateResult.available}
-            <p class="update-available">Version {updateResult.version} is available!</p>
+            <p class="update-available">{$_('settings.update_available', { values: { version: updateResult.version } })}</p>
           {:else}
-            <p class="update-current">You're on the latest version (v{appVersion})</p>
+            <p class="update-current">{$_('settings.up_to_date', { values: { version: appVersion } })}</p>
           {/if}
         {/if}
       </div>
@@ -619,7 +620,7 @@
           onclick={checkForUpdates}
           disabled={checkingUpdate || isInstalling}
         >
-          {checkingUpdate ? 'Checking...' : 'Check for Updates'}
+          {checkingUpdate ? $_('settings.checking') : $_('settings.check_updates')}
         </button>
         {#if updateResult?.available}
           <button
@@ -627,7 +628,7 @@
             onclick={installUpdate}
             disabled={isInstalling}
           >
-            {isInstalling ? 'Installing...' : 'Install & Restart'}
+            {isInstalling ? $_('settings.installing') : $_('settings.install_restart')}
           </button>
         {/if}
       </div>
@@ -635,15 +636,15 @@
   </div>
 
   <div class="settings-section">
-    <h2>Mental Wellbeing</h2>
+    <h2>{$_('settings.section_mental')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Post-game mood check-ins</h3>
+        <h3>{$_('settings.mental_checkin_title')}</h3>
         <p class="setting-description">
-          Get occasional prompts to reflect on how you felt during a session. Helps you spot patterns like fatigue or frustration before they affect your gameplay.
+          {$_('settings.mental_checkin_desc')}
         </p>
         <p class="setting-description">
-          All data is stored locally on your device only. You can skip any check-in, and disable this at any time.
+          {$_('settings.mental_checkin_local')}
         </p>
         <div class="toggle-row">
           <button
@@ -652,9 +653,9 @@
             onclick={() => toggleMentalHealth(!mentalHealthEnabled)}
             disabled={isSavingMentalHealth}
           >
-            {mentalHealthEnabled ? "On" : "Off"}
+            {mentalHealthEnabled ? $_('settings.on') : $_('settings.off')}
           </button>
-          <span class="toggle-label">{mentalHealthEnabled ? "Check-ins enabled" : "Check-ins disabled"}</span>
+          <span class="toggle-label">{mentalHealthEnabled ? $_('settings.checkins_enabled') : $_('settings.checkins_disabled')}</span>
         </div>
       </div>
     </div>
@@ -662,21 +663,21 @@
     {#if mentalHealthEnabled}
       <div class="setting-item">
         <div class="setting-info">
-          <h3>How often to check in?</h3>
+          <h3>{$_('settings.frequency_title')}</h3>
           <p class="setting-description">
-            Controls how frequently the post-game mood prompt appears. Loss streaks always trigger a check-in regardless of this setting.
+            {$_('settings.frequency_desc')}
           </p>
           <select
             class="frequency-select"
             value={checkinFrequency}
             onchange={(e) => saveCheckinFrequency(e.target.value)}
           >
-            <option value="every_game">Every game</option>
-            <option value="every_3">Every 3 games</option>
-            <option value="every_5">Every 5 games</option>
-            <option value="every_10">Every 10 games</option>
-            <option value="once_per_session">Once per session</option>
-            <option value="after_loss">After every loss</option>
+            <option value="every_game">{$_('settings.freq_every')}</option>
+            <option value="every_3">{$_('settings.freq_every_3')}</option>
+            <option value="every_5">{$_('settings.freq_every_5')}</option>
+            <option value="every_10">{$_('settings.freq_every_10')}</option>
+            <option value="once_per_session">{$_('settings.freq_once_session')}</option>
+            <option value="after_loss">{$_('settings.freq_after_loss')}</option>
           </select>
         </div>
       </div>
@@ -684,9 +685,9 @@
 
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Clear all mood data</h3>
+        <h3>{$_('settings.clear_mood_title')}</h3>
         <p class="setting-description">
-          Permanently delete all mood check-in history. Your match data and goals are not affected.
+          {$_('settings.clear_mood_desc')}
         </p>
       </div>
       <button
@@ -694,36 +695,36 @@
         onclick={clearMoodData}
         disabled={isClearingMoodData}
       >
-        {isClearingMoodData ? "Clearing..." : "Clear Mood Data"}
+        {isClearingMoodData ? $_('settings.clearing') : $_('settings.clear_mood_btn')}
       </button>
     </div>
   </div>
 
   <div class="settings-section">
-    <h2>Account</h2>
+    <h2>{$_('settings.section_account')}</h2>
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Log Out</h3>
+        <h3>{$_('settings.logout_title')}</h3>
         <p class="setting-description">
-          Log out from your Steam account. Your match data and goals will remain stored locally and will be available when you log back in.
+          {$_('settings.logout_desc')}
         </p>
       </div>
       <button
         class="logout-btn-destructive"
         onclick={handleLogout}
       >
-        Log Out
+        {$_('settings.logout_btn')}
       </button>
     </div>
 
     <div class="setting-item">
       <div class="setting-info">
-        <h3>Factory Reset</h3>
+        <h3>{$_('settings.factory_reset_title')}</h3>
         <p class="setting-description">
-          Delete all data and reset the app to its initial state. Useful for testing the first-run experience.
+          {$_('settings.factory_reset_desc')}
         </p>
         <p class="warning-text">
-          ⚠️ This permanently deletes all matches, goals, settings, and check-ins. The app will close immediately.
+          {$_('settings.factory_reset_warning')}
         </p>
       </div>
       <button
@@ -731,7 +732,7 @@
         onclick={handleFactoryReset}
         disabled={isResetting}
       >
-        {isResetting ? "Resetting..." : "Factory Reset"}
+        {isResetting ? $_('settings.resetting') : $_('settings.factory_reset_btn')}
       </button>
     </div>
   </div>
@@ -741,17 +742,17 @@
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
   <div class="modal-backdrop" onclick={dismissMentalHealthIntro}>
     <div class="modal-card" onclick={(e) => e.stopPropagation()}>
-      <h3 class="modal-title">About mood check-ins</h3>
+      <h3 class="modal-title">{$_('settings.modal_checkin_title')}</h3>
       <p class="modal-body">
-        Occasionally, after a session, we'll ask how you felt — using simple emoji scales. This helps you spot patterns like fatigue or frustration before they affect your gameplay.
+        {$_('settings.modal_checkin_body')}
       </p>
       <ul class="modal-list">
-        <li>All data stays on your device</li>
-        <li>You can skip any check-in</li>
-        <li>Disable tracking at any time from this page</li>
+        <li>{$_('settings.modal_checkin_li1')}</li>
+        <li>{$_('settings.modal_checkin_li2')}</li>
+        <li>{$_('settings.modal_checkin_li3')}</li>
       </ul>
       <button class="modal-confirm-btn" onclick={dismissMentalHealthIntro}>
-        Got it, let's go
+        {$_('settings.modal_checkin_confirm')}
       </button>
     </div>
   </div>

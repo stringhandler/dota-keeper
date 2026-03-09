@@ -8,6 +8,7 @@
   import { trackPageView } from "$lib/analytics.js";
   import { showToast } from "$lib/toast.js";
   import { pendingCheckinStore } from "$lib/checkin-store.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -295,14 +296,14 @@
     }
   }
 
-  function getRoleLabel(role) {
+  function getRoleTKey(role) {
     switch (role) {
-      case 1: return "Carry";
-      case 2: return "Mid";
-      case 3: return "Offlane";
-      case 4: return "Soft Sup";
-      case 5: return "Hard Sup";
-      default: return "—";
+      case 1: return "matches.role_carry";
+      case 2: return "matches.role_mid";
+      case 3: return "matches.role_offlane";
+      case 4: return "matches.role_soft_sup";
+      case 5: return "matches.role_hard_sup";
+      default: return null;
     }
   }
 
@@ -378,11 +379,11 @@
   <!-- FILTER BAR -->
   <div class="match-filters-wrap">
     <div class="match-filters">
-      <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>All</button>
-      <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>Wins</button>
-      <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>Losses</button>
-      <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>Ranked</button>
-      <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>Turbo</button>
+      <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>{$_('matches.filter_all')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>{$_('matches.filter_wins')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>{$_('matches.filter_losses')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>{$_('matches.filter_ranked')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>{$_('matches.filter_turbo')}</button>
       {#each trackedHeroes as hero}
         <button class="filter-chip" class:active={activeFilter === `hero-${hero.id}`} onclick={() => setFilter(`hero-${hero.id}`)}>
           {hero.name}
@@ -391,32 +392,32 @@
     </div>
     {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !parsingMatches.has(m.match_id) && !retryCountdowns.has(m.match_id))}
       <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
-        Parse All
+        {$_('matches.parse_all')}
       </button>
     {/if}
     <button class="btn btn-primary refresh-btn" onclick={handleRefresh} disabled={isRefreshing}>
-      ↻ {isRefreshing ? 'Refreshing...' : 'Refresh Matches'}
+      ↻ {isRefreshing ? $_('matches.refreshing') : $_('matches.refresh')}
     </button>
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading matches...</div>
+    <div class="loading-state">{$_('matches.loading')}</div>
   {:else if matches.length === 0}
-    <div class="empty-state">No matches found. Click "Refresh Matches" to fetch your recent games.</div>
+    <div class="empty-state">{$_('matches.empty')}</div>
   {:else}
     {@const filteredCount = getFilteredMatches().length}
     <div class="matches-table">
       <div class="table-head">
-        <div class="th">Match ID</div>
-        <div class="th">Date</div>
-        <div class="th">Hero</div>
-        <div class="th">Mode</div>
-        <div class="th">Role</div>
-        <div class="th">Result</div>
-        <div class="th">K/D/A</div>
-        <div class="th">GPM</div>
-        <div class="th">XPM</div>
-        <div class="th">Goals</div>
+        <div class="th">{$_('matches.col_match_id')}</div>
+        <div class="th">{$_('matches.col_date')}</div>
+        <div class="th">{$_('matches.col_hero')}</div>
+        <div class="th">{$_('matches.col_mode')}</div>
+        <div class="th">{$_('matches.col_role')}</div>
+        <div class="th">{$_('matches.col_result')}</div>
+        <div class="th">{$_('matches.col_kda')}</div>
+        <div class="th">{$_('matches.col_gpm')}</div>
+        <div class="th">{$_('matches.col_xpm')}</div>
+        <div class="th">{$_('matches.col_goals')}</div>
       </div>
 
       {#each getPaginatedMatches() as match}
@@ -428,15 +429,15 @@
               <a
                 class="icon-btn"
                 href="/matches/{match.match_id}"
-                aria-label="View details"
-                title="View details"
+                aria-label={$_('matches.view_details')}
+                title={$_('matches.view_details')}
                 onclick={(e) => e.stopPropagation()}
               >🔍</a>
               <button
                 class="icon-btn"
                 onclick={(e) => { e.stopPropagation(); copyMatchId(match.match_id); }}
-                aria-label="Copy ID"
-                title="Copy ID"
+                aria-label={$_('matches.copy_id')}
+                title={$_('matches.copy_id')}
               >{copiedMatchId === match.match_id ? '✓' : '📋'}</button>
               <button
                 class="icon-btn"
@@ -462,11 +463,11 @@
           </div>
 
           <!-- Role -->
-          <div class="td-role td-text">{getRoleLabel(match.role)}</div>
+          <div class="td-role td-text">{getRoleTKey(match.role) ? $_( getRoleTKey(match.role)) : '—'}</div>
 
           <!-- Result -->
           <div class="td-result {isWin(match) ? 'result-win' : 'result-loss'}">
-            {isWin(match) ? 'WON' : 'LOST'}
+            {isWin(match) ? $_('matches.won') : $_('matches.lost')}
           </div>
 
           <!-- K/D/A -->
@@ -490,7 +491,7 @@
                 <span
                   class="not-ready-text"
                   title={countdown ? `will retry in ${countdown}s` : errMsg}
-                >Not ready</span>
+                >{$_('matches.not_ready')}</span>
               {:else}
                 <span
                   class="parse-status-icon parse-warn"
@@ -504,7 +505,7 @@
                 class="parse-btn"
                 onclick={(e) => { e.stopPropagation(); parseMatch(match.match_id); }}
                 disabled={parsingMatches.has(match.match_id)}
-              >{match.parse_state === "Failed" ? "↺ Retry" : "Parse"}</button>
+              >{match.parse_state === "Failed" ? $_('matches.retry') : $_('matches.parse')}</button>
             {:else if match.goals_applicable > 0}
               <span class="goals-chip" class:has-goals={match.goals_achieved > 0}>
                 {match.goals_achieved}/{match.goals_applicable}{match.goals_achieved > 0 ? ' ⚡' : ''}
@@ -520,12 +521,12 @@
     <!-- PAGINATION -->
     <div class="pagination">
       <div class="pagination-info">
-        Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, filteredCount)} of {filteredCount}
-        {#if activeFilter !== 'all'}<span class="filter-note">(filtered from {matches.length})</span>{/if}
+        {$_('matches.showing', { values: { from: ((currentPage - 1) * pageSize) + 1, to: Math.min(currentPage * pageSize, filteredCount), total: filteredCount } })}
+        {#if activeFilter !== 'all'}<span class="filter-note">{$_('matches.filtered_from', { values: { total: matches.length } })}</span>{/if}
       </div>
 
       <div class="pagination-controls">
-        <button class="pagination-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>← Prev</button>
+        <button class="pagination-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>{$_('matches.prev')}</button>
 
         <div class="page-numbers">
           {#each Array.from({ length: getTotalPages() }, (_, i) => i + 1) as p}
@@ -537,11 +538,11 @@
           {/each}
         </div>
 
-        <button class="pagination-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === getTotalPages()}>Next →</button>
+        <button class="pagination-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === getTotalPages()}>{$_('matches.next')}</button>
       </div>
 
       <div class="page-size-selector">
-        <label for="page-size">Per page:</label>
+        <label for="page-size">{$_('matches.per_page')}</label>
         <select id="page-size" class="form-select" bind:value={pageSize} onchange={() => { currentPage = 1; }}>
           <option value={10}>10</option>
           <option value={25}>25</option>
@@ -561,19 +562,19 @@
       <div class="modal-header">
         <div class="modal-title">
           <HeroIcon heroId={selectedMatch.hero_id} size="small" showName={false} />
-          Goal Details — Match {selectedMatch.match_id}
+          {$_('matches.goal_details_title', { values: { id: selectedMatch.match_id } })}
         </div>
         <button class="modal-close" onclick={closeGoalDetails}>✕</button>
       </div>
       <div class="modal-body">
         <div class="match-summary">
-          <span class="{isWin(selectedMatch) ? 'result-win' : 'result-loss'}">{isWin(selectedMatch) ? 'WON' : 'LOST'}</span>
-          <span class="td-text">Duration: {formatDuration(selectedMatch.duration)}</span>
-          <span class="td-text">KDA: {selectedMatch.kills}/{selectedMatch.deaths}/{selectedMatch.assists}</span>
+          <span class="{isWin(selectedMatch) ? 'result-win' : 'result-loss'}">{isWin(selectedMatch) ? $_('matches.won') : $_('matches.lost')}</span>
+          <span class="td-text">{$_('matches.duration', { values: { time: formatDuration(selectedMatch.duration) } })}</span>
+          <span class="td-text">{$_('matches.kda', { values: { k: selectedMatch.kills, d: selectedMatch.deaths, a: selectedMatch.assists } })}</span>
         </div>
 
         {#if goalDetails.length === 0}
-          <p class="no-applicable-goals">No applicable goals for this match.</p>
+          <p class="no-applicable-goals">{$_('matches.no_applicable_goals')}</p>
         {:else}
           <div class="goals-list">
             {#each goalDetails as evaluation}
@@ -585,7 +586,7 @@
                       <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
                       {getHeroName(evaluation.goal.hero_id)}
                     {:else}
-                      Any Hero
+                      {$_('matches.any_hero')}
                     {/if}
                     {#if evaluation.goal.metric === "ItemTiming"}
                       — {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} (Item Timing)
@@ -610,10 +611,10 @@
 
         <div class="modal-footer-actions">
           <a class="modal-action-btn" href="/matches/{mid}" onclick={closeGoalDetails}>
-            🔍 View Details
+            🔍 {$_('matches.view_details')}
           </a>
           <button class="modal-action-btn" onclick={() => copyMatchId(mid)}>
-            {copiedMatchId === mid ? '✓ Copied!' : '📋 Copy ID'}
+            {copiedMatchId === mid ? $_('matches.copied_label') : '📋 ' + $_('matches.copy_id')}
           </button>
           <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
             🔗 OpenDota

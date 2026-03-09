@@ -7,6 +7,7 @@
   import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView, trackEvent } from "$lib/analytics.js";
   import { showToast } from "$lib/toast.js";
+  import { _ } from "svelte-i18n";
 
   let pendingDeleteId = $state(null);
   let goals = $state([]);
@@ -183,7 +184,7 @@
           target_time_minutes: targetTime,
           has_item: !!formItemId,
         });
-        showToast("Goal updated");
+        showToast($_('goals.toast_updated'));
       } else {
         await invoke("create_goal", {
           goal: {
@@ -204,7 +205,7 @@
           target_time_minutes: targetTime,
           has_item: !!formItemId,
         });
-        showToast("Goal created");
+        showToast($_('goals.toast_created'));
       }
       resetForm();
       await loadGoals();
@@ -228,7 +229,7 @@
     try {
       await invoke("remove_goal", { goalId });
       await loadGoals();
-      showToast("Goal deleted");
+      showToast($_('goals.toast_deleted'));
     } catch (e) {
       error = `Failed to delete goal: ${e}`;
       showToast(`Failed to delete goal: ${e}`, 'error');
@@ -292,13 +293,13 @@
 
   function getGoalTypeTag(metric) {
     switch (metric) {
-      case "LastHits": return { label: 'CS Goal', cls: 'tag-cs' };
-      case "Denies": return { label: 'Deny Goal', cls: 'tag-cs' };
-      case "ItemTiming": return { label: 'Item Goal', cls: 'tag-item' };
-      case "Kills": return { label: 'Kill Goal', cls: 'tag-kill' };
-      case "Networth": return { label: 'NW Goal', cls: 'tag-nw' };
-      case "PartnerNetworth": return { label: 'Support Goal', cls: 'tag-nw' };
-      default: return { label: `${metric} Goal`, cls: '' };
+      case "LastHits": return { tkey: 'goals.tag_cs', cls: 'tag-cs' };
+      case "Denies": return { tkey: 'goals.tag_deny', cls: 'tag-cs' };
+      case "ItemTiming": return { tkey: 'goals.tag_item', cls: 'tag-item' };
+      case "Kills": return { tkey: 'goals.tag_kill', cls: 'tag-kill' };
+      case "Networth": return { tkey: 'goals.tag_nw', cls: 'tag-nw' };
+      case "PartnerNetworth": return { tkey: 'goals.tag_support', cls: 'tag-nw' };
+      default: return { tkey: null, cls: '' };
     }
   }
 </script>
@@ -311,83 +312,83 @@
   <!-- NEW GOAL TOGGLE (mobile only) -->
   <div class="mobile-new-goal-row">
     <button class="btn btn-primary" onclick={() => { showFormMobile = !showFormMobile; editingGoal = null; }}>
-      {showFormMobile ? '✕ Cancel' : '+ New Goal'}
+      {showFormMobile ? $_('goals.cancel_new') : $_('goals.new_goal')}
     </button>
   </div>
 
   <!-- INLINE CREATE FORM -->
   <div class="create-form" class:form-hidden-mobile={!showFormMobile && !editingGoal}>
     <div class="create-form-title">
-      {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+      {editingGoal ? $_('goals.edit_title') : $_('goals.create_title')}
     </div>
 
     <form onsubmit={handleSubmit}>
       <div class="form-row">
         <div class="fg">
-          <div class="form-label">Hero</div>
+          <div class="form-label">{$_('goals.hero')}</div>
           <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
         </div>
 
         <div class="fg">
-          <div class="form-label">Metric</div>
+          <div class="form-label">{$_('goals.metric')}</div>
           <select class="form-select" bind:value={formMetric}>
-            <option value="LastHits">Last Hits</option>
-            <option value="Denies">Denies</option>
-            <option value="PartnerNetworth">Partner Networth</option>
-            <option value="Networth">Net Worth</option>
-            <option value="Kills">Kills</option>
-            <option value="Level">Level</option>
-            <option value="ItemTiming">Item Timing</option>
+            <option value="LastHits">{$_('goals.metric_last_hits')}</option>
+            <option value="Denies">{$_('goals.metric_denies')}</option>
+            <option value="PartnerNetworth">{$_('goals.metric_partner_nw')}</option>
+            <option value="Networth">{$_('goals.metric_networth')}</option>
+            <option value="Kills">{$_('goals.metric_kills')}</option>
+            <option value="Level">{$_('goals.metric_level')}</option>
+            <option value="ItemTiming">{$_('goals.metric_item_timing')}</option>
           </select>
         </div>
 
         {#if formMetric === "ItemTiming"}
           <div class="fg">
-            <div class="form-label">Item <span class="req">*</span></div>
+            <div class="form-label">{$_('goals.item')} <span class="req">*</span></div>
             <select class="form-select" bind:value={formItemId} required>
-              <option value="">Select item...</option>
+              <option value="">{$_('goals.item_select')}</option>
               {#each items as item}
                 <option value={item.id}>{item.display_name}</option>
               {/each}
             </select>
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">Minutes <span class="req">*</span></div>
+            <div class="form-label">{$_('goals.minutes')} <span class="req">*</span></div>
             <input class="form-input" type="number" min="0" max="60" placeholder="9" bind:value={formItemMinutes} />
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">Seconds</div>
+            <div class="form-label">{$_('goals.seconds')}</div>
             <input class="form-input" type="number" min="0" max="59" placeholder="30" bind:value={formItemSeconds} />
           </div>
         {:else}
           <div class="fg">
-            <div class="form-label">Target {getMetricLabel(formMetric)}</div>
+            <div class="form-label">{$_('goals.target', { values: { metric: getMetricLabel(formMetric) } })}</div>
             <input class="form-input" type="number" min="1"
               placeholder={formMetric === "Level" ? "e.g. 6" : "e.g. 50"}
               bind:value={formTargetValue} />
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">By (min)</div>
+            <div class="form-label">{$_('goals.by_min')}</div>
             <input class="form-input" type="number" min="1" max="120" placeholder="10" bind:value={formTargetTime} />
           </div>
         {/if}
 
         <div class="fg fg-narrow">
-          <div class="form-label">Mode</div>
+          <div class="form-label">{$_('goals.mode')}</div>
           <select class="form-select" bind:value={formGameMode}>
-            <option value="All">Any</option>
-            <option value="Ranked">Ranked</option>
-            <option value="Turbo">Turbo</option>
+            <option value="All">{$_('goals.mode_any')}</option>
+            <option value="Ranked">{$_('goals.mode_ranked')}</option>
+            <option value="Turbo">{$_('goals.mode_turbo')}</option>
           </select>
         </div>
 
         <div class="fg fg-action">
           <div class="form-label">&nbsp;</div>
           <button type="submit" class="btn btn-primary" disabled={isSaving}>
-            {isSaving ? 'Saving...' : editingGoal ? 'Update' : 'Add Goal'}
+            {isSaving ? $_('goals.saving') : editingGoal ? $_('goals.update') : $_('goals.add_goal')}
           </button>
           {#if editingGoal}
-            <button type="button" class="btn btn-ghost" onclick={resetForm}>Cancel</button>
+            <button type="button" class="btn btn-ghost" onclick={resetForm}>{$_('goals.cancel')}</button>
           {/if}
         </div>
       </div>
@@ -396,16 +397,16 @@
 
   <!-- GOALS LIST -->
   <div class="section-header">
-    <div class="section-title">Active Goals ({goals.length})</div>
+    <div class="section-title">{$_('goals.active_goals', { values: { count: goals.length } })}</div>
     <!-- Archive All: future feature placeholder -->
-    <button class="btn btn-ghost" title="Archive all goals (coming soon)" disabled>Archive All</button>
+    <button class="btn btn-ghost" title="Archive all goals (coming soon)" disabled>{$_('goals.archive_all')}</button>
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading goals...</div>
+    <div class="loading-state">{$_('goals.loading')}</div>
   {:else if goals.length === 0}
     <div class="no-goals">
-      No goals yet. Use the form above to create your first goal.
+      {$_('goals.empty')}
     </div>
   {:else}
     <div class="goals-grid">
@@ -449,8 +450,8 @@
               <div class="goal-fill" style="width:0%"></div>
             </div>
             <div class="goal-meta">
-              <span class="goal-tag {tag.cls}">{tag.label}</span>
-              <span>{goal.game_mode === 'All' ? 'Any' : goal.game_mode}</span>
+              <span class="goal-tag {tag.cls}">{tag.tkey ? $_(tag.tkey) : goal.metric}</span>
+              <span>{goal.game_mode === 'All' ? $_('goals.mode_any') : goal.game_mode}</span>
               {#if warning}
                 <span class="warning-tag">⚠ {warning}</span>
               {/if}
@@ -458,18 +459,18 @@
           </div>
           <div class="goal-actions" onclick={(e) => e.stopPropagation()}>
             {#if pendingDeleteId === goal.id}
-              <span class="delete-confirm-label">Delete?</span>
+              <span class="delete-confirm-label">{$_('goals.delete_confirm')}</span>
               <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.4)"
-                onclick={() => deleteGoal(goal.id)}>Yes</button>
+                onclick={() => deleteGoal(goal.id)}>{$_('goals.delete_yes')}</button>
               <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px"
-                onclick={cancelDelete}>No</button>
+                onclick={cancelDelete}>{$_('goals.delete_no')}</button>
             {:else}
               <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
-                Edit
+                {$_('goals.edit')}
               </button>
               <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
                 onclick={() => confirmDelete(goal.id)}>
-                Delete
+                {$_('goals.delete')}
               </button>
             {/if}
           </div>

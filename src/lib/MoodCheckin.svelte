@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { _ } from "svelte-i18n";
 
   let { matchId, onComplete } = $props();
 
@@ -13,11 +14,18 @@
 
   const energyEmojis = ["😴", "😐", "🙂", "😄", "⚡"];
   const calmEmojis = ["😤", "😠", "😐", "😊", "🧘"];
+  // English values stored in DB; tkeys used for display only
   const attributionOptions = [
     "Teammates",
     "The enemy",
     "My own mistakes",
     "Nothing — I was fine actually",
+  ];
+  const attributionTKeys = [
+    "mood_checkin.attribution_teammates",
+    "mood_checkin.attribution_enemy",
+    "mood_checkin.attribution_own",
+    "mood_checkin.attribution_fine",
   ];
 
   async function submit() {
@@ -51,11 +59,11 @@
 <div class="checkin-card">
   <div class="checkin-header">
     <span class="checkin-icon">🧠</span>
-    <h3 class="checkin-title">How was that session?</h3>
+    <h3 class="checkin-title">{$_('mood_checkin.title')}</h3>
   </div>
 
   <div class="question-block">
-    <p class="question-label">How energised did you feel?</p>
+    <p class="question-label">{$_('mood_checkin.energy_q')}</p>
     <div class="emoji-scale">
       {#each energyEmojis as emoji, i}
         <button
@@ -72,7 +80,7 @@
   </div>
 
   <div class="question-block">
-    <p class="question-label">How calm were you?</p>
+    <p class="question-label">{$_('mood_checkin.calm_q')}</p>
     <div class="emoji-scale">
       {#each calmEmojis as emoji, i}
         <button
@@ -90,15 +98,15 @@
 
   {#if showQ3}
     <div class="question-block">
-      <p class="question-label">What got under your skin?</p>
+      <p class="question-label">{$_('mood_checkin.skin_q')}</p>
       <div class="attribution-options">
-        {#each attributionOptions as option}
+        {#each attributionOptions as option, i}
           <button
             class="attribution-btn"
             class:selected={attribution === option}
             onclick={() => (attribution = attribution === option ? null : option)}
           >
-            {option}
+            {$_(attributionTKeys[i])}
           </button>
         {/each}
       </div>
@@ -107,14 +115,14 @@
 
   <div class="checkin-actions">
     <button class="skip-btn" onclick={skip} disabled={isSubmitting}>
-      Skip
+      {$_('mood_checkin.skip')}
     </button>
     <button
       class="submit-btn"
       onclick={submit}
       disabled={isSubmitting || energy === null || calm === null}
     >
-      {isSubmitting ? "Saving..." : "Submit"}
+      {isSubmitting ? $_('mood_checkin.saving') : $_('mood_checkin.submit')}
     </button>
   </div>
 </div>

@@ -5,6 +5,7 @@
   import { getHeroName } from "$lib/heroes.js";
   import Chart from "$lib/Chart.svelte";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -22,12 +23,12 @@
   let analysis = $state(null);
 
   // Game modes
-  const gameModes = [
-    { value: null, label: "All Modes" },
-    { value: 22, label: "Ranked" },
-    { value: 23, label: "Turbo" },
-    { value: 2, label: "All Pick" },
-  ];
+  let gameModes = $derived([
+    { value: null, label: $_('analysis.all_modes') },
+    { value: 22, label: $_('analysis.mode_ranked') },
+    { value: 23, label: $_('analysis.mode_turbo') },
+    { value: 2, label: $_('analysis.mode_all_pick') },
+  ]);
 
   onMount(async () => {
     await loadAnalysis();
@@ -354,12 +355,12 @@
 <div class="hero-detail-content">
   <!-- PAGE HEADER -->
   <div class="detail-header">
-    <a href="/analysis" class="back-link">← Back to Analysis</a>
+    <a href="/analysis" class="back-link">{$_('analysis.back_to_analysis')}</a>
     <div class="detail-title">
       <HeroIcon heroId={heroId} size="large" showName={false} />
       <div>
         <div class="hero-name">{heroName}</div>
-        <div class="section-title">Last Hits Analysis</div>
+        <div class="section-title">{$_('analysis.last_hits_analysis')}</div>
       </div>
     </div>
   </div>
@@ -367,21 +368,21 @@
   <!-- FILTERS ROW -->
   <div class="filters-row">
     <div class="filter-group">
-      <div class="filter-label">Time Marker</div>
+      <div class="filter-label">{$_('analysis.filter_time')}</div>
       <select class="form-select" id="time-minutes" bind:value={timeMinutes} onchange={handleFilterChange}>
         <option value={10}>10 minutes</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <div class="filter-label">Window Size</div>
+      <div class="filter-label">{$_('analysis.filter_sample')}</div>
       <select class="form-select" id="window-size" bind:value={windowSize} onchange={handleFilterChange}>
         <option value={30}>30 games</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <div class="filter-label">Game Mode</div>
+      <div class="filter-label">{$_('analysis.filter_mode')}</div>
       <select class="form-select" id="mode-filter" bind:value={selectedGameMode} onchange={handleFilterChange}>
         {#each gameModes as mode}
           <option value={mode.value}>{mode.label}</option>
@@ -391,30 +392,30 @@
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading...</div>
+    <div class="loading-state">{$_('analysis.loading')}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if analysis}
     {#if analysis.current_period.count === 0}
       <div class="no-data">
-        <p>No data available for {heroName} with the selected filters.</p>
-        <p class="hint">Make sure you have parsed matches with this hero at {timeMinutes} minutes.</p>
+        <p>{$_('analysis.no_data')}</p>
+        <p class="hint">{$_('analysis.no_data_hint', { values: { minutes: timeMinutes } })}</p>
       </div>
     {:else}
       <!-- SUMMARY STATS -->
       <div class="analysis-card" style="margin-bottom:16px">
-        <div class="analysis-card-title">Summary Statistics</div>
+        <div class="analysis-card-title">{$_('analysis.summary_stats')}</div>
         <div class="stats-grid">
           <div class="stat-item">
-            <div class="stat-item-label">Average LH</div>
+            <div class="stat-item-label">{$_('analysis.avg_lh')}</div>
             <div class="big-stat">{analysis.current_period.average.toFixed(1)}</div>
           </div>
           <div class="stat-item">
-            <div class="stat-item-label">Min</div>
+            <div class="stat-item-label">{$_('analysis.min_val')}</div>
             <div class="big-stat" style="color:var(--red)">{analysis.current_period.min}</div>
           </div>
           <div class="stat-item">
-            <div class="stat-item-label">Max</div>
+            <div class="stat-item-label">{$_('analysis.max_val')}</div>
             <div class="big-stat" style="color:var(--green)">{analysis.current_period.max}</div>
           </div>
           <div class="stat-item">
@@ -426,7 +427,7 @@
 
       <!-- TREND -->
       <div class="analysis-card" style="margin-bottom:16px">
-        <div class="analysis-card-title">Trend Analysis</div>
+        <div class="analysis-card-title">{$_('analysis.trend_analysis')}</div>
         <div class="trend-row">
           <span class="trend-arrow {getTrendClass()}">
             {#if getTrendClass() === 'improving'}↗{:else if getTrendClass() === 'declining'}↘{:else}→{/if}
@@ -439,7 +440,7 @@
 
       <!-- DISTRIBUTION CHART -->
       <div class="analysis-card" style="margin-bottom:16px">
-        <div class="analysis-card-title">Distribution — Last {analysis.current_period.count} games</div>
+        <div class="analysis-card-title">{$_('analysis.distribution', { values: { count: analysis.current_period.count } })}</div>
         {#if getDistributionChartConfig()}
           <Chart config={getDistributionChartConfig()} height="300px" />
         {/if}
@@ -447,7 +448,7 @@
 
       <!-- TIMELINE CHART -->
       <div class="analysis-card" style="margin-bottom:16px">
-        <div class="analysis-card-title">Recent Games Timeline</div>
+        <div class="analysis-card-title">{$_('analysis.recent_timeline')}</div>
         {#if getTimelineChartConfig()}
           <Chart config={getTimelineChartConfig()} height="350px" />
         {/if}
@@ -455,12 +456,12 @@
 
       <!-- GAME DETAILS TABLE -->
       <div class="analysis-card">
-        <div class="analysis-card-title">Game Details</div>
+        <div class="analysis-card-title">{$_('analysis.game_details')}</div>
         <div class="games-table">
           <div class="table-header">
-            <div class="col-date">Date</div>
-            <div class="col-lh">Last Hits</div>
-            <div class="col-deviation">vs Average</div>
+            <div class="col-date">{$_('analysis.col_date')}</div>
+            <div class="col-lh">{$_('analysis.col_last_hits')}</div>
+            <div class="col-deviation">{$_('analysis.col_vs_avg')}</div>
           </div>
           {#each analysis.current_period.data_points as point}
             {@const deviation = point.last_hits - analysis.current_period.average}

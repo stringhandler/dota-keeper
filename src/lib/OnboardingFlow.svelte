@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
   import { heroes, getHeroIconUrl } from "$lib/heroes.js";
+  import { _ } from "svelte-i18n";
 
   let { steamId = "", onComplete = () => {} } = $props();
 
@@ -11,10 +12,10 @@
   // Step 1 — goals
   let selectedGoals = $state(new Set());
   const GOAL_CARDS = [
-    { id: "goals",      icon: "🎯", label: "Track my goals",         desc: "Set targets and see if I'm hitting them" },
-    { id: "analysis",   icon: "📊", label: "Analyse my performance",  desc: "Understand trends in my CS, KDA, win rate" },
-    { id: "mental",     icon: "🧠", label: "Monitor my mental game",  desc: "Spot tilt patterns and avoid burnout" },
-    { id: "challenges", icon: "🏆", label: "Daily/weekly challenges", desc: "Stay motivated with structured targets" },
+    { id: "goals",      icon: "🎯", labelKey: "onboarding.goal_track",      descKey: "onboarding.goal_track_desc" },
+    { id: "analysis",   icon: "📊", labelKey: "onboarding.goal_analyse",     descKey: "onboarding.goal_analyse_desc" },
+    { id: "mental",     icon: "🧠", labelKey: "onboarding.goal_mental",      descKey: "onboarding.goal_mental_desc" },
+    { id: "challenges", icon: "🏆", labelKey: "onboarding.goal_challenges",  descKey: "onboarding.goal_challenges_desc" },
   ];
 
   function toggleGoal(id) {
@@ -98,14 +99,14 @@
       {#each Array(TOTAL_STEPS) as _, i}
         <div class="dot" class:active={i + 1 === step} class:done={i + 1 < step}></div>
       {/each}
-      <span class="step-label">Step {step} of {TOTAL_STEPS}</span>
+      <span class="step-label">{$_('onboarding.step_label', { values: { step, total: TOTAL_STEPS } })}</span>
     </div>
 
     <!-- Step 1 — Welcome -->
     {#if step === 1}
       <div class="step-content">
-        <h1 class="ob-title">Welcome to Dota Keeper</h1>
-        <p class="ob-sub">What do you want to get out of it?</p>
+        <h1 class="ob-title">{$_('onboarding.step1_title')}</h1>
+        <p class="ob-sub">{$_('onboarding.step1_sub')}</p>
         <div class="goal-cards">
           {#each GOAL_CARDS as card}
             <button
@@ -115,8 +116,8 @@
             >
               <span class="goal-icon">{card.icon}</span>
               <div class="goal-text">
-                <div class="goal-label">{card.label}</div>
-                <div class="goal-desc">{card.desc}</div>
+                <div class="goal-label">{$_(card.labelKey)}</div>
+                <div class="goal-desc">{$_(card.descKey)}</div>
               </div>
               {#if selectedGoals.has(card.id)}
                 <span class="checkmark">✓</span>
@@ -125,20 +126,20 @@
           {/each}
         </div>
         <div class="step-actions">
-          <button class="btn btn-primary" onclick={next}>Continue</button>
-          <button class="btn-skip" onclick={skip}>Skip all</button>
+          <button class="btn btn-primary" onclick={next}>{$_('onboarding.continue')}</button>
+          <button class="btn-skip" onclick={skip}>{$_('onboarding.skip_all')}</button>
         </div>
       </div>
 
     <!-- Step 2 — Heroes -->
     {:else if step === 2}
       <div class="step-content">
-        <h2 class="ob-title">Favourite Heroes</h2>
-        <p class="ob-sub">Pick up to {MAX_FAVORITES} heroes you play most. ({selectedHeroIds.size}/{MAX_FAVORITES} selected)</p>
+        <h2 class="ob-title">{$_('onboarding.step2_title')}</h2>
+        <p class="ob-sub">{$_('onboarding.step2_sub', { values: { max: MAX_FAVORITES, selected: selectedHeroIds.size } })}</p>
         <input
           class="hero-search"
           type="text"
-          placeholder="Search heroes…"
+          placeholder={$_('onboarding.search_heroes')}
           bind:value={heroSearch}
           autocomplete="off"
           spellcheck="false"
@@ -172,33 +173,33 @@
             </button>
           {/each}
           {#if filteredHeroes.length === 0}
-            <p class="no-results">No heroes match "{heroSearch}"</p>
+            <p class="no-results">{$_('onboarding.no_heroes_match', { values: { query: heroSearch } })}</p>
           {/if}
         </div>
-        <p class="hint-text">You can always update favourites in the Analysis page.</p>
+        <p class="hint-text">{$_('onboarding.heroes_hint')}</p>
         <div class="step-actions">
-          <button class="btn btn-primary" onclick={next}>Continue</button>
-          <button class="btn-skip" onclick={skip}>Skip</button>
+          <button class="btn btn-primary" onclick={next}>{$_('onboarding.continue')}</button>
+          <button class="btn-skip" onclick={skip}>{$_('onboarding.skip')}</button>
         </div>
       </div>
 
     <!-- Step 3 — Mental health -->
     {:else if step === 3}
       <div class="step-content">
-        <h2 class="ob-title">Monitor Your Mental Game</h2>
-        <p class="ob-sub">After some sessions we'll ask 2 quick questions — like how calm you felt. It takes 5 seconds and helps you spot burnout before it hits your rank.</p>
+        <h2 class="ob-title">{$_('onboarding.step3_title')}</h2>
+        <p class="ob-sub">{$_('onboarding.step3_sub')}</p>
         <ul class="feature-list">
-          <li>All data stays on your device</li>
-          <li>You can skip any check-in</li>
-          <li>Disable tracking at any time in Settings</li>
+          <li>{$_('onboarding.feature_local')}</li>
+          <li>{$_('onboarding.feature_skip')}</li>
+          <li>{$_('onboarding.feature_disable')}</li>
         </ul>
         <div class="step-actions">
           {#if mentalEnabled}
-            <div class="enabled-badge">✓ Enabled</div>
-            <button class="btn btn-primary" onclick={next}>Continue</button>
+            <div class="enabled-badge">{$_('onboarding.enabled_badge')}</div>
+            <button class="btn btn-primary" onclick={next}>{$_('onboarding.continue')}</button>
           {:else}
-            <button class="btn btn-primary" onclick={enableMental}>Yes, enable it</button>
-            <button class="btn-skip" onclick={skip}>Maybe later</button>
+            <button class="btn btn-primary" onclick={enableMental}>{$_('onboarding.yes_enable')}</button>
+            <button class="btn-skip" onclick={skip}>{$_('onboarding.maybe_later')}</button>
           {/if}
         </div>
       </div>
@@ -206,21 +207,21 @@
     <!-- Step 4 — Backfill -->
     {:else if step === 4}
       <div class="step-content">
-        <h2 class="ob-title">Pull In Your Match History</h2>
-        <p class="ob-sub">Backfilling gives Dota Keeper historical data to build better goal suggestions and trend analysis.</p>
+        <h2 class="ob-title">{$_('onboarding.step4_title')}</h2>
+        <p class="ob-sub">{$_('onboarding.step4_sub')}</p>
         <div class="step-actions">
           {#if backfillDone}
-            <div class="enabled-badge">✓ Matches imported</div>
-            <button class="btn btn-primary" onclick={finish}>Go to Dashboard</button>
+            <div class="enabled-badge">{$_('onboarding.matches_imported')}</div>
+            <button class="btn btn-primary" onclick={finish}>{$_('onboarding.go_dashboard')}</button>
           {:else if backfilling}
             <div class="spinner-row">
               <div class="spinner"></div>
-              <span>Importing matches…</span>
+              <span>{$_('onboarding.importing')}</span>
             </div>
-            <button class="btn btn-primary" onclick={finish}>Continue in background</button>
+            <button class="btn btn-primary" onclick={finish}>{$_('onboarding.continue_bg')}</button>
           {:else}
-            <button class="btn btn-primary" onclick={startBackfill}>Yes, backfill now</button>
-            <button class="btn-skip" onclick={finish}>Skip for now</button>
+            <button class="btn btn-primary" onclick={startBackfill}>{$_('onboarding.backfill_now')}</button>
+            <button class="btn-skip" onclick={finish}>{$_('onboarding.skip_now')}</button>
           {/if}
         </div>
       </div>

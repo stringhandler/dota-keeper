@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { getHeroName } from "$lib/heroes.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -90,12 +91,12 @@
     }
   }
 
-  function difficultyLabel(type) {
+  function difficultyTKey(type) {
     switch (type) {
-      case "easy": return "Easy";
-      case "medium": return "Medium";
-      case "hard": return "Hard";
-      default: return type;
+      case "easy": return 'challenges.difficulty_easy';
+      case "medium": return 'challenges.difficulty_medium';
+      case "hard": return 'challenges.difficulty_hard';
+      default: return null;
     }
   }
 
@@ -107,9 +108,9 @@
 
 <div class="challenges-content">
   <div class="page-header">
-    <h1>Weekly Challenges</h1>
-    <p class="subtitle">Accept a challenge each week to push your limits</p>
-    <a href="/challenges/history" class="history-link">View History →</a>
+    <h1>{$_('challenges.title')}</h1>
+    <p class="subtitle">{$_('challenges.subtitle')}</p>
+    <a href="/challenges/history" class="history-link">{$_('challenges.view_history')}</a>
   </div>
 
   {#if error}
@@ -117,20 +118,20 @@
   {/if}
 
   {#if isLoading}
-    <p class="loading">Loading challenges...</p>
+    <p class="loading">{$_('challenges.loading')}</p>
   {:else if progress && activeChallenge}
     <!-- Active challenge progress view -->
     <div class="active-challenge" class:challenge-completed={progress.completed}>
       {#if progress.completed}
-        <div class="completed-banner">✓ Challenge Complete!</div>
+        <div class="completed-banner">{$_('challenges.complete_banner')}</div>
       {/if}
       <div class="active-header">
         <div class="difficulty-badge" style="color: {difficultyColor(activeChallenge.challenge_type)}">
-          {difficultyLabel(activeChallenge.challenge_type)}
+          {difficultyTKey(activeChallenge.challenge_type) ? $_(difficultyTKey(activeChallenge.challenge_type)) : activeChallenge.challenge_type}
         </div>
         <h2>{activeChallenge.challenge_description}</h2>
         {#if activeChallenge.hero_id !== null}
-          <p class="hero-label">Hero: {getHeroName(activeChallenge.hero_id)}</p>
+          <p class="hero-label">{$_('challenges.hero_label', { values: { name: getHeroName(activeChallenge.hero_id) } })}</p>
         {/if}
       </div>
 
@@ -147,24 +148,24 @@
             style="width: {progressPercent(progress.current_value, progress.target)}%"
           ></div>
         </div>
-        <p class="progress-label">{progressPercent(progress.current_value, progress.target)}% complete</p>
+        <p class="progress-label">{$_('challenges.pct_complete', { values: { pct: progressPercent(progress.current_value, progress.target) } })}</p>
       </div>
 
       <div class="meta-row">
         {#if !progress.completed}
           <div class="meta-item">
-            <span class="meta-label">Games counted</span>
+            <span class="meta-label">{$_('challenges.games_counted')}</span>
             <span class="meta-value">{progress.games_counted}</span>
           </div>
         {/if}
         <div class="meta-item">
-          <span class="meta-label">{progress.completed ? "Resets in" : "Days remaining"}</span>
+          <span class="meta-label">{progress.completed ? $_('challenges.resets_in') : $_('challenges.days_remaining')}</span>
           <span class="meta-value">{progress.days_remaining}d</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Status</span>
+          <span class="meta-label">{$_('challenges.status')}</span>
           <span class="meta-value" class:text-green={progress.completed}>
-            {progress.completed ? "Completed!" : "In Progress"}
+            {progress.completed ? $_('challenges.status_completed') : $_('challenges.status_in_progress')}
           </span>
         </div>
       </div>
@@ -172,50 +173,50 @@
   {:else}
     <!-- Option selection view -->
     <div class="options-header">
-      <p class="options-intro">Choose one of this week's challenges:</p>
+      <p class="options-intro">{$_('challenges.choose')}</p>
       <div class="reroll-row">
         <button
           class="reroll-btn"
           onclick={reroll}
           disabled={isRerolling || rerollsUsed >= MAX_REROLLS}
         >
-          {isRerolling ? "Rerolling..." : `🎲 Reroll (${MAX_REROLLS - rerollsUsed} left)`}
+          {isRerolling ? $_('challenges.rerolling') : $_('challenges.reroll', { values: { count: MAX_REROLLS - rerollsUsed } })}
         </button>
         <button
           class="skip-btn"
           onclick={skipWeek}
           disabled={isSkipping}
         >
-          {isSkipping ? "Skipping..." : "Skip This Week"}
+          {isSkipping ? $_('challenges.skipping') : $_('challenges.skip_week')}
         </button>
       </div>
     </div>
 
     {#if options.length === 0}
-      <p class="no-data">No challenges available yet. Play some matches first to generate challenges.</p>
+      <p class="no-data">{$_('challenges.no_challenges')}</p>
     {:else}
       <div class="options-grid">
         {#each options as option}
           <div class="option-card">
             <div class="option-top">
               <span class="option-difficulty" style="color: {difficultyColor(option.challenge_type)}">
-                {difficultyLabel(option.challenge_type)}
+                {difficultyTKey(option.challenge_type) ? $_(difficultyTKey(option.challenge_type)) : option.challenge_type}
               </span>
               <span class="option-type">{option.metric.replace(/_/g, ' ')}</span>
             </div>
             <p class="option-description">{option.challenge_description}</p>
             {#if option.hero_id !== null}
-              <p class="option-hero">Hero: {getHeroName(option.hero_id)}</p>
+              <p class="option-hero">{$_('challenges.hero_label', { values: { name: getHeroName(option.hero_id) } })}</p>
             {/if}
             {#if option.challenge_target_games !== null}
-              <p class="option-games">Across {option.challenge_target_games} games</p>
+              <p class="option-games">{$_('challenges.across_games', { values: { count: option.challenge_target_games } })}</p>
             {/if}
             <button
               class="accept-btn"
               onclick={() => acceptChallenge(option.id)}
               disabled={isAccepting}
             >
-              {isAccepting ? "Accepting..." : "Accept"}
+              {isAccepting ? $_('challenges.accepting') : $_('challenges.accept')}
             </button>
           </div>
         {/each}
