@@ -1,6 +1,6 @@
 [package]
 name = "dota-keeper"
-version = "0.3.0"
+version = "0.3.1"
 description = "A Tauri App"
 authors = ["Volthawk Software (Pty) Ltd"]
 license = "Apache-2.0"
@@ -37,7 +37,13 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 lazy_static = "1.5"
 uuid = { version = "1.11", features = ["v4"] }
-sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
+sentry = { version = "0.34", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "panic",
+    "reqwest",
+    "rustls",
+] }
 
 [features]
 beta = []
