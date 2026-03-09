@@ -175,7 +175,14 @@
             created_at: editingGoal.created_at,
           },
         });
-        trackEvent("goal_updated", { metric: formMetric, game_mode: formGameMode });
+        trackEvent("goal_updated", {
+          metric: formMetric,
+          game_mode: formGameMode,
+          hero_scope,
+          target_value: targetValue,
+          target_time_minutes: targetTime,
+          has_item: !!formItemId,
+        });
         showToast("Goal updated");
       } else {
         await invoke("create_goal", {
@@ -189,7 +196,14 @@
             game_mode: formGameMode,
           },
         });
-        trackEvent("goal_created", { metric: formMetric, game_mode: formGameMode });
+        trackEvent("goal_created", {
+          metric: formMetric,
+          game_mode: formGameMode,
+          hero_scope,
+          target_value: targetValue,
+          target_time_minutes: targetTime,
+          has_item: !!formItemId,
+        });
         showToast("Goal created");
       }
       resetForm();
