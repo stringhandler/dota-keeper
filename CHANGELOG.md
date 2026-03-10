@@ -5,6 +5,12 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-03-10
+
+### Fixed
+- **Landing Page HTML Entities**: `&amp;` was rendering literally in the "Free & Open Source" badge and Linux platform description due to HTML entities being used inside JavaScript translation strings assigned via `textContent`.
+- **Duplicate Refresh Icons**: The refresh button on the Matches page showed two `↻` arrows, and the dashboard refresh button showed two `🔄` icons. The icon was present in both the template and the translation string.
+
 ## [0.3.0] - 2026-03-07
 
 ### Fixed
