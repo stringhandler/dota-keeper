@@ -1,10 +1,10 @@
 {
   "version": "0.3.2",
   "notes": "Release v0.3.2",
-  "pub_date": "2026-03-10T19:17:59Z",
+  "pub_date": "2026-03-10T19:21:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3Z4UDg0U0ZvZ2hwN3RyZUJXZGo2TVVUa0NINXEwYWQ4dWkweitxQTJ4cUpYTFRYU3RNZmZjYWo5RE9VZWl5YS83MW8vcm94Wk5HRGlkdkl6Zys3dFFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTcwMjU0CWZpbGU6RG90YSBLZWVwZXJfMC4zLjJfeDY0X2VuLVVTLm1zaQpKbTNNeUFHUkN2QlJWcVBxYXYwMk5wWVQyNEp5MUhKaHJjb1RaeWdKbUthbTRPaUxtdlN5b3N6QkJ4Zko1NUpXOFNzY0VuMi9IT0REcGo5MHNkVWpDZz09Cg==",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3FNMDdQbXQxMEptVXI1UnZZOXMzWUdXcEFaNWxhTG9jNkY2a1o0WmZpbitnTjhuUUwxRG5vZVYzVDRzTjFKR0cxVnNaK3pveGZodGZOZ3FXUWNPdVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTcwNDI0CWZpbGU6RG90YSBLZWVwZXJfMC4zLjJfeDY0X2VuLVVTLm1zaQpEbFJJY0ZRajhQWngza1Y3WXN5Mk54bys5U2Riazl6Y1pQc0ZmR3dVeUhRbytlcGkwRjgzbzNWbGNqamhxZGhKN3ZKRHB6WFZpVldqVytSNDRXZDZEQT09Cg==",
       "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.3.2/Dota.Keeper_0.3.2_x64_en-US.msi"
     },
     "linux-x86_64": {
