@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Landing Page HTML Entities**: `&amp;` was rendering literally in the "Free & Open Source" badge and Linux platform description due to HTML entities being used inside JavaScript translation strings assigned via `textContent`.
 - **Duplicate Refresh Icons**: The refresh button on the Matches page showed two `↻` arrows, and the dashboard refresh button showed two `🔄` icons. The icon was present in both the template and the translation string.
 
+### Added
+- **Russian Language Support**: Full Russian translation of the landing page and app UI.
+- **FAQ Section**: Added a Frequently Asked Questions section to the landing page.
+- **Google Analytics**: Added analytics to the landing page.
+
 ## [0.3.0] - 2026-03-07
 
 ### Fixed
