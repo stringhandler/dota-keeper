@@ -74,7 +74,7 @@
     "suggested": "Предложено",
     "improvement": "Улучшение",
     "based_on": "На основе {count} матч(ей)",
-    "refresh": "\uD83D\uDD04 Обновить",
+    "refresh": "Обновить",
     "create_goal": "Создать цель",
     "today": "Сегодня",
     "yesterday": "Вчера"
