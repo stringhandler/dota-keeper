@@ -44,6 +44,8 @@ sentry = { version = "0.34", default-features = false, features = [
     "reqwest",
     "rustls",
 ] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 beta = []

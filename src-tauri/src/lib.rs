@@ -7,6 +7,43 @@ mod settings;
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+/// Initialise file-based tracing. Logs are written to
+/// `%LOCALAPPDATA%/DotaKeeper/logs/dota-keeper.log`.
+/// The verbosity is controlled by the `RUST_LOG` environment variable
+/// (default: `debug`).
+fn init_logging() {
+    use std::sync::Mutex;
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let log_dir = dirs::data_local_dir()
+        .map(|d| d.join("DotaKeeper").join("logs"))
+        .expect("cannot determine local data dir");
+
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let log_file = log_dir.join("dota-keeper.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+        .expect("cannot open log file");
+
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("debug"));
+
+    fmt()
+        .with_env_filter(env_filter)
+        .with_writer(Mutex::new(file))
+        .with_ansi(false)
+        .init();
+}
+
+/// Thin compatibility shim so existing callers compile unchanged.
+/// All output now goes through the tracing subscriber (i.e., the log file).
+pub fn trace_log(msg: &str) {
+    tracing::debug!(target: "dota_keeper", "{}", msg);
+}
 use uuid;
 
 // Global session ID - generated once per app launch
@@ -859,6 +896,8 @@ fn refresh_hero_goal_suggestion() -> Result<Option<HeroGoalSuggestion>, String> 
 /// Parse a match and extract goal progress data
 #[tauri::command]
 async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> Result<(), String> {
+    trace_log(&format!("parse_match START match_id={} steam_id={}", match_id, steam_id));
+
     // Update match state to parsing — lock dropped before any await.
     {
         let conn = get_db_conn()?;
@@ -873,28 +912,48 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
     );
 
     // Request OpenDota to parse the match
-    if let Err(e) = opendota::request_match_parse(match_id).await {
-        {
-            let conn = get_db_conn()?;
-            update_match_state(&conn, match_id, MatchState::Failed)?;
+    trace_log(&format!("parse_match calling request_match_parse match_id={}", match_id));
+    let job_id = match opendota::request_match_parse(match_id).await {
+        Ok(id) => {
+            trace_log(&format!("parse_match request_match_parse OK job_id={:?}", id));
+            id
         }
-        let _ = app.emit(
-            "match-state-changed",
-            serde_json::json!({
-                "match_id": match_id,
-                "state": "Failed"
-            }),
-        );
-        return Err(format!("Failed to request parse: {}", e));
+        Err(e) => {
+            trace_log(&format!("parse_match request_match_parse ERR: {}", e));
+            {
+                let conn = get_db_conn()?;
+                update_match_state(&conn, match_id, MatchState::Failed)?;
+            }
+            let _ = app.emit(
+                "match-state-changed",
+                serde_json::json!({
+                    "match_id": match_id,
+                    "state": "Failed"
+                }),
+            );
+            return Err(format!("Failed to request parse: {}", e));
+        }
+    };
+
+    // Wait for the parse job to finish, or fall back to a fixed delay.
+    if let Some(id) = job_id {
+        trace_log(&format!("parse_match waiting for job_id={}", id));
+        let done = opendota::wait_for_parse_job(id).await;
+        trace_log(&format!("parse_match wait_for_parse_job done={}", done));
+    } else {
+        trace_log("parse_match no job_id returned — sleeping 5s");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 
-    // Wait a bit for the parse to complete
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-
     // Fetch detailed match data
+    trace_log(&format!("parse_match calling fetch_match_details match_id={}", match_id));
     let detailed_match = match opendota::fetch_match_details(match_id).await {
-        Ok(m) => m,
+        Ok(m) => {
+            trace_log(&format!("parse_match fetch_match_details OK players={}", m.players.len()));
+            m
+        }
         Err(e) => {
+            trace_log(&format!("parse_match fetch_match_details ERR: {}", e));
             {
                 let conn = get_db_conn()?;
                 update_match_state(&conn, match_id, MatchState::Failed)?;
@@ -980,6 +1039,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
             }),
         );
 
+        trace_log(&format!("parse_match SUCCESS match_id={}", match_id));
         Ok(())
     } else {
         // Per-minute data not available yet
@@ -991,6 +1051,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
                 "state": "Failed"
             }),
         );
+        trace_log(&format!("parse_match FAILED (no per-minute data) match_id={}", match_id));
         Err("OpenDota has not finished parsing this match yet. The per-minute data is not available. Try again in a few minutes.".to_string())
     }
 }
@@ -1046,6 +1107,28 @@ async fn open_database_folder() -> Result<(), String> {
         .map_err(|e| format!("Failed to create database directory: {}", e))?;
 
     // Open the folder using tauri opener plugin
+    tauri_plugin_opener::open_path(folder_path, None::<&str>)
+        .map_err(|e| format!("Failed to open folder: {}", e))?;
+
+    Ok(())
+}
+
+/// Get the path to the logs folder
+#[tauri::command]
+fn get_logs_folder_path() -> Result<String, String> {
+    dirs::data_local_dir()
+        .map(|d| d.join("DotaKeeper").join("logs").to_string_lossy().to_string())
+        .ok_or_else(|| "Could not determine logs directory".to_string())
+}
+
+/// Open the logs folder in the system file explorer
+#[tauri::command]
+async fn open_logs_folder() -> Result<(), String> {
+    let folder_path = get_logs_folder_path()?;
+
+    std::fs::create_dir_all(&folder_path)
+        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
     tauri_plugin_opener::open_path(folder_path, None::<&str>)
         .map_err(|e| format!("Failed to open folder: {}", e))?;
 
@@ -1110,10 +1193,13 @@ async fn backfill_historical_matches(
     // The DB lock is acquired in short scopes so it is never held across an await.
     for m in &matches {
         // Request parse
-        if let Err(e) = opendota::request_match_parse(m.match_id).await {
-            eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
-            continue;
-        }
+        let job_id = match opendota::request_match_parse(m.match_id).await {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
+                continue;
+            }
+        };
 
         {
             let conn = get_db_conn()?;
@@ -1127,8 +1213,12 @@ async fn backfill_historical_matches(
             }),
         );
 
-        // Wait a bit for the parse to complete
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        // Wait for the parse job to finish, or fall back to a fixed delay.
+        if let Some(id) = job_id {
+            opendota::wait_for_parse_job(id).await;
+        } else {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        }
 
         // Fetch detailed match data
         let detailed_match = match opendota::fetch_match_details(m.match_id).await {
@@ -1902,21 +1992,29 @@ async fn background_parse_loop(app: tauri::AppHandle) {
         }
 
         // Request parse; retry once after 60 s if rate-limited.
-        let parse_err = opendota::request_match_parse(m.match_id).await.err();
-        if let Some(ref e) = parse_err {
-            if e.contains("Too many requests") {
+        let job_id = match opendota::request_match_parse(m.match_id).await {
+            Ok(id) => id,
+            Err(ref e) if e.contains("Too many requests") => {
+                sentry::capture_message(
+                    "OpenDota rate limit hit in background parser — retrying after 60s",
+                    sentry::Level::Warning,
+                );
                 tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                if opendota::request_match_parse(m.match_id).await.is_err() {
-                    BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                    continue;
+                match opendota::request_match_parse(m.match_id).await {
+                    Ok(id) => id,
+                    Err(_) => {
+                        BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        continue;
+                    }
                 }
-            } else {
+            }
+            Err(_) => {
                 BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 continue;
             }
-        }
+        };
 
         {
             let Ok(conn) = get_db_conn() else { break };
@@ -1927,8 +2025,12 @@ async fn background_parse_loop(app: tauri::AppHandle) {
             serde_json::json!({ "match_id": m.match_id, "state": "Parsing" }),
         );
 
-        // Give OpenDota time to complete the parse.
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        // Wait for the parse job to finish, or fall back to a fixed delay.
+        if let Some(id) = job_id {
+            opendota::wait_for_parse_job(id).await;
+        } else {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        }
 
         let detailed_match = match opendota::fetch_match_details(m.match_id).await {
             Ok(dm) => dm,
@@ -2037,6 +2139,9 @@ const SENTRY_DSN: &str = env!("SENTRY_DSN");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialise file logging before anything else so all subsystems can log.
+    init_logging();
+
     // Keep the guard alive for the full lifetime of the app.
     // sentry::init returns a ClientInitGuard that flushes the event queue on drop.
     let _sentry_guard = if !SENTRY_DSN.is_empty() {
@@ -2102,6 +2207,8 @@ pub fn run() {
             is_beta_build,
             get_database_folder_path,
             open_database_folder,
+            get_logs_folder_path,
+            open_logs_folder,
             get_last_hits_analysis_data,
             backfill_historical_matches,
             reparse_pending_matches,

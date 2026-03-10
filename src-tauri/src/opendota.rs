@@ -1,5 +1,6 @@
 use crate::database::{Match, MatchState};
 use serde::Deserialize;
+use tracing::debug;
 
 const OPENDOTA_API_BASE: &str = "https://api.opendota.com/api";
 
@@ -20,6 +21,29 @@ fn friendly_status_err(status: reqwest::StatusCode) -> String {
         500..=599 => "OpenDota is unavailable right now. Your matches will sync automatically when it comes back.".to_string(),
         code => format!("OpenDota returned an unexpected error (HTTP {}). Will retry later.", code),
     }
+}
+
+/// Send an OpenDota API error to Sentry for monitoring.
+/// Uses endpoint names only — no account IDs or match IDs are included.
+fn log_api_error(endpoint: &str, status: u16) {
+    let level = match status {
+        429 => sentry::Level::Warning,
+        500..=599 => sentry::Level::Error,
+        _ => sentry::Level::Warning,
+    };
+    sentry::with_scope(
+        |scope| {
+            scope.set_tag("component", "opendota");
+            scope.set_tag("endpoint", endpoint);
+            scope.set_tag("http_status", status.to_string());
+        },
+        || {
+            sentry::capture_message(
+                &format!("OpenDota {} HTTP {}", endpoint, status),
+                level,
+            );
+        },
+    );
 }
 
 /// Response from the OpenDota recent matches endpoint
@@ -157,18 +181,27 @@ pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Ma
         OPENDOTA_API_BASE, account_id
     );
 
+    debug!("fetch_recent_matches GET {} limit={}", url, limit);
+
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| friendly_network_err(&e))?;
+        .map_err(|e| {
+            let msg = friendly_network_err(&e);
+            debug!("fetch_recent_matches network error: {}", msg);
+            msg
+        })?;
 
     let status = response.status();
+    debug!("fetch_recent_matches response status={}", status.as_u16());
+
     if !status.is_success() {
         if status.as_u16() == 404 {
             return Err("No matches found for this Steam ID. Double-check the ID in Settings.".to_string());
         }
+        log_api_error("recentMatches", status.as_u16());
         return Err(friendly_status_err(status));
     }
 
@@ -184,6 +217,7 @@ pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Ma
         .map(|m| m.into())
         .collect();
 
+    debug!("fetch_recent_matches returning {} matches", matches.len());
     Ok(matches)
 }
 
@@ -196,7 +230,7 @@ pub async fn fetch_matches_before(
     let account_id = steam_id64_to_id32(steam_id)?;
     let client = reqwest::Client::new();
 
-    eprintln!("Backfill: Looking for {} matches before timestamp {}", limit, before_timestamp);
+    debug!("fetch_matches_before: looking for {} matches before timestamp {}", limit, before_timestamp);
 
     let mut all_matches: Vec<Match> = Vec::new();
     let mut offset = 0;
@@ -210,16 +244,24 @@ pub async fn fetch_matches_before(
             OPENDOTA_API_BASE, account_id, BATCH_SIZE, offset
         );
 
-        eprintln!("Backfill: Fetching with offset {}, found {} older matches so far", offset, all_matches.len());
+        debug!("fetch_matches_before GET {} offset={} collected={}", url, offset, all_matches.len());
 
         let response = client
             .get(&url)
             .send()
             .await
-            .map_err(|e| friendly_network_err(&e))?;
+            .map_err(|e| {
+                let msg = friendly_network_err(&e);
+                debug!("fetch_matches_before network error at offset {}: {}", offset, msg);
+                msg
+            })?;
 
-        if !response.status().is_success() {
-            return Err(friendly_status_err(response.status()));
+        let status = response.status();
+        debug!("fetch_matches_before response status={}", status.as_u16());
+
+        if !status.is_success() {
+            log_api_error("matchesBackfill", status.as_u16());
+            return Err(friendly_status_err(status));
         }
 
         let matches: Vec<OpenDotaMatch> = response
@@ -227,11 +269,11 @@ pub async fn fetch_matches_before(
             .await
             .map_err(|_| "OpenDota returned unexpected data while backfilling. Backfill may be incomplete.".to_string())?;
 
-        eprintln!("Backfill: Received {} matches from API", matches.len());
+        debug!("fetch_matches_before received {} matches from API", matches.len());
 
         // If no more matches, we've reached the end
         if matches.is_empty() {
-            eprintln!("Backfill: No more matches available from API");
+            debug!("fetch_matches_before: no more matches from API, stopping");
             break;
         }
 
@@ -246,7 +288,7 @@ pub async fn fetch_matches_before(
                 }
             }
         }
-        eprintln!("Backfill: Found {} matches in this batch that are older than target timestamp", matches_in_range);
+        debug!("fetch_matches_before: {} matches in this batch are older than target timestamp", matches_in_range);
 
         offset += BATCH_SIZE;
         attempts += 1;
@@ -261,45 +303,122 @@ pub async fn fetch_matches_before(
     // Take only the requested number of matches
     all_matches.truncate(limit);
 
-    eprintln!("Backfill: Returning {} total matches", all_matches.len());
+    debug!("fetch_matches_before: returning {} total matches", all_matches.len());
 
     Ok(all_matches)
 }
 
-/// Request OpenDota to parse a match
-pub async fn request_match_parse(match_id: i64) -> Result<(), String> {
+/// Request OpenDota to parse a match.
+/// Returns the job ID if OpenDota queued a parse job, or None if the match
+/// was already parsed (response had no job).
+pub async fn request_match_parse(match_id: i64) -> Result<Option<i64>, String> {
     let url = format!("{}/request/{}", OPENDOTA_API_BASE, match_id);
+    debug!("request_match_parse POST {}", url);
 
     let client = reqwest::Client::new();
     let response = client
         .post(&url)
         .send()
         .await
-        .map_err(|e| friendly_network_err(&e))?;
+        .map_err(|e| {
+            let msg = friendly_network_err(&e);
+            debug!("request_match_parse network error: {}", msg);
+            msg
+        })?;
 
-    if !response.status().is_success() {
-        return Err(format!("OpenDota couldn't parse this match — it will be skipped and retried later. ({})", friendly_status_err(response.status())));
+    let status = response.status();
+    debug!("request_match_parse response status={}", status.as_u16());
+
+    if !status.is_success() {
+        log_api_error("parseRequest", status.as_u16());
+        let err = format!("OpenDota couldn't parse this match — it will be skipped and retried later. ({})", friendly_status_err(status));
+        debug!("request_match_parse failed: {}", err);
+        return Err(err);
     }
 
-    Ok(())
+    let parsed: ParseRequestResponse = response
+        .json()
+        .await
+        .unwrap_or(ParseRequestResponse { job: None });
+
+    let job_id = parsed.job.and_then(|j| j.jobId);
+    debug!("request_match_parse match_id={} job_id={:?}", match_id, job_id);
+    Ok(job_id)
+}
+
+/// Poll the parse job until it completes or the timeout is reached.
+/// Returns true if the job completed cleanly, false if it timed out or errored.
+/// OpenDota returns `null` (or 404) for the job once parsing is done.
+pub async fn wait_for_parse_job(job_id: i64) -> bool {
+    let url = format!("{}/request/{}", OPENDOTA_API_BASE, job_id);
+    let client = reqwest::Client::new();
+    debug!("wait_for_parse_job polling job_id={} url={}", job_id, url);
+
+    // Poll every 5 s for up to 90 s (18 attempts).
+    for attempt in 0..18 {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        let response = match client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("wait_for_parse_job attempt={} network error: {}", attempt, e);
+                break; // network issue — proceed and try fetching details anyway
+            }
+        };
+
+        let status = response.status().as_u16();
+        match status {
+            // 404 means the job is gone (done or never existed) — ready to fetch.
+            404 => {
+                debug!("wait_for_parse_job attempt={} status=404 → done", attempt);
+                return true;
+            }
+            s if s >= 500 => {
+                debug!("wait_for_parse_job attempt={} server error {} → give up", attempt, s);
+                break; // server error — give up polling
+            }
+            _ => {}
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        debug!("wait_for_parse_job attempt={} status={} body={:?}", attempt, status, &body[..body.len().min(80)]);
+        // OpenDota returns the literal string "null" when the job is finished.
+        if body.trim() == "null" || body.trim().is_empty() {
+            debug!("wait_for_parse_job attempt={} body=null → done", attempt);
+            return true;
+        }
+        // Otherwise the job is still in the queue — keep polling.
+    }
+
+    debug!("wait_for_parse_job timed out or errored for job_id={}", job_id);
+    false // timed out or error; caller should still attempt fetch_match_details
 }
 
 /// Fetch detailed match data from OpenDota
 pub async fn fetch_match_details(match_id: i64) -> Result<DetailedMatch, String> {
     let url = format!("{}/matches/{}", OPENDOTA_API_BASE, match_id);
 
+    debug!("fetch_match_details GET {}", url);
+
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| friendly_network_err(&e))?;
+        .map_err(|e| {
+            let msg = friendly_network_err(&e);
+            debug!("fetch_match_details network error: {}", msg);
+            msg
+        })?;
 
     let status = response.status();
+    debug!("fetch_match_details match_id={} response status={}", match_id, status.as_u16());
+
     if !status.is_success() {
         if status.as_u16() == 404 {
             return Err("This match hasn't been parsed by OpenDota yet. It will be picked up on the next sync.".to_string());
         }
+        log_api_error("matchDetails", status.as_u16());
         return Err(friendly_status_err(status));
     }
 
@@ -308,5 +427,6 @@ pub async fn fetch_match_details(match_id: i64) -> Result<DetailedMatch, String>
         .await
         .map_err(|e| format!("Unexpected response from OpenDota for this match ({}). Try again or check https://www.opendota.com/matches/{}", e, match_id))?;
 
+    debug!("fetch_match_details match_id={} OK players={}", match_id, match_details.players.len());
     Ok(match_details)
 }

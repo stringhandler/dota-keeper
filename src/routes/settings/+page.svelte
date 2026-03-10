@@ -9,6 +9,7 @@
   import { _ } from "svelte-i18n";
 
   let databasePath = $state("");
+  let logsPath = $state("");
   let isLoading = $state(true);
   let error = $state("");
   let successMessage = $state("");
@@ -41,6 +42,7 @@
 
   onMount(async () => {
     await loadDatabasePath();
+    await loadLogsPath();
     await loadSteamId();
     await loadDifficulty();
     await loadAnalytics();
@@ -78,6 +80,24 @@
       error = `Failed to get database path: ${e}`;
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function loadLogsPath() {
+    try {
+      logsPath = await invoke("get_logs_folder_path");
+    } catch (e) {
+      console.error("Failed to get logs path:", e);
+    }
+  }
+
+  async function openLogsFolder() {
+    error = "";
+    successMessage = "";
+    try {
+      await invoke("open_logs_folder");
+    } catch (e) {
+      error = `Failed to open logs folder: ${e}`;
     }
   }
 
@@ -425,6 +445,21 @@
       </div>
       <button class="open-folder-btn" onclick={openDatabaseFolder} disabled={isLoading}>
         {$_('settings.open_folder')}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>{$_('settings.logs_title')}</h3>
+        <p class="setting-description">
+          {$_('settings.logs_desc')}
+        </p>
+        {#if logsPath}
+          <p class="database-path">{logsPath}</p>
+        {/if}
+      </div>
+      <button class="open-folder-btn" onclick={openLogsFolder}>
+        {$_('settings.open_logs_folder')}
       </button>
     </div>
   </div>

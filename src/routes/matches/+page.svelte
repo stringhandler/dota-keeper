@@ -9,6 +9,7 @@
   import { showToast } from "$lib/toast.js";
   import { pendingCheckinStore } from "$lib/checkin-store.js";
   import { _ } from "svelte-i18n";
+  import { pqs, initQueue, enqueueParse, isPendingError } from "$lib/parse-queue.svelte.js";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -18,13 +19,9 @@
   let selectedMatch = $state(null);
   let goalDetails = $state([]);
   let copiedMatchId = $state(null);
-  let parsingMatches = $state(new Set());
-  let parseErrors = $state(new Map());
-  let retryCountdowns = $state(new Map()); // matchId -> seconds until retry
   let currentSteamId = $state("");
   let unlistenMatchStateChanged = null;
   let autoRefreshTimer = null;
-  let countdownTimer = null;
 
   // Filter
   let activeFilter = $state('all');
@@ -54,25 +51,14 @@
         matches[matchIndex].parse_state = state;
         matches = [...matches];
       }
+      if (selectedMatch?.match_id === match_id) {
+        selectedMatch = { ...selectedMatch, parse_state: state };
+      }
     });
 
     autoRefreshTimer = setInterval(async () => {
       await autoRefreshAndParse();
     }, 30000);
-
-    countdownTimer = setInterval(() => {
-      if (retryCountdowns.size === 0) return;
-      const next = new Map();
-      const toRetry = [];
-      for (const [matchId, secs] of retryCountdowns) {
-        if (secs <= 1) toRetry.push(matchId);
-        else next.set(matchId, secs - 1);
-      }
-      retryCountdowns = next;
-      for (const matchId of toRetry) {
-        parseMatch(matchId).catch(() => {});
-      }
-    }, 1000);
 
     // Track page view
     trackPageView("Matches");
@@ -81,7 +67,6 @@
   onDestroy(() => {
     if (unlistenMatchStateChanged) unlistenMatchStateChanged();
     if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-    if (countdownTimer) clearInterval(countdownTimer);
   });
 
   async function autoRefreshAndParse() {
@@ -94,11 +79,8 @@
       }
       const recentMatches = matches.slice(0, 10);
       for (const match of recentMatches) {
-        if ((match.parse_state === "Unparsed" || match.parse_state === "Failed") &&
-            !parsingMatches.has(match.match_id)) {
-          parseMatch(match.match_id).catch(err => {
-            console.error(`Auto-parse failed for match ${match.match_id}:`, err);
-          });
+        if (match.parse_state === "Unparsed" || match.parse_state === "Failed") {
+          enqueueParse(match.match_id);
         }
       }
     } catch (e) {
@@ -115,6 +97,7 @@
       currentSteamId = settings.steam_id || "";
       items = allItems;
       await loadMatches();
+      initQueue(currentSteamId, loadMatches);
     } catch (e) {
       error = `Failed to load data: ${e}`;
     } finally {
@@ -247,52 +230,16 @@
     }
   }
 
-  function isPendingError(msg) {
-    return msg.includes('not yet') || msg.includes('next sync') || msg.includes('will be') || msg.includes('per-minute');
-  }
-
-  async function parseMatch(matchId) {
-    parsingMatches = new Set([...parsingMatches, matchId]);
-    // Clear previous error and any pending retry for this match
-    if (parseErrors.has(matchId)) {
-      const m = new Map(parseErrors);
-      m.delete(matchId);
-      parseErrors = m;
-    }
-    if (retryCountdowns.has(matchId)) {
-      const m = new Map(retryCountdowns);
-      m.delete(matchId);
-      retryCountdowns = m;
-    }
-    try {
-      await invoke("parse_match", { matchId, steamId: currentSteamId });
-      await loadMatches();
-    } catch (e) {
-      const errMsg = String(e);
-      const m = new Map(parseErrors);
-      m.set(matchId, errMsg);
-      parseErrors = m;
-      // Schedule auto-retry if OpenDota hasn't finished parsing yet
-      if (isPendingError(errMsg)) {
-        const rc = new Map(retryCountdowns);
-        rc.set(matchId, 60);
-        retryCountdowns = rc;
-      }
-    } finally {
-      const newSet = new Set(parsingMatches);
-      newSet.delete(matchId);
-      parsingMatches = newSet;
-    }
-  }
-
-  async function handleParseAll() {
+  function handleParseAll() {
+    // matches are already sorted most-recent-first from the backend
     const toParse = matches.filter(m =>
       (m.parse_state === "Unparsed" || m.parse_state === "Failed") &&
-      !parsingMatches.has(m.match_id) &&
-      !retryCountdowns.has(m.match_id)
+      !pqs.active.has(m.match_id) &&
+      !pqs.queue.includes(m.match_id) &&
+      !pqs.countdowns.has(m.match_id)
     );
     for (const match of toParse) {
-      parseMatch(match.match_id).catch(() => {});
+      enqueueParse(match.match_id);
     }
   }
 
@@ -390,7 +337,7 @@
         </button>
       {/each}
     </div>
-    {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !parsingMatches.has(m.match_id) && !retryCountdowns.has(m.match_id))}
+    {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !pqs.active.has(m.match_id) && !pqs.queue.includes(m.match_id) && !pqs.countdowns.has(m.match_id))}
       <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
         {$_('matches.parse_all')}
       </button>
@@ -481,12 +428,12 @@
 
           <!-- Goals chip -->
           <div class="td-goals">
-            {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
-              <span class="parsing-spinner">⏳</span>
-            {:else if parseErrors.has(match.match_id)}
-              {@const errMsg = parseErrors.get(match.match_id)}
+            {#if match.parse_state === "Parsing" || pqs.active.has(match.match_id)}
+              <span class="parsing-badge">Parsing…</span>
+            {:else if pqs.errors.has(match.match_id)}
+              {@const errMsg = pqs.errors.get(match.match_id)}
               {@const pending = isPendingError(errMsg)}
-              {@const countdown = retryCountdowns.get(match.match_id)}
+              {@const countdown = pqs.countdowns.get(match.match_id)}
               {#if pending}
                 <span
                   class="not-ready-text"
@@ -500,11 +447,12 @@
                   aria-label={errMsg}
                 >⚠</span>
               {/if}
+            {:else if pqs.queue.includes(match.match_id)}
+              <span class="queued-badge">Queued</span>
             {:else if match.parse_state === "Unparsed" || match.parse_state === "Failed"}
               <button
                 class="parse-btn"
-                onclick={(e) => { e.stopPropagation(); parseMatch(match.match_id); }}
-                disabled={parsingMatches.has(match.match_id)}
+                onclick={(e) => { e.stopPropagation(); enqueueParse(match.match_id); }}
               >{match.parse_state === "Failed" ? $_('matches.retry') : $_('matches.parse')}</button>
             {:else if match.goals_applicable > 0}
               <span class="goals-chip" class:has-goals={match.goals_achieved > 0}>
@@ -619,6 +567,15 @@
           <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
             🔗 OpenDota
           </button>
+          {#if pqs.active.has(mid)}
+            <span class="modal-parse-status parsing">Parsing…</span>
+          {:else if pqs.queue.includes(mid)}
+            <span class="modal-parse-status queued">Queued</span>
+          {:else if selectedMatch.parse_state === 'Unparsed' || selectedMatch.parse_state === 'Failed'}
+            <button class="modal-action-btn parse-btn" onclick={() => enqueueParse(mid)}>
+              ▶ Parse
+            </button>
+          {/if}
         </div>
       </div>
     </div>
@@ -909,10 +866,29 @@
     font-size: 13px;
   }
 
-  .parsing-spinner {
-    display: inline-block;
-    animation: spin 2s linear infinite;
-    font-size: 14px;
+  .queued-badge {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .parsing-badge {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.8;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
   }
 
   .parse-status-icon {
@@ -936,11 +912,6 @@
   }
 
   .parse-all-btn { flex-shrink: 0; }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
 
   .parse-btn {
     font-family: 'Barlow Condensed', sans-serif;
@@ -1166,6 +1137,45 @@
   .modal-action-btn:hover {
     border-color: var(--border-active);
     color: var(--gold);
+  }
+
+  .parse-btn {
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--gold);
+  }
+
+  .parse-btn:hover {
+    background: rgba(240, 180, 41, 0.1);
+    border-color: var(--gold);
+    color: var(--gold-bright);
+  }
+
+  .modal-parse-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 48px;
+    padding: 0 12px;
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .modal-parse-status.parsing {
+    background: rgba(240, 180, 41, 0.08);
+    border: 1px solid rgba(240, 180, 41, 0.3);
+    color: var(--gold);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .modal-parse-status.queued {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
   }
 
   .no-applicable-goals {
