@@ -6,6 +6,7 @@
     "goals": "Goals",
     "challenges": "Challenges",
     "mind": "Mind",
+    "medals": "Medals",
     "settings": "Settings",
     "home": "Home"
   },
@@ -16,6 +17,7 @@
     "goals": "Goal Management",
     "challenges": "Challenges",
     "mental_health": "Mental Wellbeing",
+    "medals": "Medal History",
     "settings": "Settings",
     "app": "Dota Keeper"
   },

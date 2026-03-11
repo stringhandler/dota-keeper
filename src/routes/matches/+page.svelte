@@ -392,6 +392,12 @@
                 aria-label="OpenDota"
                 title="Open in OpenDota"
               >🔗</button>
+              <button
+                class="icon-btn"
+                onclick={(e) => { e.stopPropagation(); openUrl(`https://stratz.com/matches/${match.match_id}`); }}
+                aria-label="Stratz"
+                title="Open in Stratz"
+              >⚔</button>
             </div>
           </div>
 
@@ -566,6 +572,9 @@
           </button>
           <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
             🔗 OpenDota
+          </button>
+          <button class="modal-action-btn" onclick={() => openUrl(`https://stratz.com/matches/${mid}`)}>
+            ⚔ Stratz
           </button>
           {#if pqs.active.has(mid)}
             <span class="modal-parse-status parsing">Parsing…</span>

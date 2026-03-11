@@ -31,6 +31,7 @@
   let currentSteamId = $state("");
   let steamId = $state("");
   let error = $state("");
+  let currentRankTier = $state(null);
   let updateAvailable = $state(false);
   let updateVersion = $state("");
   let isUpdating = $state(false);
@@ -60,6 +61,16 @@
     }
   });
 
+  function getMedalLabel(rankTier) {
+    if (!rankTier) return null;
+    const NAMES = ["", "Herald", "Guardian", "Crusader", "Archon", "Legend", "Ancient", "Divine", "Immortal"];
+    const major = Math.floor(rankTier / 10);
+    const stars = rankTier % 10;
+    if (major === 8) return "Immortal";
+    if (major >= 1 && major <= 7) return stars > 0 ? `${NAMES[major]} ${stars}` : NAMES[major];
+    return null;
+  }
+
   async function loadSettings() {
     try {
       const settings = await invoke("get_settings");
@@ -75,6 +86,11 @@
     } finally {
       isLoading = false;
     }
+    // Load medal stats independently so failures don't block the app
+    try {
+      const medalStats = await invoke("get_medal_stats");
+      currentRankTier = medalStats.current_rank_tier;
+    } catch (_) {}
   }
 
   function extractSteamId(input) {
@@ -158,6 +174,7 @@
     if (pathname.startsWith('/goals')) return $_('page_title.goals');
     if (pathname.startsWith('/challenges')) return $_('page_title.challenges');
     if (pathname.startsWith('/mental-health')) return $_('page_title.mental_health');
+    if (pathname.startsWith('/medals')) return $_('page_title.medals');
     if (pathname.startsWith('/settings')) return $_('page_title.settings');
     return $_('page_title.app');
   }
@@ -310,6 +327,12 @@
           </svg>
           {$_('nav.mind')}
         </a>
+        <a href="/medals" class="nav-item" class:active={isActivePath('/medals')}>
+          <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          {$_('nav.medals')}
+        </a>
         <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -320,13 +343,13 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="rank-pill">
+        <a href="/medals" class="rank-pill" style="text-decoration:none;">
           <div class="rank-star">★</div>
           <div>
             <div class="rank-text">{$_('layout.rank')}</div>
-            <div class="rank-value">{$_('layout.rank_na')}</div>
+            <div class="rank-value">{getMedalLabel(currentRankTier) ?? $_('layout.rank_na')}</div>
           </div>
-        </div>
+        </a>
         <!-- Language switcher -->
         <div class="lang-switcher">
           <button class="lang-btn" class:active={$locale === 'en'} onclick={() => setLocale('en')}>EN</button>

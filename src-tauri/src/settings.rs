@@ -50,6 +50,12 @@ pub struct Settings {
     /// Whether the first-run onboarding flow has been completed
     #[serde(default)]
     pub onboarding_completed: bool,
+    /// Which data provider to use for match fetching: "opendota" or "stratz"
+    #[serde(default = "Settings::default_data_provider")]
+    pub data_provider: String,
+    /// Stratz API key (required when data_provider = "stratz")
+    #[serde(default)]
+    pub stratz_api_key: Option<String>,
 }
 
 impl Default for Settings {
@@ -65,6 +71,8 @@ impl Default for Settings {
             checkin_frequency: Self::default_checkin_frequency(),
             background_parse_enabled: Self::default_background_parse_enabled(),
             onboarding_completed: false,
+            data_provider: Self::default_data_provider(),
+            stratz_api_key: None,
         }
     }
 }
@@ -80,6 +88,10 @@ impl Settings {
 
     fn default_background_parse_enabled() -> bool {
         true
+    }
+
+    fn default_data_provider() -> String {
+        "opendota".to_string()
     }
 
     /// Generate a unique installation ID (UUID v4)

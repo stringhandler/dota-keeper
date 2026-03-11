@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -208,6 +208,7 @@ pub struct Match {
     pub hero_healing: i32,
     pub parse_state: MatchState,
     pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
+    pub rank_tier: Option<i32>,  // OpenDota rank_tier: 11-15=Herald, 21-25=Guardian, ..., 80=Immortal
 }
 
 impl Match {
@@ -306,6 +307,12 @@ pub fn init_db() -> Result<Connection, String> {
     // Add role column if it doesn't exist (for existing databases)
     let _ = conn.execute(
         "ALTER TABLE matches ADD COLUMN role INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+
+    // Add rank_tier column if it doesn't exist (for existing databases)
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN rank_tier INTEGER",
         [],
     );
 
@@ -523,8 +530,8 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
         "INSERT OR IGNORE INTO matches (
             match_id, hero_id, start_time, duration, game_mode, lobby_type,
             radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             m.match_id,
             m.hero_id,
@@ -546,6 +553,7 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
             m.hero_healing,
             m.parse_state.to_string(),
             m.role,
+            m.rank_tier,
         ],
     ).map_err(|e| format!("Failed to insert match: {}", e))?;
 
@@ -573,7 +581,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
              FROM matches
              WHERE parse_state = 'unparsed' OR parse_state = 'failed'
              ORDER BY start_time DESC",
@@ -604,6 +612,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
+                rank_tier: row.get(20).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -661,7 +670,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
              FROM matches ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -690,6 +699,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
+                rank_tier: row.get(20).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -1998,6 +2008,7 @@ fn row_to_match(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         hero_healing: row.get(17)?,
         parse_state: MatchState::from_string(&row.get::<_, String>(18)?),
         role: row.get(19).unwrap_or(0),
+        rank_tier: row.get(20).ok(),
     })
 }
 
@@ -2007,7 +2018,7 @@ fn get_matches_since(conn: &Connection, since_timestamp: i64) -> Result<Vec<Matc
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
              FROM matches WHERE start_time >= ?1 ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -3194,4 +3205,75 @@ pub fn get_challenge_history(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to collect history: {}", e));
     result
+}
+
+// ── Medal history ────────────────────────────────────────────────────────────
+
+/// A single data point in the medal history timeline
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MedalEntry {
+    pub match_id: i64,
+    pub start_time: i64,
+    pub rank_tier: i32,
+}
+
+/// Summary of current and peak medal
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MedalStats {
+    pub current_rank_tier: Option<i32>,
+    pub peak_rank_tier: Option<i32>,
+}
+
+/// Get all matches that have rank_tier data, ordered chronologically
+pub fn get_medal_history(conn: &Connection) -> Result<Vec<MedalEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, start_time, rank_tier
+             FROM matches
+             WHERE rank_tier IS NOT NULL
+             ORDER BY start_time ASC",
+        )
+        .map_err(|e| format!("Failed to prepare medal history query: {}", e))?;
+
+    let entries = stmt
+        .query_map([], |row| {
+            Ok(MedalEntry {
+                match_id: row.get(0)?,
+                start_time: row.get(1)?,
+                rank_tier: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query medal history: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read medal entry: {}", e))?;
+
+    Ok(entries)
+}
+
+/// Get current and peak medal stats
+pub fn get_medal_stats(conn: &Connection) -> Result<MedalStats, String> {
+    let current_rank_tier: Option<i32> = conn
+        .query_row(
+            "SELECT rank_tier FROM matches WHERE rank_tier IS NOT NULL ORDER BY start_time DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to query current medal: {}", e))?
+        .flatten();
+
+    let peak_rank_tier: Option<i32> = conn
+        .query_row(
+            "SELECT MAX(rank_tier) FROM matches WHERE rank_tier IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to query peak medal: {}", e))?
+        .flatten();
+
+    Ok(MedalStats {
+        current_rank_tier,
+        peak_rank_tier,
+    })
 }

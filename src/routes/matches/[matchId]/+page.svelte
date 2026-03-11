@@ -239,9 +239,14 @@
       {/if}
     </div>
     {#if match}
-      <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
-        View on OpenDota
-      </button>
+      <div class="external-links">
+        <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
+          View on OpenDota
+        </button>
+        <button class="stratz-btn" onclick={() => openUrl(`https://stratz.com/matches/${match.match_id}`)}>
+          View on Stratz
+        </button>
+      </div>
     {/if}
   </div>
 
@@ -451,14 +456,19 @@
     margin: 0;
   }
 
-  .opendota-btn {
+  .external-links {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .opendota-btn,
+  .stratz-btn {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     font-size: 11px;
-    background: var(--gold);
-    color: #080c10;
     border: none;
     padding: 10px 16px;
     border-radius: 4px;
@@ -467,8 +477,25 @@
     white-space: nowrap;
   }
 
+  .opendota-btn {
+    background: var(--gold);
+    color: #080c10;
+  }
+
   .opendota-btn:hover {
     background: var(--gold-bright);
+    transform: translateY(-1px);
+  }
+
+  .stratz-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .stratz-btn:hover {
+    border-color: var(--border-active);
+    color: var(--text-primary);
     transform: translateY(-1px);
   }
 

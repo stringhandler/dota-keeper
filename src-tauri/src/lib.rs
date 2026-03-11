@@ -4,6 +4,7 @@ mod database;
 mod items;
 mod opendota;
 mod settings;
+mod stratz;
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -52,6 +53,10 @@ static SESSION_ID: OnceLock<String> = OnceLock::new();
 // Background parser state (updated by background_parse_loop)
 static BG_PARSER_ACTIVE: AtomicBool = AtomicBool::new(false);
 static BG_PARSER_PENDING: AtomicUsize = AtomicUsize::new(0);
+
+// Backfill state (updated by run_backfill_task)
+static BACKFILL_ACTIVE: AtomicBool = AtomicBool::new(false);
+static BACKFILL_PENDING: AtomicUsize = AtomicUsize::new(0);
 
 fn get_session_id() -> String {
     SESSION_ID
@@ -143,6 +148,24 @@ async fn track_event(event: String, properties: Option<serde_json::Value>) -> Re
 fn logout() -> Result<Settings, String> {
     let mut settings = Settings::load();
     settings.steam_id = None;
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Set the data provider ("opendota" or "stratz")
+#[tauri::command]
+fn save_data_provider(provider: String) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.data_provider = provider;
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Save the Stratz API key
+#[tauri::command]
+fn save_stratz_api_key(api_key: Option<String>) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.stratz_api_key = api_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
     settings.save()?;
     Ok(settings)
 }
@@ -793,22 +816,74 @@ fn get_checkin_history(limit: i32) -> Result<Vec<CheckinHistoryItem>, String> {
     Ok(items)
 }
 
+// ── Provider dispatch helpers ─────────────────────────────────────────────────
+
+async fn api_fetch_recent_matches(settings: &Settings, limit: usize) -> Result<Vec<database::Match>, String> {
+    let steam_id = settings.steam_id.as_deref().ok_or("No Steam ID configured")?;
+    if settings.data_provider == "stratz" {
+        let key = settings.stratz_api_key.as_deref()
+            .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
+        stratz::fetch_recent_matches(steam_id, key, limit).await
+    } else {
+        opendota::fetch_recent_matches(steam_id, limit).await
+    }
+}
+
+async fn api_fetch_matches_before(settings: &Settings, before_timestamp: i64, limit: usize) -> Result<Vec<database::Match>, String> {
+    let steam_id = settings.steam_id.as_deref().ok_or("No Steam ID configured")?;
+    if settings.data_provider == "stratz" {
+        let key = settings.stratz_api_key.as_deref()
+            .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
+        stratz::fetch_matches_before(steam_id, key, before_timestamp, limit).await
+    } else {
+        opendota::fetch_matches_before(steam_id, before_timestamp, limit).await
+    }
+}
+
+/// For OpenDota: submits a parse job and returns the job ID.
+/// For Stratz: no parse needed — returns Ok(None) immediately.
+async fn api_request_parse(settings: &Settings, match_id: i64) -> Result<Option<i64>, String> {
+    if settings.data_provider == "stratz" {
+        Ok(None)
+    } else {
+        opendota::request_match_parse(match_id).await
+    }
+}
+
+/// For OpenDota: polls until the parse job completes.
+/// For Stratz: no-op, returns true immediately.
+async fn api_wait_for_parse(settings: &Settings, job_id: i64) -> bool {
+    if settings.data_provider == "stratz" {
+        true
+    } else {
+        opendota::wait_for_parse_job(job_id).await
+    }
+}
+
+async fn api_fetch_match_details(settings: &Settings, match_id: i64) -> Result<opendota::DetailedMatch, String> {
+    if settings.data_provider == "stratz" {
+        let key = settings.stratz_api_key.as_deref()
+            .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
+        stratz::fetch_match_details(match_id, key).await
+    } else {
+        opendota::fetch_match_details(match_id).await
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 #[derive(Debug, serde::Serialize)]
 struct RefreshResult {
     new_count: usize,
     matches: Vec<MatchWithGoals>,
 }
 
-/// Refresh matches from OpenDota API
+/// Refresh matches from the configured data provider
 #[tauri::command]
 async fn refresh_matches() -> Result<RefreshResult, String> {
     let settings = Settings::load();
-    let steam_id = settings
-        .steam_id
-        .ok_or_else(|| "No Steam ID configured".to_string())?;
 
-    // Fetch recent matches from OpenDota
-    let matches = opendota::fetch_recent_matches(&steam_id, 10).await?;
+    let matches = api_fetch_recent_matches(&settings, 10).await?;
 
     // Initialize database
     let conn = get_db_conn()?;
@@ -833,6 +908,20 @@ async fn refresh_matches() -> Result<RefreshResult, String> {
 fn get_matches() -> Result<Vec<MatchWithGoals>, String> {
     let conn = get_db_conn()?;
     get_matches_with_goals(&conn)
+}
+
+/// Get medal (rank) history — all matches with rank_tier, ordered oldest first
+#[tauri::command]
+fn get_medal_history() -> Result<Vec<database::MedalEntry>, String> {
+    let conn = get_db_conn()?;
+    database::get_medal_history(&conn)
+}
+
+/// Get current and peak medal stats
+#[tauri::command]
+fn get_medal_stats() -> Result<database::MedalStats, String> {
+    let conn = get_db_conn()?;
+    database::get_medal_stats(&conn)
 }
 
 /// Create a new goal
@@ -911,9 +1000,11 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         }),
     );
 
-    // Request OpenDota to parse the match
+    let settings = Settings::load();
+
+    // Request the provider to parse the match (no-op for Stratz)
     trace_log(&format!("parse_match calling request_match_parse match_id={}", match_id));
-    let job_id = match opendota::request_match_parse(match_id).await {
+    let job_id = match api_request_parse(&settings, match_id).await {
         Ok(id) => {
             trace_log(&format!("parse_match request_match_parse OK job_id={:?}", id));
             id
@@ -935,19 +1026,19 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         }
     };
 
-    // Wait for the parse job to finish, or fall back to a fixed delay.
+    // Wait for the parse job to finish (OpenDota only; Stratz skips this).
     if let Some(id) = job_id {
         trace_log(&format!("parse_match waiting for job_id={}", id));
-        let done = opendota::wait_for_parse_job(id).await;
+        let done = api_wait_for_parse(&settings, id).await;
         trace_log(&format!("parse_match wait_for_parse_job done={}", done));
-    } else {
+    } else if settings.data_provider != "stratz" {
         trace_log("parse_match no job_id returned — sleeping 5s");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 
     // Fetch detailed match data
     trace_log(&format!("parse_match calling fetch_match_details match_id={}", match_id));
-    let detailed_match = match opendota::fetch_match_details(match_id).await {
+    let detailed_match = match api_fetch_match_details(&settings, match_id).await {
         Ok(m) => {
             trace_log(&format!("parse_match fetch_match_details OK players={}", m.players.len()));
             m
@@ -981,79 +1072,55 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
     let conn = get_db_conn()?;
 
-    // Store all per-minute CS data - this is REQUIRED for parsing to be successful
-    // Without per-minute data, we can't evaluate last-hit goals accurately
-    if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
-        // Verify data is not empty
-        if lh_t.is_empty() || dn_t.is_empty() {
-            update_match_state(&conn, match_id, MatchState::Failed)?;
-            let _ = app.emit(
-                "match-state-changed",
-                serde_json::json!({
-                    "match_id": match_id,
-                    "state": "Failed"
-                }),
-            );
-            return Err("OpenDota returned empty per-minute data. The match may not be fully parsed yet. Try again in a few minutes.".to_string());
-        }
+    let has_cs_data = matches!(
+        (&player_data.lh_t, &player_data.dn_t),
+        (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
+    );
 
-        insert_match_cs_data(&conn, match_id, lh_t, dn_t)?;
-
-        // Store lane role
-        let role = player_data.lane_role.unwrap_or(0);
-        let _ = update_match_role(&conn, match_id, role);
-
-        // Store per-minute networth for all players (used by PartnerNetworth goals)
-        for p in &detailed_match.players {
-            if let Some(nw_t) = &p.gold_t {
-                let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
-            }
-        }
-        // Identify and store lane partner slot
-        let partner =
-            opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
-        let _ = update_match_partner_slot(&conn, match_id, partner.map(|p| p.player_slot));
-
-        // Store item purchase timings if available
-        if let Some(purchase_log) = &player_data.purchase_log {
-            for purchase in purchase_log {
-                if let Some(item_id) = items::get_item_id(&purchase.key) {
-                    let timing = NewItemTiming {
-                        match_id,
-                        item_id,
-                        timing_seconds: purchase.time,
-                    };
-                    // Ignore errors for individual item inserts
-                    let _ = insert_item_timing(&conn, &timing);
-                }
-            }
-        }
-
-        // Only mark as Parsed if we successfully stored the data
-        update_match_state(&conn, match_id, MatchState::Parsed)?;
-        let _ = app.emit(
-            "match-state-changed",
-            serde_json::json!({
-                "match_id": match_id,
-                "state": "Parsed"
-            }),
-        );
-
-        trace_log(&format!("parse_match SUCCESS match_id={}", match_id));
-        Ok(())
-    } else {
-        // Per-minute data not available yet
+    // OpenDota requires CS data; Stratz doesn't provide it (lh_t is None)
+    if !has_cs_data && settings.data_provider != "stratz" {
         update_match_state(&conn, match_id, MatchState::Failed)?;
-        let _ = app.emit(
-            "match-state-changed",
-            serde_json::json!({
-                "match_id": match_id,
-                "state": "Failed"
-            }),
-        );
+        let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": match_id, "state": "Failed" }));
         trace_log(&format!("parse_match FAILED (no per-minute data) match_id={}", match_id));
-        Err("OpenDota has not finished parsing this match yet. The per-minute data is not available. Try again in a few minutes.".to_string())
+        return Err("OpenDota has not finished parsing this match yet. Try again in a few minutes.".to_string());
     }
+
+    // Store CS data if available
+    if has_cs_data {
+        if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+            insert_match_cs_data(&conn, match_id, lh_t, dn_t)?;
+        }
+    }
+
+    // Store lane role
+    let role = player_data.lane_role.unwrap_or(0);
+    let _ = update_match_role(&conn, match_id, role);
+
+    // Store per-minute networth for all players (used by PartnerNetworth goals)
+    for p in &detailed_match.players {
+        if let Some(nw_t) = &p.gold_t {
+            let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
+        }
+    }
+    // Identify and store lane partner slot
+    let partner =
+        opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+    let _ = update_match_partner_slot(&conn, match_id, partner.map(|p| p.player_slot));
+
+    // Store item purchase timings if available
+    if let Some(purchase_log) = &player_data.purchase_log {
+        for purchase in purchase_log {
+            if let Some(item_id) = items::get_item_id(&purchase.key) {
+                let timing = NewItemTiming { match_id, item_id, timing_seconds: purchase.time };
+                let _ = insert_item_timing(&conn, &timing);
+            }
+        }
+    }
+
+    update_match_state(&conn, match_id, MatchState::Parsed)?;
+    let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": match_id, "state": "Parsed" }));
+    trace_log(&format!("parse_match SUCCESS match_id={}", match_id));
+    Ok(())
 }
 
 /// Get goals with daily progress for the last N days
@@ -1147,12 +1214,16 @@ fn get_last_hits_analysis_data(
     get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
 }
 
-/// Backfill and parse historical matches (100 games before the oldest match)
+/// Starts a background backfill of 100 historical matches, returning immediately.
 #[tauri::command]
 async fn backfill_historical_matches(
     app: tauri::AppHandle,
     steam_id: String,
 ) -> Result<String, String> {
+    if BACKFILL_ACTIVE.load(Ordering::Relaxed) {
+        return Err("A backfill is already in progress.".to_string());
+    }
+
     // Read the oldest timestamp — lock dropped before first await.
     let before_timestamp = {
         let conn = get_db_conn()?;
@@ -1165,77 +1236,119 @@ async fn backfill_historical_matches(
         })
     };
 
+    let settings = {
+        let mut s = Settings::load();
+        s.steam_id = Some(steam_id.clone());
+        s
+    };
+
+    BACKFILL_ACTIVE.store(true, Ordering::Relaxed);
+    BACKFILL_PENDING.store(0, Ordering::Relaxed);
+    let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": 0 }));
+
+    tauri::async_runtime::spawn(async move {
+        run_backfill_task(app, steam_id, before_timestamp, settings).await;
+    });
+
+    Ok("Backfill started.".to_string())
+}
+
+/// Inner task that does the actual backfill work. Runs in a spawned background task.
+async fn run_backfill_task(
+    app: tauri::AppHandle,
+    steam_id: String,
+    before_timestamp: i64,
+    settings: Settings,
+) {
+    macro_rules! finish {
+        ($msg:expr) => {{
+            BACKFILL_ACTIVE.store(false, Ordering::Relaxed);
+            BACKFILL_PENDING.store(0, Ordering::Relaxed);
+            let _ = app.emit(
+                "backfill-progress",
+                serde_json::json!({ "active": false, "pending": 0, "done": true, "message": $msg }),
+            );
+            return;
+        }};
+    }
+
     // Fetch 100 matches before the oldest timestamp
-    let matches = opendota::fetch_matches_before(&steam_id, before_timestamp, 100).await?;
+    let matches = match api_fetch_matches_before(&settings, before_timestamp, 100).await {
+        Ok(m) => m,
+        Err(e) => finish!(format!("Backfill failed: {}", e)),
+    };
 
     if matches.is_empty() {
-        return Ok("No new matches found to backfill.".to_string());
+        finish!("No new matches found to backfill.");
     }
 
     // Insert matches that don't already exist — lock dropped before the parse loop.
     let mut new_count = 0;
     {
-        let conn = get_db_conn()?;
+        let conn = match get_db_conn() {
+            Ok(c) => c,
+            Err(e) => finish!(format!("Backfill failed: {}", e)),
+        };
         for m in &matches {
-            if !match_exists(&conn, m.match_id)? {
-                insert_match(&conn, m)?;
-                new_count += 1;
+            if matches!(match_exists(&conn, m.match_id), Ok(false)) {
+                if insert_match(&conn, m).is_ok() {
+                    new_count += 1;
+                }
             }
         }
     }
 
     // Convert Steam ID for parsing
-    let account_id = steam_id64_to_id32(&steam_id)?;
+    let account_id = match steam_id64_to_id32(&steam_id) {
+        Ok(id) => id,
+        Err(e) => finish!(format!("Backfill failed: {}", e)),
+    };
+
+    BACKFILL_PENDING.store(matches.len(), Ordering::Relaxed);
+    let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": matches.len() }));
 
     let mut parsed_count = 0;
 
     // Parse matches (with a small delay between each to avoid rate limiting).
     // The DB lock is acquired in short scopes so it is never held across an await.
     for m in &matches {
-        // Request parse
-        let job_id = match opendota::request_match_parse(m.match_id).await {
+        // Request parse (no-op for Stratz)
+        let job_id = match api_request_parse(&settings, m.match_id).await {
             Ok(id) => id,
             Err(e) => {
                 eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
+                BACKFILL_PENDING.fetch_sub(1, Ordering::Relaxed);
+                let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": BACKFILL_PENDING.load(Ordering::Relaxed) }));
                 continue;
             }
         };
 
-        {
-            let conn = get_db_conn()?;
-            update_match_state(&conn, m.match_id, MatchState::Parsing)?;
+        if let Ok(conn) = get_db_conn() {
+            let _ = update_match_state(&conn, m.match_id, MatchState::Parsing);
         }
         let _ = app.emit(
             "match-state-changed",
-            serde_json::json!({
-                "match_id": m.match_id,
-                "state": "Parsing"
-            }),
+            serde_json::json!({ "match_id": m.match_id, "state": "Parsing" }),
         );
 
         // Wait for the parse job to finish, or fall back to a fixed delay.
         if let Some(id) = job_id {
-            opendota::wait_for_parse_job(id).await;
-        } else {
+            api_wait_for_parse(&settings, id).await;
+        } else if settings.data_provider != "stratz" {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
         }
 
         // Fetch detailed match data
-        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+        let detailed_match = match api_fetch_match_details(&settings, m.match_id).await {
             Ok(dm) => dm,
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
-                {
-                    let conn = get_db_conn()?;
-                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                if let Ok(conn) = get_db_conn() {
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
                 }
-                let _ = app.emit(
-                    "match-state-changed",
-                    serde_json::json!({
-                        "match_id": m.match_id,
-                        "state": "Failed"
-                    }),
-                );
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
+                BACKFILL_PENDING.fetch_sub(1, Ordering::Relaxed);
+                let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": BACKFILL_PENDING.load(Ordering::Relaxed) }));
                 continue;
             }
         };
@@ -1249,102 +1362,70 @@ async fn backfill_historical_matches(
             Some(p) => p,
             None => {
                 eprintln!("Player not found in match {}", m.match_id);
-                {
-                    let conn = get_db_conn()?;
-                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
+                if let Ok(conn) = get_db_conn() {
+                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
                 }
-                let _ = app.emit(
-                    "match-state-changed",
-                    serde_json::json!({
-                        "match_id": m.match_id,
-                        "state": "Failed"
-                    }),
-                );
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
+                BACKFILL_PENDING.fetch_sub(1, Ordering::Relaxed);
+                let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": BACKFILL_PENDING.load(Ordering::Relaxed) }));
                 continue;
             }
         };
 
-        {
-            let conn = get_db_conn()?;
-            // Store CS data if available
-            if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
-                if let Err(e) = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t) {
-                    eprintln!("Failed to insert CS data for match {}: {}", m.match_id, e);
-                    update_match_state(&conn, m.match_id, MatchState::Failed)?;
-                    let _ = app.emit(
-                        "match-state-changed",
-                        serde_json::json!({
-                            "match_id": m.match_id,
-                            "state": "Failed"
-                        }),
-                    );
-                } else {
-                    // Store lane role
-                    let role = player_data.lane_role.unwrap_or(0);
-                    let _ = update_match_role(&conn, m.match_id, role);
+        if let Ok(conn) = get_db_conn() {
+            let has_cs = matches!(
+                (&player_data.lh_t, &player_data.dn_t),
+                (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
+            );
 
-                    // Store per-minute networth for all players (used by PartnerNetworth goals)
-                    for p in &detailed_match.players {
-                        if let Some(nw_t) = &p.gold_t {
-                            let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
-                        }
-                    }
-                    // Identify and store lane partner slot
-                    let partner = opendota::find_lane_partner(
-                        &detailed_match.players,
-                        player_data.player_slot,
-                        role,
-                    );
-                    let _ = update_match_partner_slot(
-                        &conn,
-                        m.match_id,
-                        partner.map(|p| p.player_slot),
-                    );
-
-                    // Store item purchase timings if available
-                    if let Some(purchase_log) = &player_data.purchase_log {
-                        for purchase in purchase_log {
-                            if let Some(item_id) = items::get_item_id(&purchase.key) {
-                                let timing = NewItemTiming {
-                                    match_id: m.match_id,
-                                    item_id,
-                                    timing_seconds: purchase.time,
-                                };
-                                let _ = insert_item_timing(&conn, &timing);
-                            }
-                        }
-                    }
-
-                    update_match_state(&conn, m.match_id, MatchState::Parsed)?;
-                    let _ = app.emit(
-                        "match-state-changed",
-                        serde_json::json!({
-                            "match_id": m.match_id,
-                            "state": "Parsed"
-                        }),
-                    );
-                    parsed_count += 1;
-                }
+            // OpenDota requires CS data; Stratz doesn't provide it (None = not available)
+            if !has_cs && settings.data_provider != "stratz" {
+                let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
             } else {
-                update_match_state(&conn, m.match_id, MatchState::Failed)?;
-                let _ = app.emit(
-                    "match-state-changed",
-                    serde_json::json!({
-                        "match_id": m.match_id,
-                        "state": "Failed"
-                    }),
-                );
+                // Store CS data if available
+                if has_cs {
+                    if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+                        let _ = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t);
+                    }
+                }
+
+                let role = player_data.lane_role.unwrap_or(0);
+                let _ = update_match_role(&conn, m.match_id, role);
+
+                for p in &detailed_match.players {
+                    if let Some(nw_t) = &p.gold_t {
+                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                    }
+                }
+                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+
+                if let Some(purchase_log) = &player_data.purchase_log {
+                    for purchase in purchase_log {
+                        if let Some(item_id) = items::get_item_id(&purchase.key) {
+                            let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });
+                        }
+                    }
+                }
+
+                let _ = update_match_state(&conn, m.match_id, MatchState::Parsed);
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Parsed" }));
+                parsed_count += 1;
             }
         } // conn dropped here, before the sleep
+
+        BACKFILL_PENDING.fetch_sub(1, Ordering::Relaxed);
+        let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": BACKFILL_PENDING.load(Ordering::Relaxed) }));
 
         // Small delay to avoid rate limiting
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     }
 
-    Ok(format!(
+    finish!(format!(
         "Backfill complete! Added {} new matches, parsed {} matches.",
         new_count, parsed_count
-    ))
+    ));
 }
 
 /// Reparse all unparsed or failed matches
@@ -1938,6 +2019,21 @@ fn get_background_parse_status() -> BackgroundParseStatus {
     }
 }
 
+#[derive(serde::Serialize)]
+struct BackfillStatus {
+    active: bool,
+    pending: usize,
+}
+
+/// Returns the current backfill status (active flag + remaining count).
+#[tauri::command]
+fn get_backfill_status() -> BackfillStatus {
+    BackfillStatus {
+        active: BACKFILL_ACTIVE.load(Ordering::Relaxed),
+        pending: BACKFILL_PENDING.load(Ordering::Relaxed),
+    }
+}
+
 /// Enable or disable the background match parser.
 #[tauri::command]
 fn save_background_parse_enabled(enabled: bool) -> Result<Settings, String> {
@@ -1954,8 +2050,8 @@ async fn background_parse_loop(app: tauri::AppHandle) {
     if !settings.background_parse_enabled {
         return;
     }
-    let steam_id = match settings.steam_id {
-        Some(s) => s,
+    let steam_id = match &settings.steam_id {
+        Some(s) => s.clone(),
         None => return,
     };
     let account_id = match steam_id64_to_id32(&steam_id) {
@@ -1991,8 +2087,9 @@ async fn background_parse_loop(app: tauri::AppHandle) {
             break;
         }
 
-        // Request parse; retry once after 60 s if rate-limited.
-        let job_id = match opendota::request_match_parse(m.match_id).await {
+        // Request parse; for OpenDota retry once after 60 s if rate-limited.
+        // For Stratz, api_request_parse returns Ok(None) immediately.
+        let job_id = match api_request_parse(&settings, m.match_id).await {
             Ok(id) => id,
             Err(ref e) if e.contains("Too many requests") => {
                 sentry::capture_message(
@@ -2000,7 +2097,7 @@ async fn background_parse_loop(app: tauri::AppHandle) {
                     sentry::Level::Warning,
                 );
                 tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                match opendota::request_match_parse(m.match_id).await {
+                match api_request_parse(&settings, m.match_id).await {
                     Ok(id) => id,
                     Err(_) => {
                         BG_PARSER_PENDING.fetch_sub(1, Ordering::Relaxed);
@@ -2025,14 +2122,14 @@ async fn background_parse_loop(app: tauri::AppHandle) {
             serde_json::json!({ "match_id": m.match_id, "state": "Parsing" }),
         );
 
-        // Wait for the parse job to finish, or fall back to a fixed delay.
+        // Wait for the parse job to finish (OpenDota only; Stratz skips this).
         if let Some(id) = job_id {
-            opendota::wait_for_parse_job(id).await;
-        } else {
+            api_wait_for_parse(&settings, id).await;
+        } else if settings.data_provider != "stratz" {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
 
-        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+        let detailed_match = match api_fetch_match_details(&settings, m.match_id).await {
             Ok(dm) => dm,
             Err(_) => {
                 if let Ok(conn) = get_db_conn() {
@@ -2066,51 +2163,38 @@ async fn background_parse_loop(app: tauri::AppHandle) {
 
         {
             let Ok(conn) = get_db_conn() else { break };
-            if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
-                if !lh_t.is_empty() && !dn_t.is_empty() && insert_match_cs_data(&conn, m.match_id, lh_t, dn_t).is_ok() {
-                    let role = player_data.lane_role.unwrap_or(0);
-                    let _ = update_match_role(&conn, m.match_id, role);
-                    for p in &detailed_match.players {
-                        if let Some(nw_t) = &p.gold_t {
-                            let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
-                        }
-                    }
-                    let partner = opendota::find_lane_partner(
-                        &detailed_match.players,
-                        player_data.player_slot,
-                        role,
-                    );
-                    let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
-                    if let Some(purchase_log) = &player_data.purchase_log {
-                        for purchase in purchase_log {
-                            if let Some(item_id) = items::get_item_id(&purchase.key) {
-                                let timing = NewItemTiming {
-                                    match_id: m.match_id,
-                                    item_id,
-                                    timing_seconds: purchase.time,
-                                };
-                                let _ = insert_item_timing(&conn, &timing);
-                            }
-                        }
-                    }
-                    let _ = update_match_state(&conn, m.match_id, MatchState::Parsed);
-                    let _ = app.emit(
-                        "match-state-changed",
-                        serde_json::json!({ "match_id": m.match_id, "state": "Parsed" }),
-                    );
-                } else {
-                    let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
-                    let _ = app.emit(
-                        "match-state-changed",
-                        serde_json::json!({ "match_id": m.match_id, "state": "Failed" }),
-                    );
-                }
-            } else {
+            let has_cs = matches!(
+                (&player_data.lh_t, &player_data.dn_t),
+                (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
+            );
+
+            if !has_cs && settings.data_provider != "stratz" {
                 let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
-                let _ = app.emit(
-                    "match-state-changed",
-                    serde_json::json!({ "match_id": m.match_id, "state": "Failed" }),
-                );
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
+            } else {
+                if has_cs {
+                    if let (Some(lh_t), Some(dn_t)) = (&player_data.lh_t, &player_data.dn_t) {
+                        let _ = insert_match_cs_data(&conn, m.match_id, lh_t, dn_t);
+                    }
+                }
+                let role = player_data.lane_role.unwrap_or(0);
+                let _ = update_match_role(&conn, m.match_id, role);
+                for p in &detailed_match.players {
+                    if let Some(nw_t) = &p.gold_t {
+                        let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
+                    }
+                }
+                let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
+                let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
+                if let Some(purchase_log) = &player_data.purchase_log {
+                    for purchase in purchase_log {
+                        if let Some(item_id) = items::get_item_id(&purchase.key) {
+                            let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });
+                        }
+                    }
+                }
+                let _ = update_match_state(&conn, m.match_id, MatchState::Parsed);
+                let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Parsed" }));
             }
         }
 
@@ -2244,8 +2328,13 @@ pub fn run() {
             get_tilt_assessment,
             get_checkin_history,
             get_background_parse_status,
+            get_backfill_status,
             save_background_parse_enabled,
-            factory_reset
+            save_data_provider,
+            save_stratz_api_key,
+            factory_reset,
+            get_medal_history,
+            get_medal_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

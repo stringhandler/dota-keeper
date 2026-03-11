@@ -67,6 +67,7 @@ struct OpenDotaMatch {
     hero_damage: Option<i32>,
     tower_damage: Option<i32>,
     hero_healing: Option<i32>,
+    rank_tier: Option<i32>,
 }
 
 impl From<OpenDotaMatch> for Match {
@@ -92,6 +93,7 @@ impl From<OpenDotaMatch> for Match {
             hero_healing: m.hero_healing.unwrap_or(0),
             parse_state: MatchState::Unparsed,
             role: 0,
+            rank_tier: m.rank_tier,
         }
     }
 }

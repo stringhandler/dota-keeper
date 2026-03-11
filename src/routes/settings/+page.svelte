@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getVersion } from "@tauri-apps/api/app";
   import { check } from "@tauri-apps/plugin-updater";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount, onDestroy } from "svelte";
   import { listen } from "@tauri-apps/api/event";
@@ -39,8 +40,12 @@
   let isInstalling = $state(false);
 
   let isResetting = $state(false);
+  let dataProvider = $state("opendota");
+  let stratzApiKey = $state("");
+  let isSavingProvider = $state(false);
 
   let unlistenBgParse;
+  let unlistenBackfill;
 
   onMount(async () => {
     await loadDatabasePath();
@@ -50,6 +55,7 @@
     await loadAnalytics();
     await loadMentalHealth();
     await loadBackgroundParse();
+    await loadDataProvider();
     await loadAppVersion();
 
     // Sync initial status from backend
@@ -61,10 +67,25 @@
       console.error("Failed to get background parse status:", e);
     }
 
+    // Sync backfill status (may still be running from before tab switch)
+    try {
+      const backfillStatus = await invoke("get_backfill_status");
+      isBackfilling = backfillStatus.active;
+    } catch (e) {
+      console.error("Failed to get backfill status:", e);
+    }
+
     // Listen for live progress updates
     unlistenBgParse = await listen("background-parse-progress", (event) => {
       bgParseActive = event.payload.active;
       bgParsePending = event.payload.pending;
+    });
+
+    unlistenBackfill = await listen("backfill-progress", (event) => {
+      isBackfilling = event.payload.active;
+      if (event.payload.done) {
+        showToast(event.payload.message, "success");
+      }
     });
 
     // Track page view
@@ -73,6 +94,7 @@
 
   onDestroy(() => {
     unlistenBgParse?.();
+    unlistenBackfill?.();
   });
 
   async function loadDatabasePath() {
@@ -109,6 +131,41 @@
       steamId = settings.steam_id || "";
     } catch (e) {
       console.error("Failed to load Steam ID:", e);
+    }
+  }
+
+  async function loadDataProvider() {
+    try {
+      const settings = await invoke("get_settings");
+      dataProvider = settings.data_provider || "opendota";
+      stratzApiKey = settings.stratz_api_key || "";
+    } catch (e) {
+      console.error("Failed to load data provider settings:", e);
+    }
+  }
+
+  async function saveDataProvider(provider) {
+    dataProvider = provider;
+    isSavingProvider = true;
+    try {
+      await invoke("save_data_provider", { provider });
+      showToast("Data provider updated.", "success");
+    } catch (e) {
+      showToast(`Failed to save provider: ${e}`, "error");
+    } finally {
+      isSavingProvider = false;
+    }
+  }
+
+  async function saveStratzApiKey() {
+    isSavingProvider = true;
+    try {
+      await invoke("save_stratz_api_key", { apiKey: stratzApiKey || null });
+      showToast("Stratz API key saved.", "success");
+    } catch (e) {
+      showToast(`Failed to save API key: ${e}`, "error");
+    } finally {
+      isSavingProvider = false;
     }
   }
 
@@ -284,15 +341,13 @@
 
     error = "";
     successMessage = "";
-    isBackfilling = true;
 
     try {
-      const result = await invoke("backfill_historical_matches", { steamId });
-      successMessage = result;
+      await invoke("backfill_historical_matches", { steamId });
+      isBackfilling = true;
+      showToast("Backfill started. You can navigate away — it will continue in the background.", "success");
     } catch (e) {
-      error = `Failed to backfill matches: ${e}`;
-    } finally {
-      isBackfilling = false;
+      error = `Failed to start backfill: ${e}`;
     }
   }
 
@@ -572,6 +627,68 @@
 
   <div class="settings-section">
     <h2>{$_('settings.section_matches')}</h2>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Data Provider</h3>
+        <p class="setting-description">
+          Choose where match data is fetched from. Stratz requires a free API key.
+        </p>
+        <div class="analytics-options" style="margin-top: 0.75rem;">
+          <label class="radio-label">
+            <input
+              type="radio"
+              name="data_provider"
+              value="opendota"
+              checked={dataProvider === "opendota"}
+              onchange={() => saveDataProvider("opendota")}
+              disabled={isSavingProvider}
+            />
+            <span>OpenDota</span>
+          </label>
+          <label class="radio-label">
+            <input
+              type="radio"
+              name="data_provider"
+              value="stratz"
+              checked={dataProvider === "stratz"}
+              onchange={() => saveDataProvider("stratz")}
+              disabled={isSavingProvider}
+            />
+            <span>Stratz</span>
+          </label>
+        </div>
+
+        {#if dataProvider === "stratz"}
+          <div style="margin-top: 0.75rem;">
+            <button
+              class="btn btn-secondary"
+              onclick={() => openUrl("https://stratz.com/api")}
+              style="font-size: 12px;"
+            >
+              Get API key on stratz.com →
+            </button>
+          </div>
+          <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center;">
+            <input
+              type="password"
+              placeholder="Paste API key here"
+              bind:value={stratzApiKey}
+              class="text-input"
+              style="flex: 1;"
+            />
+            <button
+              class="save-btn"
+              onclick={saveStratzApiKey}
+              disabled={isSavingProvider}
+            >
+              {isSavingProvider ? "Saving…" : "Save key"}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
+
     <div class="setting-item">
       <div class="setting-info">
         <h3>{$_('settings.backfill_title')}</h3>
@@ -1035,6 +1152,22 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.text-input {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.text-input:focus {
+  border-color: var(--border-active);
 }
 
 .pct-input {
