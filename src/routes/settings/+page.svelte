@@ -6,7 +6,8 @@
   import { onMount, onDestroy } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
-  import { initSentry, disableSentry } from "$lib/sentry.js";
+  import { initSentry, disableSentry, captureException } from "$lib/sentry.js";
+  import { showToast } from "$lib/toast.js";
   import { _ } from "svelte-i18n";
 
   let databasePath = $state("");
@@ -551,6 +552,20 @@
             <span>{$_('settings.analytics_decline')}</span>
           </label>
         </div>
+        {#if analyticsConsent === "Accepted"}
+          <div style="margin-top: 0.75rem;">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick={() => {
+                captureException(new Error("Sentry test error from Dota Keeper settings"), { source: "manual_test" });
+                showToast("Test error sent to Sentry", "success");
+              }}
+            >
+              Send test error to Sentry
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>

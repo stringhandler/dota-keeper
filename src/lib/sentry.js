@@ -7,21 +7,27 @@
  */
 
 import * as Sentry from '@sentry/browser';
+import { PUBLIC_SENTRY_DSN } from '$env/static/public';
 
 let initialised = false;
 let sendingEnabled = false;
 
 export function initSentry() {
-  const dsn = import.meta.env.PUBLIC_SENTRY_DSN;
-  if (!dsn) return;
+  const dsn = PUBLIC_SENTRY_DSN;
+  if (!dsn) {
+    console.warn('[Sentry] No DSN configured — skipping init');
+    return;
+  }
 
   if (!initialised) {
+    const env = import.meta.env.DEV ? 'development' : 'production';
+    console.log(`[Sentry] Initialising (env=${env})`);
     Sentry.init({
       dsn,
       release: `dota-keeper@${__APP_VERSION__}`,
-      environment: import.meta.env.DEV ? 'development' : 'production',
+      environment: env,
       // Don't send errors in dev unless DSN is explicitly set
-      enabled: !import.meta.env.DEV || !!dsn,
+      enabled: !import.meta.env.DEV || !!PUBLIC_SENTRY_DSN,
       integrations: [
         Sentry.browserTracingIntegration(),
       ],
@@ -31,7 +37,11 @@ export function initSentry() {
       sendDefaultPii: false,
       beforeSend(event) {
         // Respect user's analytics consent — drop event if opted out
-        if (!sendingEnabled) return null;
+        if (!sendingEnabled) {
+          console.warn('[Sentry] beforeSend: dropping event (sendingEnabled=false)');
+          return null;
+        }
+        console.log('[Sentry] beforeSend: sending event', event.event_id);
         // Strip any URL that looks like it contains a Steam ID
         if (event.request?.url) {
           event.request.url = event.request.url.replace(/\d{17}/g, '[steamid]');
@@ -43,6 +53,7 @@ export function initSentry() {
   }
 
   sendingEnabled = true;
+  console.log('[Sentry] Ready (initialised=true, sendingEnabled=true)');
 }
 
 /** Stop sending events to Sentry (user opted out of telemetry). */
@@ -57,7 +68,11 @@ export function disableSentry() {
  * @param {{ [key: string]: string }} [tags]
  */
 export function captureException(error, tags) {
-  if (!initialised) return;
+  if (!initialised) {
+    console.warn('[Sentry] captureException called but Sentry is not initialised');
+    return;
+  }
+  console.log('[Sentry] Capturing exception:', error?.message);
   Sentry.withScope((scope) => {
     if (tags) scope.setTags(tags);
     Sentry.captureException(error);
