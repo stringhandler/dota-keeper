@@ -6,6 +6,7 @@
   import { onMount, onDestroy } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
+  import { initSentry, disableSentry } from "$lib/sentry.js";
   import { _ } from "svelte-i18n";
 
   let databasePath = $state("");
@@ -242,6 +243,13 @@
       analyticsConsent = consent;
       // Update the analytics module's cached state
       updateAnalyticsConsent(consent);
+
+      // Keep Sentry in sync with analytics consent
+      if (consent === "Accepted") {
+        initSentry();
+      } else {
+        disableSentry();
+      }
 
       if (consent === "Accepted") {
         successMessage = "Analytics enabled. Thank you for helping improve Dota Keeper!";

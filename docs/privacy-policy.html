@@ -299,7 +299,7 @@
                 <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 2rem; text-align: center;">This policy applies to the Dota Keeper application and website, developed by <strong style="color: var(--text-secondary);">Volthawk Software (Pty) Ltd</strong> ("we", "us", or "our").</p>
 
                 <div class="highlight-box">
-                    <p><strong>TL;DR:</strong> The Dota Keeper <em>app</em> stores all your data locally — nothing leaves your device. This <em>website</em> uses Google Analytics to collect anonymous visitor statistics (pages visited, country, browser). We do not sell or share your personal information.</p>
+                    <p><strong>TL;DR:</strong> The Dota Keeper <em>app</em> stores all your data locally — nothing leaves your device. If you opt in to analytics, the app sends anonymous crash reports (Sentry) and usage events (PostHog) to help us improve it. This <em>website</em> uses Google Analytics to collect anonymous visitor statistics. We do not sell or share your personal information.</p>
                 </div>
 
                 <!-- Table of Contents -->
@@ -357,9 +357,19 @@
                                 <td><span class="tag tag-external">Google — anonymised</span></td>
                             </tr>
                             <tr>
-                                <td>App analytics, crash reports, or telemetry</td>
-                                <td>N/A</td>
-                                <td><span class="tag tag-none">Not collected</span></td>
+                                <td>Anonymous crash reports &amp; error logs</td>
+                                <td>Sentry (opt-in, app only)</td>
+                                <td><span class="tag tag-external">Sentry — anonymised</span></td>
+                            </tr>
+                            <tr>
+                                <td>Anonymous usage events (feature usage, page views)</td>
+                                <td>PostHog (opt-in, app only)</td>
+                                <td><span class="tag tag-external">PostHog — anonymised</span></td>
+                            </tr>
+                            <tr>
+                                <td>Feedback you choose to submit (text, category, app version, OS)</td>
+                                <td>Supabase (user-initiated, app only)</td>
+                                <td><span class="tag tag-external">Supabase — stored by us</span></td>
                             </tr>
                             <tr>
                                 <td>Advertising identifiers</td>
@@ -424,8 +434,26 @@
                         <li>Google Privacy Policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a></li>
                     </ul>
 
+                    <h3>Sentry (App — opt-in)</h3>
+                    <p>If you opt in to analytics, the app sends anonymous crash reports and error logs to Sentry (<a href="https://sentry.io" target="_blank" rel="noopener noreferrer">sentry.io</a>). This helps us identify and fix bugs. Reports contain technical details about the error and your device environment (OS version, app version). No Steam IDs, match data, or personal information is included — Steam IDs are automatically stripped before any event is sent. You can opt out at any time in Settings.</p>
+                    <ul>
+                        <li>Sentry Privacy Policy: <a href="https://sentry.io/privacy/" target="_blank" rel="noopener noreferrer">sentry.io/privacy</a></li>
+                    </ul>
+
+                    <h3>PostHog (App — opt-in)</h3>
+                    <p>If you opt in to analytics, the app sends anonymous usage events to PostHog (<a href="https://posthog.com" target="_blank" rel="noopener noreferrer">posthog.com</a>), such as which features are used and how often. This helps us understand how the app is being used so we can prioritise improvements. No personal data or Steam IDs are attached to these events. You can opt out at any time in Settings.</p>
+                    <ul>
+                        <li>PostHog Privacy Policy: <a href="https://posthog.com/privacy" target="_blank" rel="noopener noreferrer">posthog.com/privacy</a></li>
+                    </ul>
+
+                    <h3>Supabase (App — feedback only)</h3>
+                    <p>When you choose to submit feedback via the in-app feedback form, your message is stored in a Supabase (<a href="https://supabase.com" target="_blank" rel="noopener noreferrer">supabase.com</a>) database that we control. The data stored is limited to: the feedback text you write, the category you select (bug/feature/positive), priority (if provided), the current page in the app, your app version, and your OS platform (e.g. "windows"). No Steam ID, username, or any other personal information is collected. Feedback submission is always voluntary and user-initiated.</p>
+                    <ul>
+                        <li>Supabase Privacy Policy: <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">supabase.com/privacy</a></li>
+                    </ul>
+
                     <div class="highlight-box">
-                        <p><strong>No other third-party services are used in the Dota Keeper app.</strong> There are no advertising networks, social media SDKs, or tracking pixels in the app itself.</p>
+                        <p><strong>Sentry and PostHog are strictly opt-in.</strong> No telemetry data is sent until you explicitly enable analytics in the app's Settings page. Feedback via Supabase is only sent when you actively choose to submit the feedback form. There are no advertising networks, social media SDKs, or tracking pixels in the app.</p>
                     </div>
                 </div>
 
@@ -473,7 +501,7 @@
                     </ul>
                 </div>
 
-                <p class="last-updated">Last updated: March 2026 — added Google Analytics disclosure</p>
+                <p class="last-updated">Last updated: March 2026 — added Sentry and PostHog disclosures</p>
             </div>
         </div>
     </section>

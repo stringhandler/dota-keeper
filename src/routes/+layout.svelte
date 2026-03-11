@@ -43,9 +43,6 @@
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // Initialise Sentry as early as possible so it catches startup errors too
-    initSentry();
-
     await loadSettings();
     await checkForUpdates();
 
@@ -69,6 +66,9 @@
       if (settings.steam_id) {
         isLoggedIn = true;
         currentSteamId = settings.steam_id;
+      }
+      if (settings.analytics_consent === "Accepted") {
+        initSentry();
       }
     } catch (e) {
       error = `Failed to load settings: ${e}`;
