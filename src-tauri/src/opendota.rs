@@ -295,8 +295,8 @@ pub async fn fetch_matches_before(
         offset += BATCH_SIZE;
         attempts += 1;
 
-        // Small delay to avoid rate limiting
-        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+        // Pause between pagination requests to avoid rate limiting.
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     }
 
     // Sort by start_time descending (most recent first)
@@ -356,9 +356,11 @@ pub async fn wait_for_parse_job(job_id: i64) -> bool {
     let client = reqwest::Client::new();
     debug!("wait_for_parse_job polling job_id={} url={}", job_id, url);
 
-    // Poll every 5 s for up to 90 s (18 attempts).
-    for attempt in 0..18 {
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    // Poll with exponential back-off: 5 s → 10 s → 20 s, up to 12 attempts (~3 min max).
+    // Fewer requests than the old fixed-5s/18-attempt approach while still catching fast parses.
+    for attempt in 0..12 {
+        let sleep_secs: u64 = if attempt < 3 { 5 } else if attempt < 6 { 10 } else { 20 };
+        tokio::time::sleep(tokio::time::Duration::from_secs(sleep_secs)).await;
 
         let response = match client.get(&url).send().await {
             Ok(r) => r,

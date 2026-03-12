@@ -1272,8 +1272,9 @@ async fn run_backfill_task(
         }};
     }
 
-    // Fetch 100 matches before the oldest timestamp
-    let matches = match api_fetch_matches_before(&settings, before_timestamp, 100).await {
+    // Fetch 25 matches per backfill run — keeps request volume low.
+    // Users can trigger another backfill to continue pulling more history.
+    let matches = match api_fetch_matches_before(&settings, before_timestamp, 25).await {
         Ok(m) => m,
         Err(e) => finish!(format!("Backfill failed: {}", e)),
     };
@@ -1418,8 +1419,8 @@ async fn run_backfill_task(
         BACKFILL_PENDING.fetch_sub(1, Ordering::Relaxed);
         let _ = app.emit("backfill-progress", serde_json::json!({ "active": true, "pending": BACKFILL_PENDING.load(Ordering::Relaxed) }));
 
-        // Small delay to avoid rate limiting
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // Pause between matches to stay well within OpenDota's rate limits.
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     }
 
     finish!(format!(
@@ -1597,8 +1598,8 @@ async fn reparse_pending_matches(
             }
         } // conn dropped here, before the sleep
 
-        // Small delay to avoid rate limiting
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // Pause between matches to stay well within OpenDota's rate limits.
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     }
 
     Ok(format!(

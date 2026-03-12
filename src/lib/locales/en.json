@@ -448,7 +448,13 @@
     "importing": "Importing matches\u2026",
     "continue_bg": "Continue in background",
     "backfill_now": "Yes, backfill now",
-    "skip_now": "Skip for now"
+    "skip_now": "Skip for now",
+    "step5_title": "Join the Community",
+    "step5_sub": "Get updates, share feedback, and connect with other Dota Keeper users.",
+    "join_discord": "Join our Discord",
+    "join_discord_sub": "Chat, share replays, and get support",
+    "follow_twitter": "Follow on X (Twitter)",
+    "follow_twitter_sub": "Updates, tips, and new features"
   },
   "analytics_consent": {
     "title": "Help Improve Dota Keeper",
