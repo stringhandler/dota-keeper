@@ -565,16 +565,16 @@
 
         <div class="modal-footer-actions">
           <a class="modal-action-btn" href="/matches/{mid}" onclick={closeGoalDetails}>
-            🔍 {$_('matches.view_details')}
+            <span class="btn-icon">🔍</span><span class="btn-label">{$_('matches.view_details')}</span>
           </a>
           <button class="modal-action-btn" onclick={() => copyMatchId(mid)}>
-            {copiedMatchId === mid ? $_('matches.copied_label') : '📋 ' + $_('matches.copy_id')}
+            <span class="btn-icon">{copiedMatchId === mid ? '✓' : '📋'}</span><span class="btn-label">{$_('matches.copy_id')}</span>
           </button>
           <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
-            🔗 OpenDota
+            <span class="btn-icon">🔗</span><span class="btn-label">OpenDota</span>
           </button>
           <button class="modal-action-btn" onclick={() => openUrl(`https://stratz.com/matches/${mid}`)}>
-            ⚔ Stratz
+            <span class="btn-icon">⚔</span><span class="btn-label">Stratz</span>
           </button>
           {#if pqs.active.has(mid)}
             <span class="modal-parse-status parsing">Parsing…</span>
@@ -582,7 +582,11 @@
             <span class="modal-parse-status queued">Queued</span>
           {:else if selectedMatch.parse_state === 'Unparsed' || selectedMatch.parse_state === 'Failed'}
             <button class="modal-action-btn parse-btn" onclick={() => enqueueParse(mid)}>
-              ▶ Parse
+              <span class="btn-icon">▶</span><span class="btn-label">Parse</span>
+            </button>
+          {:else if selectedMatch.parse_state === 'Parsed'}
+            <button class="modal-action-btn reparse-btn" onclick={() => enqueueParse(mid)}>
+              <span class="btn-icon">↺</span><span class="btn-label">Reparse</span>
             </button>
           {/if}
         </div>
@@ -629,7 +633,7 @@
     }
     .match-filters::-webkit-scrollbar { display: none; }
 
-    .refresh-btn { width: 100%; justify-content: center; }
+    .refresh-btn, .parse-all-btn { width: 100%; justify-content: center; }
 
     /* Hide table header on mobile */
     .table-head { display: none !important; }
@@ -728,6 +732,30 @@
       padding: 12px 14px;
     }
     .page-size-selector { display: none; }
+
+    /* Modal footer: 2-col grid, icon above text */
+    .modal-footer-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .modal-action-btn {
+      flex-direction: column;
+      gap: 4px;
+      min-height: 56px;
+      padding: 8px 4px;
+    }
+
+    .btn-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .btn-label {
+      font-size: 10px;
+      text-align: center;
+      line-height: 1.2;
+    }
   }
 
   .empty-state {
@@ -920,7 +948,18 @@
     border-bottom: 1px dashed var(--border);
   }
 
-  .parse-all-btn { flex-shrink: 0; }
+  .parse-all-btn {
+    flex-shrink: 0;
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--gold);
+    background: rgba(240, 180, 41, 0.06);
+  }
+
+  .parse-all-btn:hover {
+    border-color: var(--gold);
+    background: rgba(240, 180, 41, 0.12);
+    color: var(--gold-bright, var(--gold));
+  }
 
   .parse-btn {
     font-family: 'Barlow Condensed', sans-serif;
@@ -1157,6 +1196,16 @@
     background: rgba(240, 180, 41, 0.1);
     border-color: var(--gold);
     color: var(--gold-bright);
+  }
+
+  .reparse-btn {
+    border-color: rgba(94, 234, 212, 0.3);
+    color: var(--teal);
+  }
+
+  .reparse-btn:hover {
+    background: rgba(94, 234, 212, 0.08);
+    border-color: var(--teal);
   }
 
   .modal-parse-status {

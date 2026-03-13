@@ -56,6 +56,9 @@ pub struct Settings {
     /// Stratz API key (required when data_provider = "stratz")
     #[serde(default)]
     pub stratz_api_key: Option<String>,
+    /// OpenDota API key (optional — raises the rate limit when provided)
+    #[serde(default)]
+    pub opendota_api_key: Option<String>,
 }
 
 impl Default for Settings {
@@ -73,6 +76,7 @@ impl Default for Settings {
             onboarding_completed: false,
             data_provider: Self::default_data_provider(),
             stratz_api_key: None,
+            opendota_api_key: None,
         }
     }
 }
@@ -83,7 +87,7 @@ impl Settings {
     }
 
     fn default_checkin_frequency() -> String {
-        "once_per_session".to_string()
+        "every_game".to_string()
     }
 
     fn default_background_parse_enabled() -> bool {

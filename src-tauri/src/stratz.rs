@@ -30,6 +30,54 @@ fn value_to_i32(val: &Option<serde_json::Value>) -> i32 {
     }
 }
 
+/// Map a Stratz GameModeEnumType string to the Valve game_mode integer.
+fn stratz_game_mode_to_int(s: &str) -> i32 {
+    match s {
+        "NONE"                    =>  0,
+        "ALL_PICK"                =>  1,
+        "CAPTAINS_MODE"           =>  2,
+        "RANDOM_DRAFT"            =>  3,
+        "SINGLE_DRAFT"            =>  4,
+        "ALL_RANDOM"              =>  5,
+        "INTRO"                   =>  6,
+        "DIRETIDE"                =>  7,
+        "REVERSE_CAPTAINS_MODE"   =>  8,
+        "THE_GREEVILING"          =>  9,
+        "TUTORIAL"                => 10,
+        "MID_ONLY"                => 11,
+        "LEAST_PLAYED"            => 12,
+        "NEW_PLAYER_POOL"         => 13,
+        "COMPENDIUM_MATCHMAKING"  => 14,
+        "CUSTOM"                  => 15,
+        "CAPTAINS_DRAFT"          => 16,
+        "BALANCED_DRAFT"          => 17,
+        "ABILITY_DRAFT"           => 18,
+        "EVENT"                   => 19,
+        "ALL_RANDOM_DEATH_MATCH"  => 20,
+        "SOLO_MID"                => 21,
+        "ALL_DRAFT"               => 22,
+        "TURBO"                   => 23,
+        "MUTATION"                => 24,
+        _ => s.parse().unwrap_or(0),
+    }
+}
+
+/// Map a Stratz LobbyTypeEnum string to the Valve lobby_type integer.
+fn stratz_lobby_type_to_int(s: &str) -> i32 {
+    match s {
+        "NORMAL"            => 0,
+        "PRACTICE"          => 1,
+        "TOURNAMENT"        => 2,
+        "TUTORIAL"          => 3,
+        "COOP_WITH_BOTS"    => 4,
+        "TEAM_MATCHMAKING"  => 5,
+        "SOLO_MATCHMAKING"  => 6,
+        "RANKED"            => 7,
+        "SOLO_PRACTICE"     => 8,
+        _ => s.parse().unwrap_or(0),
+    }
+}
+
 /// Convert a Stratz position value (int or "POSITION_N" string) to the
 /// lane_role integer used throughout the app (1=carry … 5=hard support).
 fn parse_position(val: &Option<serde_json::Value>) -> i32 {
@@ -191,8 +239,16 @@ impl StratzMatch {
             hero_id: player.hero_id.unwrap_or(0),
             start_time: self.start_date_time.unwrap_or(0),
             duration: self.duration_seconds.unwrap_or(0),
-            game_mode: value_to_i32(&self.game_mode),
-            lobby_type: value_to_i32(&self.lobby_type),
+            game_mode: match &self.game_mode {
+                Some(serde_json::Value::String(s)) => stratz_game_mode_to_int(s),
+                Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) as i32,
+                _ => 0,
+            },
+            lobby_type: match &self.lobby_type {
+                Some(serde_json::Value::String(s)) => stratz_lobby_type_to_int(s),
+                Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) as i32,
+                _ => 0,
+            },
             radiant_win: self.did_radiant_win.unwrap_or(false),
             player_slot,
             kills: player.kills.unwrap_or(0),
@@ -445,8 +501,16 @@ pub async fn fetch_match_details(match_id: i64, api_key: &str) -> Result<Detaile
                 account_id: p.steam_account_id.map(|id| id as u32),
                 player_slot: p.player_slot.unwrap_or(0),
                 lane_role: Some(lane_role),
-                lh_t: p.stats.as_ref().and_then(|s| s.last_hits_per_minute.clone()),
-                dn_t: p.stats.as_ref().and_then(|s| s.denies_per_minute.clone()),
+                // Stratz returns per-minute deltas; convert to cumulative totals
+                // to match the OpenDota lh_t / dn_t format the rest of the app expects.
+                lh_t: p.stats.as_ref().and_then(|s| s.last_hits_per_minute.as_ref()).map(|v| {
+                    let mut total = 0;
+                    v.iter().map(|&x| { total += x; total }).collect()
+                }),
+                dn_t: p.stats.as_ref().and_then(|s| s.denies_per_minute.as_ref()).map(|v| {
+                    let mut total = 0;
+                    v.iter().map(|&x| { total += x; total }).collect()
+                }),
                 gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.clone()),
                 purchase_log,
             }

@@ -26,7 +26,7 @@
   let analyticsConsent = $state("NotYet");
   let isSavingAnalytics = $state(false);
   let mentalHealthEnabled = $state(false);
-  let checkinFrequency = $state("once_per_session");
+  let checkinFrequency = $state("every_game");
   let isSavingMentalHealth = $state(false);
   let isClearingMoodData = $state(false);
   let showMentalHealthIntro = $state(false);
@@ -42,6 +42,7 @@
   let isResetting = $state(false);
   let dataProvider = $state("opendota");
   let stratzApiKey = $state("");
+  let opendotaApiKey = $state("");
   let isSavingProvider = $state(false);
 
   let unlistenBgParse;
@@ -139,6 +140,7 @@
       const settings = await invoke("get_settings");
       dataProvider = settings.data_provider || "opendota";
       stratzApiKey = settings.stratz_api_key || "";
+      opendotaApiKey = settings.opendota_api_key || "";
     } catch (e) {
       console.error("Failed to load data provider settings:", e);
     }
@@ -164,6 +166,44 @@
       showToast("Stratz API key saved.", "success");
     } catch (e) {
       showToast(`Failed to save API key: ${e}`, "error");
+    } finally {
+      isSavingProvider = false;
+    }
+  }
+
+  async function clearStratzApiKey() {
+    isSavingProvider = true;
+    try {
+      await invoke("save_stratz_api_key", { apiKey: null });
+      stratzApiKey = "";
+      showToast("Stratz API key cleared.", "success");
+    } catch (e) {
+      showToast(`Failed to clear API key: ${e}`, "error");
+    } finally {
+      isSavingProvider = false;
+    }
+  }
+
+  async function saveOpendotaApiKey() {
+    isSavingProvider = true;
+    try {
+      await invoke("save_opendota_api_key", { apiKey: opendotaApiKey || null });
+      showToast("OpenDota API key saved.", "success");
+    } catch (e) {
+      showToast(`Failed to save API key: ${e}`, "error");
+    } finally {
+      isSavingProvider = false;
+    }
+  }
+
+  async function clearOpendotaApiKey() {
+    isSavingProvider = true;
+    try {
+      await invoke("save_opendota_api_key", { apiKey: null });
+      opendotaApiKey = "";
+      showToast("OpenDota API key cleared.", "success");
+    } catch (e) {
+      showToast(`Failed to clear API key: ${e}`, "error");
     } finally {
       isSavingProvider = false;
     }
@@ -230,7 +270,7 @@
     try {
       const settings = await invoke("get_settings");
       mentalHealthEnabled = settings.mental_health_tracking_enabled ?? false;
-      checkinFrequency = settings.checkin_frequency ?? "once_per_session";
+      checkinFrequency = settings.checkin_frequency ?? "every_game";
     } catch (e) {
       console.error("Failed to load mental health setting:", e);
     }
@@ -659,6 +699,39 @@
           </label>
         </div>
 
+        {#if dataProvider === "opendota"}
+          <div style="margin-top: 0.75rem;">
+            <p class="setting-description" style="margin-bottom: 0.5rem;">
+              Optional API key — raises the rate limit. Get one at
+              <button class="link-btn" onclick={() => openUrl("https://www.opendota.com/api-keys")}>opendota.com/api-keys</button>.
+            </p>
+            <div class="api-key-row">
+              <input
+                type="password"
+                placeholder="Paste API key here (optional)"
+                bind:value={opendotaApiKey}
+                class="text-input api-key-input"
+              />
+              <button
+                class="save-btn"
+                onclick={saveOpendotaApiKey}
+                disabled={isSavingProvider}
+              >
+                {isSavingProvider ? "Saving…" : "Save key"}
+              </button>
+              {#if opendotaApiKey}
+                <button
+                  class="clear-key-btn"
+                  onclick={clearOpendotaApiKey}
+                  disabled={isSavingProvider}
+                >
+                  Clear
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         {#if dataProvider === "stratz"}
           <div style="margin-top: 0.75rem;">
             <button
@@ -669,13 +742,12 @@
               Get API key on stratz.com →
             </button>
           </div>
-          <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center;">
+          <div class="api-key-row" style="margin-top: 0.75rem;">
             <input
               type="password"
               placeholder="Paste API key here"
               bind:value={stratzApiKey}
-              class="text-input"
-              style="flex: 1;"
+              class="text-input api-key-input"
             />
             <button
               class="save-btn"
@@ -684,6 +756,15 @@
             >
               {isSavingProvider ? "Saving…" : "Save key"}
             </button>
+            {#if stratzApiKey}
+              <button
+                class="clear-key-btn"
+                onclick={clearStratzApiKey}
+                disabled={isSavingProvider}
+              >
+                Clear
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -1199,6 +1280,61 @@
   background: rgba(248, 113, 113, 0.1);
 }
 
+.clear-key-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 8px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: var(--red);
+}
+
+.clear-key-btn:hover:not(:disabled) {
+  border-color: var(--red);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.clear-key-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--teal);
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link-btn:hover {
+  color: var(--text-primary);
+}
+
+.api-key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.api-key-input {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (max-width: 600px) {
   .setting-item {
     flex-direction: column;
@@ -1212,6 +1348,19 @@
   .clear-btn,
   .check-update-btn,
   .install-update-btn {
+    width: 100%;
+  }
+
+  .api-key-row {
+    flex-wrap: wrap;
+  }
+
+  .api-key-row .save-btn,
+  .api-key-row .clear-key-btn {
+    flex: 1;
+  }
+
+  .btn-secondary {
     width: 100%;
   }
 }

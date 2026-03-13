@@ -124,6 +124,17 @@ input, select, textarea { font-family: inherit; }
   transform: translateY(-1px);
 }
 
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);

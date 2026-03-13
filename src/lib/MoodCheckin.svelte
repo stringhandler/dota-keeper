@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { goto } from "$app/navigation";
   import { _ } from "svelte-i18n";
 
   let { matchId, onComplete } = $props();
@@ -60,6 +61,7 @@
   <div class="checkin-header">
     <span class="checkin-icon">🧠</span>
     <h3 class="checkin-title">{$_('mood_checkin.title')}</h3>
+    <button class="settings-link" onclick={() => { skip(); goto('/settings'); }} title="Change frequency in settings">⚙</button>
   </div>
 
   <div class="question-block">
@@ -141,6 +143,24 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 18px;
+}
+
+.settings-link {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  opacity: 0.6;
+}
+
+.settings-link:hover {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 .checkin-icon {

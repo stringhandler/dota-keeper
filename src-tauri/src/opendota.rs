@@ -175,13 +175,16 @@ fn steam_id64_to_id32(steam_id64: &str) -> Result<u32, String> {
 }
 
 /// Fetch recent matches from OpenDota API
-pub async fn fetch_recent_matches(steam_id: &str, limit: usize) -> Result<Vec<Match>, String> {
+pub async fn fetch_recent_matches(steam_id: &str, limit: usize, api_key: Option<&str>) -> Result<Vec<Match>, String> {
     let account_id = steam_id64_to_id32(steam_id)?;
 
-    let url = format!(
+    let mut url = format!(
         "{}/players/{}/recentMatches",
         OPENDOTA_API_BASE, account_id
     );
+    if let Some(key) = api_key {
+        url.push_str(&format!("?api_key={}", key));
+    }
 
     debug!("fetch_recent_matches GET {} limit={}", url, limit);
 
@@ -228,6 +231,7 @@ pub async fn fetch_matches_before(
     steam_id: &str,
     before_timestamp: i64,
     limit: usize,
+    api_key: Option<&str>,
 ) -> Result<Vec<Match>, String> {
     let account_id = steam_id64_to_id32(steam_id)?;
     let client = reqwest::Client::new();
@@ -241,10 +245,13 @@ pub async fn fetch_matches_before(
     let mut attempts = 0;
 
     while all_matches.len() < limit && attempts < MAX_ATTEMPTS {
-        let url = format!(
+        let mut url = format!(
             "{}/players/{}/matches?limit={}&offset={}&significant=0",
             OPENDOTA_API_BASE, account_id, BATCH_SIZE, offset
         );
+        if let Some(key) = api_key {
+            url.push_str(&format!("&api_key={}", key));
+        }
 
         debug!("fetch_matches_before GET {} offset={} collected={}", url, offset, all_matches.len());
 
@@ -313,8 +320,11 @@ pub async fn fetch_matches_before(
 /// Request OpenDota to parse a match.
 /// Returns the job ID if OpenDota queued a parse job, or None if the match
 /// was already parsed (response had no job).
-pub async fn request_match_parse(match_id: i64) -> Result<Option<i64>, String> {
-    let url = format!("{}/request/{}", OPENDOTA_API_BASE, match_id);
+pub async fn request_match_parse(match_id: i64, api_key: Option<&str>) -> Result<Option<i64>, String> {
+    let mut url = format!("{}/request/{}", OPENDOTA_API_BASE, match_id);
+    if let Some(key) = api_key {
+        url.push_str(&format!("?api_key={}", key));
+    }
     debug!("request_match_parse POST {}", url);
 
     let client = reqwest::Client::new();
@@ -399,8 +409,11 @@ pub async fn wait_for_parse_job(job_id: i64) -> bool {
 }
 
 /// Fetch detailed match data from OpenDota
-pub async fn fetch_match_details(match_id: i64) -> Result<DetailedMatch, String> {
-    let url = format!("{}/matches/{}", OPENDOTA_API_BASE, match_id);
+pub async fn fetch_match_details(match_id: i64, api_key: Option<&str>) -> Result<DetailedMatch, String> {
+    let mut url = format!("{}/matches/{}", OPENDOTA_API_BASE, match_id);
+    if let Some(key) = api_key {
+        url.push_str(&format!("?api_key={}", key));
+    }
 
     debug!("fetch_match_details GET {}", url);
 

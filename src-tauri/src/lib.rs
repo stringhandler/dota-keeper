@@ -14,30 +14,34 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// The verbosity is controlled by the `RUST_LOG` environment variable
 /// (default: `debug`).
 fn init_logging() {
-    use std::sync::Mutex;
     use tracing_subscriber::{fmt, EnvFilter};
-
-    let log_dir = dirs::data_local_dir()
-        .map(|d| d.join("DotaKeeper").join("logs"))
-        .expect("cannot determine local data dir");
-
-    std::fs::create_dir_all(&log_dir).ok();
-
-    let log_file = log_dir.join("dota-keeper.log");
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file)
-        .expect("cannot open log file");
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("debug"));
 
-    fmt()
+    // On mobile, dirs::data_local_dir() returns None — fall back to stderr logging.
+    if let Some(log_dir) = dirs::data_local_dir().map(|d| d.join("DotaKeeper").join("logs")) {
+        use std::sync::Mutex;
+        std::fs::create_dir_all(&log_dir).ok();
+        let log_file = log_dir.join("dota-keeper.log");
+        if let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file)
+        {
+            let _ = fmt()
+                .with_env_filter(env_filter)
+                .with_writer(Mutex::new(file))
+                .with_ansi(false)
+                .try_init();
+            return;
+        }
+    }
+
+    let _ = fmt()
         .with_env_filter(env_filter)
-        .with_writer(Mutex::new(file))
         .with_ansi(false)
-        .init();
+        .try_init();
 }
 
 /// Thin compatibility shim so existing callers compile unchanged.
@@ -166,6 +170,15 @@ fn save_data_provider(provider: String) -> Result<Settings, String> {
 fn save_stratz_api_key(api_key: Option<String>) -> Result<Settings, String> {
     let mut settings = Settings::load();
     settings.stratz_api_key = api_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
+    settings.save()?;
+    Ok(settings)
+}
+
+/// Save the OpenDota API key (optional — raises rate limit when provided)
+#[tauri::command]
+fn save_opendota_api_key(api_key: Option<String>) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.opendota_api_key = api_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
     settings.save()?;
     Ok(settings)
 }
@@ -825,7 +838,7 @@ async fn api_fetch_recent_matches(settings: &Settings, limit: usize) -> Result<V
             .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
         stratz::fetch_recent_matches(steam_id, key, limit).await
     } else {
-        opendota::fetch_recent_matches(steam_id, limit).await
+        opendota::fetch_recent_matches(steam_id, limit, settings.opendota_api_key.as_deref()).await
     }
 }
 
@@ -836,7 +849,7 @@ async fn api_fetch_matches_before(settings: &Settings, before_timestamp: i64, li
             .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
         stratz::fetch_matches_before(steam_id, key, before_timestamp, limit).await
     } else {
-        opendota::fetch_matches_before(steam_id, before_timestamp, limit).await
+        opendota::fetch_matches_before(steam_id, before_timestamp, limit, settings.opendota_api_key.as_deref()).await
     }
 }
 
@@ -846,7 +859,7 @@ async fn api_request_parse(settings: &Settings, match_id: i64) -> Result<Option<
     if settings.data_provider == "stratz" {
         Ok(None)
     } else {
-        opendota::request_match_parse(match_id).await
+        opendota::request_match_parse(match_id, settings.opendota_api_key.as_deref()).await
     }
 }
 
@@ -866,7 +879,7 @@ async fn api_fetch_match_details(settings: &Settings, match_id: i64) -> Result<o
             .ok_or("No Stratz API key configured. Add your API key in Settings.")?;
         stratz::fetch_match_details(match_id, key).await
     } else {
-        opendota::fetch_match_details(match_id).await
+        opendota::fetch_match_details(match_id, settings.opendota_api_key.as_deref()).await
     }
 }
 
@@ -1077,12 +1090,19 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
         (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
     );
 
-    // OpenDota requires CS data; Stratz doesn't provide it (lh_t is None)
-    if !has_cs_data && settings.data_provider != "stratz" {
+    // Both providers: if per-minute CS data is absent the match isn't ready yet — mark Failed so
+    // it can be retried.  (Stratz always provides lastHitsPerMinute; if it's absent the match
+    // hasn't been processed yet.)
+    if !has_cs_data {
         update_match_state(&conn, match_id, MatchState::Failed)?;
         let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": match_id, "state": "Failed" }));
         trace_log(&format!("parse_match FAILED (no per-minute data) match_id={}", match_id));
-        return Err("OpenDota has not finished parsing this match yet. Try again in a few minutes.".to_string());
+        let msg = if settings.data_provider == "stratz" {
+            "Stratz hasn't processed this match yet. Try again in a few minutes."
+        } else {
+            "OpenDota has not finished parsing this match yet. Try again in a few minutes."
+        };
+        return Err(msg.to_string());
     }
 
     // Store CS data if available
@@ -1185,7 +1205,7 @@ async fn open_database_folder() -> Result<(), String> {
 fn get_logs_folder_path() -> Result<String, String> {
     dirs::data_local_dir()
         .map(|d| d.join("DotaKeeper").join("logs").to_string_lossy().to_string())
-        .ok_or_else(|| "Could not determine logs directory".to_string())
+        .ok_or_else(|| "Logs folder is not available on this platform".to_string())
 }
 
 /// Open the logs folder in the system file explorer
@@ -1379,8 +1399,9 @@ async fn run_backfill_task(
                 (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
             );
 
-            // OpenDota requires CS data; Stratz doesn't provide it (None = not available)
-            if !has_cs && settings.data_provider != "stratz" {
+            // Both providers: no CS data means the match isn't ready yet — mark Failed so it
+            // can be retried.
+            if !has_cs {
                 let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
                 let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
             } else {
@@ -1435,6 +1456,7 @@ async fn reparse_pending_matches(
     app: tauri::AppHandle,
     steam_id: String,
 ) -> Result<String, String> {
+    let settings = Settings::load();
     // Get all unparsed or failed matches — lock dropped before any await.
     let matches = {
         let conn = get_db_conn()?;
@@ -1456,7 +1478,7 @@ async fn reparse_pending_matches(
     // The DB lock is acquired in short scopes so it is never held across an await.
     for m in &matches {
         // Request parse
-        if let Err(e) = opendota::request_match_parse(m.match_id).await {
+        if let Err(e) = opendota::request_match_parse(m.match_id, settings.opendota_api_key.as_deref()).await {
             eprintln!("Failed to request parse for match {}: {}", m.match_id, e);
             failed_count += 1;
             continue;
@@ -1478,7 +1500,7 @@ async fn reparse_pending_matches(
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
         // Fetch detailed match data
-        let detailed_match = match opendota::fetch_match_details(m.match_id).await {
+        let detailed_match = match opendota::fetch_match_details(m.match_id, settings.opendota_api_key.as_deref()).await {
             Ok(dm) => dm,
             Err(e) => {
                 eprintln!("Failed to fetch match details for {}: {}", m.match_id, e);
@@ -2169,7 +2191,9 @@ async fn background_parse_loop(app: tauri::AppHandle) {
                 (Some(lh), Some(dn)) if !lh.is_empty() && !dn.is_empty()
             );
 
-            if !has_cs && settings.data_provider != "stratz" {
+            // Both providers: no CS data means the match isn't ready yet — mark Failed so it
+            // can be retried.
+            if !has_cs {
                 let _ = update_match_state(&conn, m.match_id, MatchState::Failed);
                 let _ = app.emit("match-state-changed", serde_json::json!({ "match_id": m.match_id, "state": "Failed" }));
             } else {
@@ -2247,7 +2271,7 @@ pub fn run() {
         None
     };
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .setup(|app| {
             // Initialise storage directories from Tauri's platform-aware path API.
             // This works on desktop, Android, and iOS.
@@ -2270,9 +2294,13 @@ pub fn run() {
             });
             Ok(())
         })
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![
+        .plugin(tauri_plugin_opener::init());
+
+    // tauri-plugin-updater does not support Android/iOS
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder.invoke_handler(tauri::generate_handler![
             get_settings,
             save_steam_id,
             logout,
@@ -2333,6 +2361,7 @@ pub fn run() {
             save_background_parse_enabled,
             save_data_provider,
             save_stratz_api_key,
+            save_opendota_api_key,
             factory_reset,
             get_medal_history,
             get_medal_stats

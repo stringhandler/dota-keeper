@@ -334,6 +334,8 @@
             }
           },
           y: {
+            min: 0,
+            max: 120,
             grid: { color: 'rgba(255, 200, 80, 0.08)' },
             ticks: {
               color: '#726558',
