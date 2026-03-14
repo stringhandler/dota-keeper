@@ -177,43 +177,50 @@
       <div class="history-list">
         {#each history as item}
           <div class="history-row" class:row-skipped={item.skipped}>
-            <div class="row-left">
+            <div class="row-icon">
               {#if item.hero_id}
-                <HeroIcon heroId={item.hero_id} size={36} />
+                <HeroIcon heroId={item.hero_id} size="small" showName={false} />
               {:else}
                 <div class="hero-placeholder"></div>
               {/if}
-              <div class="row-meta">
-                <span class="row-date">{formatDate(item.checked_at)}</span>
-                <span class="row-time">{formatTime(item.checked_at)}</span>
+            </div>
+
+            <div class="row-body">
+              <div class="row-top">
+                <div class="row-when">
+                  <span class="row-date">{formatDate(item.checked_at)}</span>
+                  <span class="row-time">{formatTime(item.checked_at)}</span>
+                </div>
                 {#if item.won != null}
                   <span class="result-pill" class:win-pill={item.won} class:loss-pill={!item.won}>
                     {item.won ? "W" : "L"}
                   </span>
                 {/if}
               </div>
-            </div>
 
-            <div class="row-right">
-              {#if item.skipped}
-                <span class="skipped-tag">{$_('mental_health.skipped')}</span>
-              {:else}
-                {#if item.energy}
-                  <span class="mood-cell" title="{energyLabels[item.energy]}">
-                    {energyEmojis[item.energy]}
-                    <span class="mood-score">{item.energy}</span>
-                  </span>
+              <div class="row-bottom">
+                {#if item.skipped}
+                  <span class="skipped-tag">{$_('mental_health.skipped')}</span>
+                {:else}
+                  <div class="mood-row">
+                    {#if item.energy}
+                      <span class="mood-chip" title="{energyLabels[item.energy]}">
+                        <span class="mood-emoji">{energyEmojis[item.energy]}</span>
+                        <span class="mood-score">{item.energy}/5</span>
+                      </span>
+                    {/if}
+                    {#if item.calm}
+                      <span class="mood-chip" title="{calmLabels[item.calm]}">
+                        <span class="mood-emoji">{calmEmojis[item.calm]}</span>
+                        <span class="mood-score">{item.calm}/5</span>
+                      </span>
+                    {/if}
+                    {#if item.attribution}
+                      <span class="attrib-tag">{item.attribution}</span>
+                    {/if}
+                  </div>
                 {/if}
-                {#if item.calm}
-                  <span class="mood-cell" title="{calmLabels[item.calm]}">
-                    {calmEmojis[item.calm]}
-                    <span class="mood-score">{item.calm}</span>
-                  </span>
-                {/if}
-                {#if item.attribution}
-                  <span class="attrib-tag">{item.attribution}</span>
-                {/if}
-              {/if}
+              </div>
             </div>
           </div>
         {/each}
@@ -369,7 +376,7 @@
 
   .avg-row {
     display: grid;
-    grid-template-columns: 60px 1fr 100px;
+    grid-template-columns: 60px 1fr auto;
     align-items: center;
     gap: 10px;
   }
@@ -502,29 +509,27 @@
   .history-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
   }
 
   .history-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
     padding: 10px 12px;
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    gap: 12px;
+    border-radius: 8px;
+    min-height: 56px;
   }
 
   .history-row.row-skipped {
-    opacity: 0.5;
+    opacity: 0.45;
   }
 
-  .row-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
+  .row-icon {
+    flex-shrink: 0;
+    padding-top: 1px;
   }
 
   .hero-placeholder {
@@ -532,18 +537,34 @@
     height: 36px;
     border-radius: 4px;
     background: var(--bg-elevated);
-    flex-shrink: 0;
   }
 
-  .row-meta {
+  /* Two-row info column */
+  .row-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .row-top {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .row-when {
+    display: flex;
+    align-items: baseline;
     gap: 6px;
-    flex-wrap: wrap;
+    min-width: 0;
   }
 
   .row-date {
     font-size: 13px;
+    font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
   }
@@ -558,9 +579,10 @@
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 11px;
     font-weight: 700;
-    padding: 1px 6px;
+    padding: 2px 7px;
     border-radius: 3px;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
   }
 
   .win-pill {
@@ -573,11 +595,8 @@
     color: var(--red);
   }
 
-  .row-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
+  .row-bottom {
+    min-width: 0;
   }
 
   .skipped-tag {
@@ -586,65 +605,61 @@
     font-style: italic;
   }
 
-  .mood-cell {
+  /* Mood chips — horizontal, compact */
+  .mood-row {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 1px;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
-  .mood-cell span:first-child {
-    font-size: 18px;
+  .mood-chip {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+
+  .mood-emoji {
+    font-size: 14px;
     line-height: 1;
   }
 
   .mood-score {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: 11px;
+    color: var(--text-secondary);
     font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.3px;
   }
 
   .attrib-tag {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-muted);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: 4px;
     padding: 2px 6px;
     white-space: nowrap;
-    max-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 140px;
   }
 
   /* ── Mobile ─────────────────────────────────────────────────── */
   @media (max-width: 480px) {
     .avg-row {
-      grid-template-columns: 55px 1fr 80px;
+      grid-template-columns: 55px 1fr auto;
     }
 
     .avg-value {
       font-size: 11px;
     }
 
-    .history-row {
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .row-left {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .row-right {
-      width: 100%;
-      justify-content: flex-start;
-      padding-left: 46px; /* align with text after hero icon (36px icon + 10px gap) */
-    }
-
     .attrib-tag {
-      max-width: none;
+      max-width: 100%;
     }
   }
 </style>

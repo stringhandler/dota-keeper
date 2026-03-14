@@ -85,14 +85,6 @@ jobs:
             echo "ANDROID_APP_ID=com.volthawk.dota_keeper" >> $GITHUB_ENV
           fi
 
-      - name: Patch applicationId for beta
-        if: env.IS_BETA == 'true'
-        run: |
-          sed -i \
-            's/applicationId = "com.volthawk.dota_keeper"/applicationId = "com.volthawk.dota_keeper_beta"/' \
-            src-tauri/gen/android/app/build.gradle.kts
-          echo "applicationId patched to com.volthawk.dota_keeper_beta"
-
       # ── AAB (for Google Play Store) ────────────────────────────────────────
 
       - name: Build release AAB (all ABIs)
@@ -101,7 +93,12 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
-        run: yarn tauri android build --aab true
+        run: |
+          if [ "$IS_BETA" = "true" ]; then
+            yarn tauri android build --aab true --config src-tauri/tauri.beta.conf.json
+          else
+            yarn tauri android build --aab true
+          fi
 
       - name: Sign AAB
         run: |
