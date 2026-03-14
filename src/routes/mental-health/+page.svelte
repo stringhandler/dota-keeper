@@ -627,8 +627,24 @@
       font-size: 11px;
     }
 
+    .history-row {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .row-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-right {
+      width: 100%;
+      justify-content: flex-start;
+      padding-left: 46px; /* align with text after hero icon (36px icon + 10px gap) */
+    }
+
     .attrib-tag {
-      display: none;
+      max-width: none;
     }
   }
 </style>

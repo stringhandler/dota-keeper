@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use rand::Rng;
@@ -1303,49 +1304,174 @@ pub struct MatchDataPoint {
     pub start_time: i64,
     pub value: i32,
     pub achieved: bool,
+    pub won: bool,
 }
 
 /// Get match data for a specific goal (for histogram visualization)
 pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchDataPoint>, String> {
-    // Get the goal
-    let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope FROM goals WHERE id = ?1")
-        .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-    let goal = stmt
-        .query_row(params![goal_id], |row| {
-            let metric_str: String = row.get(2)?;
-            let game_mode_str: String = row.get(5)?;
-            Ok(Goal {
-                id: row.get(0)?,
-                hero_id: row.get(1)?,
-                metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
-                target_value: row.get(3)?,
-                target_time_minutes: row.get(4)?,
-                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::All),
-                created_at: row.get(6)?,
-                item_id: row.get(7)?,
-                hero_scope: row.get(8).unwrap_or(None),
-            })
-        })
-        .map_err(|e| format!("Failed to get goal: {}", e))?;
-
-    // Get all matches
+    let goal = get_goal_by_id(conn, goal_id)?;
     let matches = get_all_matches(conn)?;
+    let target_minutes = goal.target_time_minutes;
 
-    // Evaluate goal against each match and collect data points
-    let mut data_points = Vec::new();
+    // Batch-load all metric data up front to avoid N+1 per-match queries.
 
-    for match_data in matches {
-        if let Some(evaluation) = evaluate_goal(conn, &goal, &match_data) {
-            data_points.push(MatchDataPoint {
-                match_id: match_data.match_id,
-                hero_id: match_data.hero_id,
-                start_time: match_data.start_time,
-                value: evaluation.actual_value,
-                achieved: evaluation.achieved,
-            });
+    // Batch load CS data (collect Vec first to satisfy borrow checker before stmt drops)
+    let cs_map: HashMap<i64, (i32, i32)> = match &goal.metric {
+        GoalMetric::LastHits | GoalMetric::Denies => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, last_hits, denies FROM match_cs WHERE minute = ?1")
+                .map_err(|e| format!("Failed to prepare CS query: {}", e))?;
+            let rows: Vec<(i64, i32, i32)> = stmt
+                .query_map(params![target_minutes], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                })
+                .map_err(|e| format!("Failed to query CS data: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().map(|(mid, lh, dn)| (mid, (lh, dn))).collect()
         }
+        _ => HashMap::new(),
+    };
+
+    let nw_map: HashMap<(i64, i32), i32> = match &goal.metric {
+        GoalMetric::Networth | GoalMetric::PartnerNetworth => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, player_slot, networth FROM player_networth WHERE minute = ?1")
+                .map_err(|e| format!("Failed to prepare NW query: {}", e))?;
+            let rows: Vec<(i64, i32, i32)> = stmt
+                .query_map(params![target_minutes], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                })
+                .map_err(|e| format!("Failed to query NW data: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().map(|(mid, slot, nw)| ((mid, slot), nw)).collect()
+        }
+        _ => HashMap::new(),
+    };
+
+    let partner_slot_map: HashMap<i64, i32> = match &goal.metric {
+        GoalMetric::PartnerNetworth => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, partner_slot FROM matches WHERE partner_slot IS NOT NULL")
+                .map_err(|e| format!("Failed to prepare partner slot query: {}", e))?;
+            let rows: Vec<(i64, i32)> = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?))
+                })
+                .map_err(|e| format!("Failed to query partner slots: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().collect()
+        }
+        _ => HashMap::new(),
+    };
+
+    let item_timing_map: HashMap<i64, i32> = match &goal.metric {
+        GoalMetric::ItemTiming => {
+            if let Some(item_id) = goal.item_id {
+                let mut stmt = conn
+                    .prepare("SELECT match_id, timing_seconds FROM item_timings WHERE item_id = ?1")
+                    .map_err(|e| format!("Failed to prepare item timing query: {}", e))?;
+                let rows: Vec<(i64, i32)> = stmt
+                    .query_map(params![item_id], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?))
+                    })
+                    .map_err(|e| format!("Failed to query item timings: {}", e))?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                rows.into_iter().collect()
+            } else {
+                HashMap::new()
+            }
+        }
+        _ => HashMap::new(),
+    };
+
+    // Evaluate each match using pre-loaded data (no per-match DB queries).
+    let mut data_points = Vec::new();
+    for match_data in &matches {
+        if match_data.parse_state == MatchState::Unparsed {
+            continue;
+        }
+
+        let hero_matches = match goal.hero_scope.as_deref() {
+            Some("any_carry")   => match_data.role == 1,
+            Some("any_core")    => matches!(match_data.role, 1 | 2 | 3),
+            Some("any_support") => matches!(match_data.role, 4 | 5),
+            _ => match goal.hero_id {
+                Some(id) => id == match_data.hero_id,
+                None => true,
+            },
+        };
+        if !hero_matches { continue; }
+
+        let mode_matches = match goal.game_mode {
+            GoalGameMode::Ranked => match_data.game_mode == 22,
+            GoalGameMode::Turbo  => match_data.game_mode == 23,
+            GoalGameMode::All    => true,
+        };
+        if !mode_matches { continue; }
+
+        let duration_minutes = match_data.duration / 60;
+        let actual_value = match &goal.metric {
+            GoalMetric::Kills => {
+                if duration_minutes <= target_minutes {
+                    match_data.kills
+                } else {
+                    ((match_data.kills as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+                }
+            }
+            GoalMetric::LastHits => {
+                match cs_map.get(&match_data.match_id) {
+                    Some(&(lh, _)) => lh,
+                    None => continue,
+                }
+            }
+            GoalMetric::Denies => {
+                match cs_map.get(&match_data.match_id) {
+                    Some(&(_, dn)) => dn,
+                    None => continue,
+                }
+            }
+            GoalMetric::Networth => {
+                match nw_map.get(&(match_data.match_id, match_data.player_slot)) {
+                    Some(&nw) => nw,
+                    None => continue,
+                }
+            }
+            GoalMetric::PartnerNetworth => {
+                let partner_slot = match partner_slot_map.get(&match_data.match_id) {
+                    Some(&s) => s,
+                    None => continue,
+                };
+                match nw_map.get(&(match_data.match_id, partner_slot)) {
+                    Some(&nw) => nw,
+                    None => continue,
+                }
+            }
+            GoalMetric::ItemTiming => {
+                match item_timing_map.get(&match_data.match_id) {
+                    Some(&timing) => timing,
+                    None => continue,
+                }
+            }
+            GoalMetric::Level => continue,
+        };
+
+        let achieved = match &goal.metric {
+            GoalMetric::ItemTiming => actual_value <= goal.target_value,
+            _ => actual_value >= goal.target_value,
+        };
+
+        data_points.push(MatchDataPoint {
+            match_id: match_data.match_id,
+            hero_id: match_data.hero_id,
+            start_time: match_data.start_time,
+            value: actual_value,
+            achieved,
+            won: match_data.is_win(),
+        });
     }
 
     Ok(data_points)

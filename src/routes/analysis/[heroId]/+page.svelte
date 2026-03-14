@@ -117,29 +117,18 @@
     const points = analysis.current_period.data_points;
     if (points.length === 0) return [];
 
-    const min = Math.min(...points.map(p => p.last_hits));
-    const max = Math.max(...points.map(p => p.last_hits));
-    const range = max - min;
-    const bucketSize = Math.max(5, Math.ceil(range / 10)); // At least 5 LH per bucket
-
-    // Create buckets
+    const bucketSize = 10;
     const buckets = [];
-    let currentMin = Math.floor(min / bucketSize) * bucketSize;
 
-    while (currentMin <= max) {
+    for (let currentMin = 0; currentMin < 100; currentMin += bucketSize) {
       const currentMax = currentMin + bucketSize;
       const count = points.filter(p => p.last_hits >= currentMin && p.last_hits < currentMax).length;
-
-      if (count > 0 || buckets.length === 0) {
-        buckets.push({
-          min: currentMin,
-          max: currentMax,
-          count,
-          label: `${currentMin}-${currentMax - 1}`
-        });
-      }
-
-      currentMin = currentMax;
+      buckets.push({
+        min: currentMin,
+        max: currentMax,
+        count,
+        label: `${currentMin}-${currentMax - 1}`
+      });
     }
 
     return buckets;

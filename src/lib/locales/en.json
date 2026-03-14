@@ -339,6 +339,8 @@
     "save": "Save",
     "saving": "Saving...",
     "section_privacy": "Privacy",
+    "privacy_mode_title": "Privacy Mode",
+    "privacy_mode_desc": "Masks your Steam ID in the UI so it's safe to take and share screenshots. Your data remains intact \u2014 only the display is affected.",
     "analytics_title": "Anonymous Analytics",
     "analytics_desc": "Help improve Dota Keeper by sending anonymous usage data. We track page views, feature usage, and errors to understand how the app is used.",
     "analytics_collect": "What we collect:",

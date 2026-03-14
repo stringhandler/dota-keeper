@@ -93,6 +93,12 @@ fn get_settings() -> Settings {
     Settings::load()
 }
 
+/// Return the OS locale string (e.g. "en-US", "ru-RU").  Falls back to "en".
+#[tauri::command]
+fn get_os_locale() -> String {
+    sys_locale::get_locale().unwrap_or_else(|| "en".to_string())
+}
+
 /// Save the Steam ID to settings
 #[tauri::command]
 fn save_steam_id(steam_id: String) -> Result<Settings, String> {
@@ -2057,6 +2063,15 @@ fn get_backfill_status() -> BackfillStatus {
     }
 }
 
+/// Enable or disable privacy mode (masks Steam ID in the UI).
+#[tauri::command]
+fn save_privacy_mode(enabled: bool) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.privacy_mode = enabled;
+    settings.save()?;
+    Ok(settings)
+}
+
 /// Enable or disable the background match parser.
 #[tauri::command]
 fn save_background_parse_enabled(enabled: bool) -> Result<Settings, String> {
@@ -2359,6 +2374,8 @@ pub fn run() {
             get_background_parse_status,
             get_backfill_status,
             save_background_parse_enabled,
+            save_privacy_mode,
+            get_os_locale,
             save_data_provider,
             save_stratz_api_key,
             save_opendota_api_key,

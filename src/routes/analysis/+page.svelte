@@ -293,9 +293,9 @@
                     {getHeroName(hs.hero_id)}
                   </a>
                 </div>
-                <div class="hero-stat-bar">
+                <a href="/analysis/{hs.hero_id}" class="hero-stat-bar" title={$_('analysis.view_hero', { values: { hero: getHeroName(hs.hero_id) } })}>
                   <div class="hero-stat-fill" style="width:{Math.round((hs.average / maxAvg) * 100)}%"></div>
-                </div>
+                </a>
                 <div class="hero-stat-val">{hs.average.toFixed(1)}</div>
               </div>
             {/each}
@@ -617,6 +617,30 @@
     color: var(--text-secondary);
     margin-top: 8px;
     font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  /* ── MOBILE HERO BREAKDOWN ── */
+  @media (max-width: 640px) {
+    .hero-link {
+      font-size: 15px;
+    }
+
+    .fav-btn {
+      font-size: 15px;
+    }
+
+    :global(.hero-stat-name) {
+      width: 130px;
+    }
+
+    :global(.hero-stat-bar) {
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    :global(.hero-stat-fill) {
+      border-radius: 4px;
+    }
   }
 
   /* ── NO DATA ── */

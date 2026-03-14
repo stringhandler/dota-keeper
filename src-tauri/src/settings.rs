@@ -59,6 +59,9 @@ pub struct Settings {
     /// OpenDota API key (optional — raises the rate limit when provided)
     #[serde(default)]
     pub opendota_api_key: Option<String>,
+    /// Whether privacy mode is enabled (masks Steam ID in the UI for screenshots)
+    #[serde(default)]
+    pub privacy_mode: bool,
 }
 
 impl Default for Settings {
@@ -77,6 +80,7 @@ impl Default for Settings {
             data_provider: Self::default_data_provider(),
             stratz_api_key: None,
             opendota_api_key: None,
+            privacy_mode: false,
         }
     }
 }

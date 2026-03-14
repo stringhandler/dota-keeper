@@ -6,6 +6,7 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
+  import Chart from "$lib/Chart.svelte";
   import { _ } from "svelte-i18n";
 
   let goalId = $derived($page.params.goalId);
@@ -39,7 +40,7 @@
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Filtered data
-  let filteredData = $derived(() => {
+  let filteredData = $derived.by(() => {
     let data = matchData;
 
     // Filter by hero
@@ -59,32 +60,28 @@
   });
 
   // Histogram calculations
-  let histogram = $derived(() => {
-    const data = filteredData();
+  let histogram = $derived.by(() => {
+    const data = filteredData;
     if (data.length === 0) return { bins: [], max: 0 };
 
-    // Calculate histogram bins
-    const values = data.map((d) => d.value);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-
-    // Create bins
-    const binCount = Math.min(20, Math.max(5, Math.ceil(Math.sqrt(data.length))));
-    const binSize = Math.max(1, Math.ceil((maxValue - minValue + 1) / binCount));
+    // Bin size is always a multiple of 10 (minimum 10), targeting ~15 bins
+    const dataMax = Math.max(...data.map((d) => d.value));
+    const rawBinSize = Math.ceil(dataMax / 15);
+    const binSize = Math.max(10, Math.ceil(rawBinSize / 10) * 10);
+    const binCount = Math.ceil((dataMax + 1) / binSize);
 
     const bins = [];
     for (let i = 0; i < binCount; i++) {
-      const binStart = minValue + i * binSize;
+      const binStart = i * binSize;
       const binEnd = binStart + binSize;
-      const matches = data.filter((d) => d.value >= binStart && (i === binCount - 1 ? d.value <= binEnd : d.value < binEnd));
-      const achievedCount = matches.filter((m) => m.achieved).length;
+      const matches = data.filter((d) => d.value >= binStart && (i === binCount - 1 ? d.value < binEnd + binSize : d.value < binEnd));
 
       bins.push({
         start: binStart,
         end: binEnd,
         count: matches.length,
-        achievedCount: achievedCount,
-        failedCount: matches.length - achievedCount,
+        wonCount: matches.filter((m) => m.won).length,
+        lostCount: matches.filter((m) => !m.won).length,
       });
     }
 
@@ -93,8 +90,8 @@
     return { bins, max: maxCount };
   });
 
-  let stats = $derived(() => {
-    const data = filteredData();
+  let stats = $derived.by(() => {
+    const data = filteredData;
     if (data.length === 0)
       return {
         total: 0,
@@ -108,6 +105,8 @@
 
     const achieved = data.filter((d) => d.achieved).length;
     const values = data.map((d) => d.value);
+    const wins = data.filter((d) => d.won);
+    const losses = data.filter((d) => !d.won);
 
     return {
       total: data.length,
@@ -117,21 +116,23 @@
       avgValue: Math.round(values.reduce((sum, v) => sum + v, 0) / values.length),
       minValue: Math.min(...values),
       maxValue: Math.max(...values),
+      avgWinValue: wins.length ? Math.round(wins.reduce((sum, d) => sum + d.value, 0) / wins.length) : null,
+      avgLossValue: losses.length ? Math.round(losses.reduce((sum, d) => sum + d.value, 0) / losses.length) : null,
     };
   });
 
   // Last 10 games sorted chronologically (oldest first, newest last)
-  let last10Games = $derived(() => {
-    const data = filteredData();
+  let last10Games = $derived.by(() => {
+    const data = filteredData;
     return [...data]
       .sort((a, b) => a.start_time - b.start_time)
       .slice(-10);
   });
 
   // Achievement status indicator
-  let achievementStatus = $derived(() => {
-    const rate = parseFloat(stats().achievementRate);
-    if (stats().total === 0) return null;
+  let achievementStatus = $derived.by(() => {
+    const rate = parseFloat(stats.achievementRate);
+    if (stats.total === 0) return null;
     if (rate > 85) return { label: 'Too Easy', color: '#60a5fa', desc: 'Time to raise the bar!' };
     if (rate >= 75) return { label: 'Excellent', color: '#4ade80', desc: 'Well-calibrated goal!' };
     if (rate >= 65) return { label: 'Good', color: '#fbbf24', desc: 'Close! Keep pushing.' };
@@ -140,8 +141,8 @@
   });
 
   // Goal suggestion based on last 10 games pass rate
-  let goalSuggestion = $derived(() => {
-    const last10 = last10Games();
+  let goalSuggestion = $derived.by(() => {
+    const last10 = last10Games;
     if (last10.length < 5) return null;
     const last10Mean = last10.reduce((sum, g) => sum + g.value, 0) / last10.length;
     const passCount = last10.filter(g => g.achieved).length;
@@ -164,8 +165,8 @@
   });
 
   // Y-axis range for the scatter chart
-  let scatterYRange = $derived(() => {
-    const last10 = last10Games();
+  let scatterYRange = $derived.by(() => {
+    const last10 = last10Games;
     if (last10.length === 0) return { min: 0, max: 100 };
     const values = last10.map(g => g.value);
     const targetVal = goal?.target_value ?? 0;
@@ -174,6 +175,129 @@
     const max = Math.max(...allVals);
     const padding = Math.max((max - min) * 0.25, 5);
     return { min: Math.floor(min - padding), max: Math.ceil(max + padding) };
+  });
+
+  // Chart.js config for histogram — rebuilt reactively from histogram + stats + goal
+  let histogramChartConfig = $derived.by(() => {
+    const bins = histogram.bins;
+    if (!goal || bins.length === 0) return null;
+
+    const overlayPlugin = {
+      id: 'goalLines',
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+
+        const drawVLine = (value, color, dash, label, labelY) => {
+          const binIdx = bins.findIndex((b, i) =>
+            value >= b.start && (i === bins.length - 1 ? value < b.end + b.end - b.start : value < b.end)
+          );
+          if (binIdx < 0) return;
+          // For grouped bars there are 2 bars per bin group; center on the group
+          const groupX = xScale.getPixelForValue(binIdx);
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.setLineDash(dash);
+          ctx.beginPath();
+          ctx.moveTo(groupX, yScale.top);
+          ctx.lineTo(groupX, yScale.bottom);
+          ctx.stroke();
+          ctx.fillStyle = color;
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, groupX, labelY);
+          ctx.restore();
+        };
+
+        const fmt = (v) => goal.metric === 'ItemTiming' ? formatSeconds(v) : String(v);
+
+        drawVLine(goal.target_value, '#f0b429', [5, 5], `Target: ${fmt(goal.target_value)}`, yScale.top - 4);
+
+        if (stats.avgWinValue !== null) {
+          drawVLine(stats.avgWinValue, 'rgba(74,222,128,0.9)', [4, 3], `W avg: ${fmt(stats.avgWinValue)}`, yScale.top + 12);
+        }
+        if (stats.avgLossValue !== null) {
+          drawVLine(stats.avgLossValue, 'rgba(248,113,113,0.9)', [4, 3], `L avg: ${fmt(stats.avgLossValue)}`, yScale.top + 24);
+        }
+      }
+    };
+
+    return {
+      type: 'bar',
+      plugins: [overlayPlugin],
+      data: {
+        labels: bins.map(b => goal.metric === 'ItemTiming' ? formatSeconds(b.start) : String(b.start)),
+        datasets: [
+          {
+            label: 'Wins',
+            data: bins.map(b => b.wonCount),
+            backgroundColor: 'rgba(74, 222, 128, 0.5)',
+            borderColor: 'rgba(74, 222, 128, 0.7)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Losses',
+            data: bins.map(b => b.lostCount),
+            backgroundColor: 'rgba(248, 113, 113, 0.5)',
+            borderColor: 'rgba(248, 113, 113, 0.7)',
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 36 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#101820',
+            titleColor: '#f0b429',
+            bodyColor: '#9a8e7c',
+            borderColor: 'rgba(255, 200, 80, 0.3)',
+            borderWidth: 1,
+            padding: 10,
+            displayColors: true,
+            callbacks: {
+              title: (items) => {
+                const b = bins[items[0].dataIndex];
+                return goal.metric === 'ItemTiming'
+                  ? `${formatSeconds(b.start)} – ${formatSeconds(b.end)}`
+                  : `${b.start} – ${b.end - 1}`;
+              },
+              label: (item) => `${item.dataset.label}: ${item.parsed.y} games`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 200, 80, 0.08)' },
+            ticks: { color: '#726558', font: { size: 11 }, maxRotation: 45, minRotation: 0, autoSkip: true, maxTicksLimit: 15 },
+            title: {
+              display: true,
+              text: goal.metric === 'ItemTiming'
+                ? 'Item Timing (M:SS)'
+                : `${getMetricLabel(goal.metric)} (${getMetricUnit(goal.metric) || 'value'})`,
+              color: '#9a8e7c',
+              font: { size: 11 },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 200, 80, 0.08)' },
+            ticks: { color: '#726558', font: { size: 11 }, stepSize: 1 },
+            title: {
+              display: true,
+              text: 'Number of Games',
+              color: '#9a8e7c',
+              font: { size: 11 },
+            },
+          },
+        },
+      },
+    };
   });
 
   let bannerDismissed = $state(false);
@@ -541,20 +665,20 @@
       <h2>{$_('goals_detail.distribution')}</h2>
 
       <!-- Goal suggestion banner -->
-      {#if goalSuggestion() && !bannerDismissed}
-        {@const s = goalSuggestion()}
+      {#if goalSuggestion && !bannerDismissed}
+        {@const s = goalSuggestion}
         <div class="suggestion-banner banner-{s.severity}">
           <div class="banner-body">
             {#if s.severity === 'critical'}
               <span class="banner-icon">⚠️</span>
               <span class="banner-text">
-                Your last {last10Games().length} games averaged <strong>{goal.metric === 'ItemTiming' ? formatSeconds(s.last10Mean) : s.last10Mean}</strong>, significantly below your goal of <strong>{goal.metric === 'ItemTiming' ? formatSeconds(goal.target_value) : goal.target_value}</strong>.
+                Your last {last10Games.length} games averaged <strong>{goal.metric === 'ItemTiming' ? formatSeconds(s.last10Mean) : s.last10Mean}</strong>, significantly below your goal of <strong>{goal.metric === 'ItemTiming' ? formatSeconds(goal.target_value) : goal.target_value}</strong>.
                 Consider lowering your goal for more consistent progress.
               </span>
             {:else if s.severity === 'warning'}
               <span class="banner-icon">⚠️</span>
               <span class="banner-text">
-                You're hitting this goal only <strong>{s.passRate}%</strong> of the time in your last {last10Games().length} games.
+                You're hitting this goal only <strong>{s.passRate}%</strong> of the time in your last {last10Games.length} games.
                 Aim for ~75% success rate.
               </span>
             {:else}
@@ -575,178 +699,45 @@
         </div>
       {/if}
 
-      {#if filteredData().length === 0}
+      {#if filteredData.length === 0}
         <p class="no-data">No matches found with the current filters.</p>
       {:else}
         <div class="histogram-container">
-          <svg class="histogram" viewBox="0 0 1000 400" preserveAspectRatio="xMidYMid meet">
-            <!-- Y-axis labels and grid lines -->
-            {#each [0, 0.25, 0.5, 0.75, 1] as tick}
-              {@const y = 350 - tick * 300}
-              {@const value = Math.round(tick * histogram().max)}
-              <line
-                x1="80"
-                y1={y}
-                x2="950"
-                y2={y}
-                stroke="rgba(255, 200, 80, 0.1)"
-                stroke-width="1"
-              />
-              <text
-                x="70"
-                y={y + 5}
-                text-anchor="end"
-                fill="var(--text-muted)"
-                font-size="12"
-              >
-                {value}
-              </text>
-            {/each}
-
-            <!-- Target line -->
-            {#if goal && histogram().bins.length > 0}
-              {@const minVal = histogram().bins[0].start}
-              {@const maxVal = histogram().bins[histogram().bins.length - 1].end}
-              {@const range = maxVal - minVal}
-              {@const targetX = 80 + ((goal.target_value - minVal) / range) * 870}
-              <line
-                x1={targetX}
-                y1="50"
-                x2={targetX}
-                y2="350"
-                stroke="var(--gold)"
-                stroke-width="3"
-                stroke-dasharray="5,5"
-              />
-              <text
-                x={targetX}
-                y="40"
-                text-anchor="middle"
-                fill="var(--gold)"
-                font-size="14"
-                font-weight="bold"
-              >
-                Target: {goal.metric === "ItemTiming" ? formatSeconds(goal.target_value) : goal.target_value}
-              </text>
-            {/if}
-
-            <!-- Average line -->
-            {#if goal && histogram().bins.length > 0 && stats().total > 0}
-              {@const minVal = histogram().bins[0].start}
-              {@const maxVal = histogram().bins[histogram().bins.length - 1].end}
-              {@const range = maxVal - minVal}
-              {@const avgX = range > 0 ? 80 + ((stats().avgValue - minVal) / range) * 870 : 465}
-              <line
-                x1={avgX}
-                y1="50"
-                x2={avgX}
-                y2="350"
-                stroke="rgba(251, 191, 36, 0.7)"
-                stroke-width="2"
-                stroke-dasharray="6,4"
-              />
-              <text
-                x={avgX}
-                y="45"
-                text-anchor="middle"
-                fill="rgba(251, 191, 36, 0.85)"
-                font-size="12"
-              >
-                Avg: {goal.metric === "ItemTiming" ? formatSeconds(stats().avgValue) : stats().avgValue}
-              </text>
-            {/if}
-
-            <!-- Histogram bars -->
-            {#each histogram().bins as bin, i}
-              {@const barWidth = 850 / histogram().bins.length}
-              {@const x = 90 + i * barWidth}
-              {@const barHeight = histogram().max > 0 ? (bin.count / histogram().max) * 300 : 0}
-              {@const achievedHeight = histogram().max > 0 ? (bin.achievedCount / histogram().max) * 300 : 0}
-              {@const failedHeight = histogram().max > 0 ? (bin.failedCount / histogram().max) * 300 : 0}
-
-              <!-- Failed portion (bottom) -->
-              <rect
-                x={x}
-                y={350 - failedHeight}
-                width={barWidth - 5}
-                height={failedHeight}
-                fill="rgba(248, 113, 113, 0.5)"
-                stroke="rgba(248, 113, 113, 0.7)"
-                stroke-width="1"
-              />
-
-              <!-- Achieved portion (top) -->
-              <rect
-                x={x}
-                y={350 - barHeight}
-                width={barWidth - 5}
-                height={achievedHeight}
-                fill="rgba(74, 222, 128, 0.5)"
-                stroke="rgba(74, 222, 128, 0.7)"
-                stroke-width="1"
-              />
-
-              <!-- X-axis label -->
-              <text
-                x={x + barWidth / 2 - 2.5}
-                y="370"
-                text-anchor="middle"
-                fill="var(--text-muted)"
-                font-size="10"
-              >
-                {goal.metric === "ItemTiming" ? formatSeconds(bin.start) : bin.start}
-              </text>
-            {/each}
-
-            <!-- Axis labels -->
-            <text
-              x="500"
-              y="395"
-              text-anchor="middle"
-              fill="var(--text-secondary)"
-              font-size="13"
-              font-weight="600"
-            >
-              {goal.metric === "ItemTiming"
-                ? `${goal.item_id !== null ? getItemName(goal.item_id) : "Item"} Timing (M:SS)`
-                : `${getMetricLabel(goal.metric)} (${getMetricUnit(goal.metric) || "value"})`}
-            </text>
-            <text
-              x="30"
-              y="200"
-              text-anchor="middle"
-              fill="var(--text-secondary)"
-              font-size="13"
-              font-weight="600"
-              transform="rotate(-90 30 200)"
-            >
-              Number of Matches
-            </text>
-          </svg>
+          {#if histogramChartConfig}
+            <Chart config={histogramChartConfig} height="300px" />
+          {/if}
 
           <div class="legend">
             <div class="legend-item">
-              <div class="legend-color achieved"></div>
-              <span>Achieved</span>
+              <div class="legend-color wins"></div>
+              <span>Wins</span>
             </div>
             <div class="legend-item">
-              <div class="legend-color failed"></div>
-              <span>Failed</span>
+              <div class="legend-color losses"></div>
+              <span>Losses</span>
             </div>
             <div class="legend-item">
               <div class="legend-line target-line"></div>
               <span>Target</span>
             </div>
-            <div class="legend-item">
-              <div class="legend-line avg-line"></div>
-              <span>Average</span>
-            </div>
+            {#if stats.avgWinValue !== null}
+              <div class="legend-item">
+                <div class="legend-line win-avg-line"></div>
+                <span>Win avg</span>
+              </div>
+            {/if}
+            {#if stats.avgLossValue !== null}
+              <div class="legend-item">
+                <div class="legend-line loss-avg-line"></div>
+                <span>Loss avg</span>
+              </div>
+            {/if}
           </div>
 
           <!-- Last N games scatter chart -->
-          {#if last10Games().length > 0}
-            {@const games = last10Games()}
-            {@const yr = scatterYRange()}
+          {#if last10Games.length > 0}
+            {@const games = last10Games}
+            {@const yr = scatterYRange}
             {@const chartW = 720}
             {@const chartH = 130}
             {@const lm = 60}
@@ -780,8 +771,8 @@
                   <text x={lm + chartW + 4} y={tm + chartH * (1 - (goal.target_value - yr.min) / ySpan) + 4} fill="var(--gold)" font-size="10" font-weight="600">Goal</text>
 
                   <!-- Average horizontal line -->
-                  <line x1={lm} y1={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan)} x2={lm + chartW} y2={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan)} stroke="rgba(251,191,36,0.6)" stroke-width="1.5" stroke-dasharray="5,4" />
-                  <text x={lm + chartW + 4} y={tm + chartH * (1 - (stats().avgValue - yr.min) / ySpan) + 4} fill="rgba(251,191,36,0.8)" font-size="10">Avg</text>
+                  <line x1={lm} y1={tm + chartH * (1 - (stats.avgValue - yr.min) / ySpan)} x2={lm + chartW} y2={tm + chartH * (1 - (stats.avgValue - yr.min) / ySpan)} stroke="rgba(251,191,36,0.6)" stroke-width="1.5" stroke-dasharray="5,4" />
+                  <text x={lm + chartW + 4} y={tm + chartH * (1 - (stats.avgValue - yr.min) / ySpan) + 4} fill="rgba(251,191,36,0.8)" font-size="10">Avg</text>
 
                   <!-- Dots -->
                   {#each games as game, i}
@@ -847,47 +838,47 @@
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Total Matches</div>
-          <div class="stat-value">{stats().total}</div>
+          <div class="stat-value">{stats.total}</div>
         </div>
         <div class="stat-card success">
           <div class="stat-label">Achieved</div>
-          <div class="stat-value">{stats().achieved}</div>
+          <div class="stat-value">{stats.achieved}</div>
         </div>
         <div class="stat-card failure">
           <div class="stat-label">Failed</div>
-          <div class="stat-value">{stats().failed}</div>
+          <div class="stat-value">{stats.failed}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Success Rate</div>
-          <div class="stat-value">{stats().achievementRate}%</div>
+          <div class="stat-value">{stats.achievementRate}%</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Average</div>
-          <div class="stat-value">{formatStatValue(stats().avgValue, goal.metric)} {goal.metric !== "ItemTiming" ? getMetricUnit(goal.metric) : ""}</div>
+          <div class="stat-value">{formatStatValue(stats.avgValue, goal.metric)} {goal.metric !== "ItemTiming" ? getMetricUnit(goal.metric) : ""}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Range</div>
           <div class="stat-value">
-            {formatStatValue(stats().minValue, goal.metric)} – {formatStatValue(stats().maxValue, goal.metric)}
+            {formatStatValue(stats.minValue, goal.metric)} – {formatStatValue(stats.maxValue, goal.metric)}
           </div>
         </div>
       </div>
 
-      {#if achievementStatus()}
+      {#if achievementStatus}
         <div class="achievement-rate-card">
           <div class="achievement-rate-row">
             <div class="achievement-rate-info">
               <span class="achievement-rate-label">Achievement Rate</span>
-              <span class="achievement-rate-value">{stats().achievementRate}%</span>
-              <span class="achievement-rate-count">({stats().achieved}/{stats().total} games)</span>
+              <span class="achievement-rate-value">{stats.achievementRate}%</span>
+              <span class="achievement-rate-count">({stats.achieved}/{stats.total} games)</span>
             </div>
             <div class="achievement-target">Target: ~75%</div>
           </div>
-          <div class="achievement-status" style="color: {achievementStatus().color}">
-            {achievementStatus().label} — {achievementStatus().desc}
+          <div class="achievement-status" style="color: {achievementStatus.color}">
+            {achievementStatus.label} — {achievementStatus.desc}
           </div>
           <div class="achievement-bar-track">
-            <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats().achievementRate))}%; background: {achievementStatus().color}"></div>
+            <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats.achievementRate))}%; background: {achievementStatus.color}"></div>
             <div class="achievement-bar-target"></div>
           </div>
         </div>
@@ -1301,12 +1292,6 @@
     gap: 16px;
   }
 
-  .histogram {
-    width: 100%;
-    height: auto;
-    min-height: 400px;
-  }
-
   .legend {
     display: flex;
     justify-content: center;
@@ -1327,11 +1312,11 @@
     border: 1px solid var(--border);
   }
 
-  .legend-color.achieved {
+  .legend-color.wins {
     background: rgba(74, 222, 128, 0.6);
   }
 
-  .legend-color.failed {
+  .legend-color.losses {
     background: rgba(248, 113, 113, 0.6);
   }
 
@@ -1523,14 +1508,23 @@
     background: var(--gold);
   }
 
-  .legend-line.avg-line {
-    background: rgba(251, 191, 36, 0.7);
+  .legend-line.win-avg-line {
     background: repeating-linear-gradient(
       to right,
-      rgba(251, 191, 36, 0.7) 0px,
-      rgba(251, 191, 36, 0.7) 6px,
-      transparent 6px,
-      transparent 10px
+      rgba(74, 222, 128, 0.9) 0px,
+      rgba(74, 222, 128, 0.9) 4px,
+      transparent 4px,
+      transparent 7px
+    );
+  }
+
+  .legend-line.loss-avg-line {
+    background: repeating-linear-gradient(
+      to right,
+      rgba(248, 113, 113, 0.9) 0px,
+      rgba(248, 113, 113, 0.9) 4px,
+      transparent 4px,
+      transparent 7px
     );
   }
 
@@ -1618,6 +1612,39 @@
   @media (max-width: 768px) {
     .stats-grid {
       grid-template-columns: repeat(2, 1fr);
+    }
+
+    .legend {
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 10px 0 4px;
+    }
+
+    .legend-item {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px 3px 6px;
+      gap: 5px;
+    }
+
+    .legend-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    .legend-line {
+      width: 18px;
+    }
+
+    .legend-item span {
+      font-size: 11px;
+    }
+
+    :global(.chart-wrapper) {
+      height: 240px !important;
     }
   }
 </style>

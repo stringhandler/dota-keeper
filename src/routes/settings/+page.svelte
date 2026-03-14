@@ -7,6 +7,7 @@
   import { onMount, onDestroy } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { trackPageView, updateAnalyticsConsent } from "$lib/analytics.js";
+  import { privacyStore } from "$lib/privacy-store.svelte.js";
   import { initSentry, disableSentry, captureException } from "$lib/sentry.js";
   import { showToast } from "$lib/toast.js";
   import { _ } from "svelte-i18n";
@@ -30,6 +31,7 @@
   let isSavingMentalHealth = $state(false);
   let isClearingMoodData = $state(false);
   let showMentalHealthIntro = $state(false);
+  let privacyMode = $state(false);
   let backgroundParseEnabled = $state(true);
   let bgParseActive = $state(false);
   let bgParsePending = $state(0);
@@ -55,6 +57,7 @@
     await loadDifficulty();
     await loadAnalytics();
     await loadMentalHealth();
+    await loadPrivacyMode();
     await loadBackgroundParse();
     await loadDataProvider();
     await loadAppVersion();
@@ -245,6 +248,26 @@
       error = `Failed to save difficulty: ${e}`;
     } finally {
       isSavingDifficulty = false;
+    }
+  }
+
+  async function loadPrivacyMode() {
+    try {
+      const settings = await invoke("get_settings");
+      privacyMode = settings.privacy_mode ?? false;
+      privacyStore.privacyMode = privacyMode;
+    } catch (e) {
+      console.error("Failed to load privacy mode setting:", e);
+    }
+  }
+
+  async function togglePrivacyMode(enabled) {
+    try {
+      await invoke("save_privacy_mode", { enabled });
+      privacyMode = enabled;
+      privacyStore.privacyMode = enabled;
+    } catch (e) {
+      showToast(`Failed to save privacy mode: ${e}`, "error");
     }
   }
 
@@ -611,6 +634,23 @@
 
   <div class="settings-section">
     <h2>{$_('settings.section_privacy')}</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>{$_('settings.privacy_mode_title')}</h3>
+        <p class="setting-description">
+          {$_('settings.privacy_mode_desc')}
+        </p>
+        <div class="toggle-row">
+          <button
+            class="toggle-btn"
+            class:active={privacyMode}
+            onclick={() => togglePrivacyMode(!privacyMode)}
+          >
+            {privacyMode ? $_('settings.enabled') : $_('settings.disabled')}
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="setting-item">
       <div class="setting-info">
         <h3>{$_('settings.analytics_title')}</h3>

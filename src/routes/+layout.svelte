@@ -16,8 +16,9 @@
   import FeedbackModal from "$lib/FeedbackModal.svelte";
   import Toast from "$lib/Toast.svelte";
   import { showToast } from "$lib/toast.js";
+  import { privacyStore, loadPrivacyMode } from "$lib/privacy-store.svelte.js";
   import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
-  import { setupI18n, setLocale, locale } from "$lib/i18n.js";
+  import { setupI18n, setLocale, resolveLocale, locale } from "$lib/i18n.js";
   import { _ } from "svelte-i18n";
   import '../app.css';
 
@@ -45,6 +46,17 @@
     window.addEventListener('resize', checkMobile);
 
     await loadSettings();
+
+    // Auto-detect OS language on first run (no saved preference)
+    if (!localStorage.getItem('locale')) {
+      try {
+        const osLocale = await invoke("get_os_locale");
+        setLocale(resolveLocale(osLocale));
+        // Don't persist — only save when the user explicitly picks a language
+        localStorage.removeItem('locale');
+      } catch (_) {}
+    }
+
     await checkForUpdates();
 
     if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
@@ -60,6 +72,12 @@
       await identifyUser();
     }
   });
+
+  let displaySteamId = $derived(
+    privacyStore.privacyMode && currentSteamId
+      ? currentSteamId.slice(0, 5) + "••••••••••"
+      : currentSteamId
+  );
 
   function getMedalLabel(rankTier) {
     if (!rankTier) return null;
@@ -78,6 +96,7 @@
         isLoggedIn = true;
         currentSteamId = settings.steam_id;
       }
+      privacyStore.privacyMode = settings.privacy_mode ?? false;
       if (settings.analytics_consent === "Accepted") {
         initSentry();
       }
@@ -287,7 +306,7 @@
       <div class="brand">
         <div class="brand-name">Dota Keeper</div>
         <div class="brand-id">{$_('layout.steam_id_label')}</div>
-        <div class="steam-badge">{currentSteamId}</div>
+        <div class="steam-badge">{displaySteamId}</div>
       </div>
 
       <nav class="nav">
