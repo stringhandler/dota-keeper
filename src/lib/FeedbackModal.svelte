@@ -93,7 +93,7 @@
     <div class="modal-body">
       <!-- Step 1: Category -->
       <div class="field-group">
-        <label class="field-label">{$_('feedback.category_label')}</label>
+        <p class="field-label">{$_('feedback.category_label')}</p>
         <div class="category-options">
           <button
             class="category-btn"
@@ -144,7 +144,7 @@
         <!-- Step 3: Priority (only for bug / feature) -->
         {#if category !== "positive"}
           <div class="field-group">
-            <label class="field-label">{$_('feedback.priority_label')} <span class="optional">{$_('feedback.optional')}</span></label>
+            <p class="field-label">{$_('feedback.priority_label')} <span class="optional">{$_('feedback.optional')}</span></p>
             <div class="priority-options">
               {#each [
                 { value: "blocking", tkey: "feedback.priority_blocking" },

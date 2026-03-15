@@ -91,6 +91,7 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
         with:
           tagName: v${{ steps.version.outputs.VERSION }}
           releaseName: 'Dota Keeper v${{ steps.version.outputs.VERSION }}'

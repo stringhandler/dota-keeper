@@ -87,12 +87,21 @@ jobs:
 
       # ── AAB (for Google Play Store) ────────────────────────────────────────
 
+      - name: Re-init Android project for beta identifier
+        if: env.IS_BETA == 'true'
+        env:
+          NDK_HOME: ${{ env.NDK_HOME }}
+        run: |
+          rm -rf src-tauri/gen/android
+          yarn tauri android init --config src-tauri/tauri.beta.conf.json
+
       - name: Build release AAB (all ABIs)
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
         run: |
           if [ "$IS_BETA" = "true" ]; then
             yarn tauri android build --aab true --config src-tauri/tauri.beta.conf.json
