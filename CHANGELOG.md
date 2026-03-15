@@ -5,6 +5,23 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-15
+
+### Added
+- **Stratz API**: Alternative data source to OpenDota. If OpenDota is unavailable or rate-limited, Dota Keeper can now fetch match data via the Stratz API.
+- **Screenshots**: In-app screenshots added to support onboarding and store listings.
+
+### Changed
+- **Rate Limit Handling**: Improved rate limit tracking and backoff logic to avoid hitting API limits during match syncs.
+- **Mobile Cosmetics**: Numerous visual polish improvements across the mobile layout — spacing, typography, and component alignment.
+- **Locales**: Expanded and corrected translations; Steam ID is no longer exposed in visible UI text.
+- **Installer**: Removed `setup.exe` artifact — Windows installer is now exclusively the `.msi`.
+
+### Fixed
+- **Sentry**: Fixed error reporting integration that was silently failing in production builds.
+- **Translations**: Corrected several mistranslated or missing strings in non-English locales.
+- **Privacy Policy**: Updated privacy policy content.
+
 ## [0.3.2] - 2026-03-10
 
 ### Fixed
