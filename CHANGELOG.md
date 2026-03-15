@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Installer**: Removed `setup.exe` artifact — Windows installer is now exclusively the `.msi`.
 
 ### Fixed
-- **Sentry**: Fixed error reporting integration that was silently failing in production builds.
+- **Sentry**: Fixed error reporting integration that was silently failing in production builds. `PUBLIC_SENTRY_DSN` is now correctly forwarded to the Vite build in all CI workflows.
+- **Android Beta CI**: Beta Android builds no longer fail with a missing package directory — the Android project is now re-initialised with the correct beta identifier before building.
 - **Translations**: Corrected several mistranslated or missing strings in non-English locales.
 - **Privacy Policy**: Updated privacy policy content.
+- **A11y**: Fixed accessibility warnings in `FeedbackModal` — section headings for button/radio groups changed from `<label>` to `<p>` to correctly reflect their role.
 
 ## [0.3.2] - 2026-03-10
 
