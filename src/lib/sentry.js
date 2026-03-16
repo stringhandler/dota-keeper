@@ -72,7 +72,7 @@ export function captureException(error, tags) {
     console.warn('[Sentry] captureException called but Sentry is not initialised');
     return;
   }
-  console.log('[Sentry] Capturing exception:', error?.message);
+  console.log('[Sentry] Capturing exception:', error instanceof Error ? error.message : String(error));
   Sentry.withScope((scope) => {
     if (tags) scope.setTags(tags);
     Sentry.captureException(error);

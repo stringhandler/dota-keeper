@@ -79,6 +79,7 @@
       : currentSteamId
   );
 
+  /** @param {number | null} rankTier */
   function getMedalLabel(rankTier) {
     if (!rankTier) return null;
     const NAMES = ["", "Herald", "Guardian", "Crusader", "Archon", "Legend", "Ancient", "Divine", "Immortal"];
@@ -112,6 +113,7 @@
     } catch (_) {}
   }
 
+  /** @param {string} input */
   function extractSteamId(input) {
     const trimmed = input.trim();
     const profileMatch = trimmed.match(/steamcommunity\.com\/profiles\/(\d+)/);
@@ -119,6 +121,7 @@
     return trimmed;
   }
 
+  /** @param {string} id64 */
   async function saveAndLogin(id64) {
     const settings = await invoke("save_steam_id", { steamId: id64 });
     isLoggedIn = true;
@@ -128,6 +131,7 @@
     }
   }
 
+  /** @param {SubmitEvent} event */
   async function handleLogin(event) {
     event.preventDefault();
     error = "";
@@ -142,6 +146,7 @@
   async function handleSteamLogin() {
     steamLoginPending = true;
     error = "";
+    /** @type {(() => void) | undefined} */
     let unlisten;
     try {
       const url = await invoke("start_steam_login");
@@ -178,14 +183,17 @@
     }
   }
 
+  /** @param {string} path */
   function isActive(path) {
     return $page.url.pathname === path;
   }
 
+  /** @param {string} prefix */
   function isActivePath(prefix) {
     return $page.url.pathname.startsWith(prefix);
   }
 
+  /** @param {string} pathname */
   function getPageTitle(pathname) {
     if (pathname === '/') return $_('page_title.dashboard');
     if (pathname.startsWith('/matches')) return $_('page_title.matches');

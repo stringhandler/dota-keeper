@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 
+/** @type {import('svelte/store').Writable<Array<{id: number, message: string, type: 'success'|'error'|'info'}>>} */
 export const toasts = writable([]);
 
 let _nextId = 0;

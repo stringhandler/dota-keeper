@@ -5,9 +5,9 @@
 
   let { matchId, onComplete } = $props();
 
-  let energy = $state(null);
-  let calm = $state(null);
-  let attribution = $state(null);
+  let energy = $state(/** @type {number | null} */ (null));
+  let calm = $state(/** @type {number | null} */ (null));
+  let attribution = $state(/** @type {string | null} */ (null));
   let isSubmitting = $state(false);
 
   // Show Q3 only when calm score is 1 or 2 (very uncalm)

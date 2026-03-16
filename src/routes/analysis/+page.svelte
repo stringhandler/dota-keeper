@@ -13,8 +13,8 @@
   // Filters
   let timeMinutes = $state(10);
   let windowSize = $state(30);
-  let selectedHeroId = $state(null);
-  let selectedGameMode = $state(null);
+  let selectedHeroId = $state(/** @type {number | null} */ (null));
+  let selectedGameMode = $state(/** @type {number | null} */ (null));
 
   // Favorites
   let favoriteHeroes = $state(new Set());
@@ -24,10 +24,10 @@
   let heroPage = $state(0);
 
   // Analysis data
-  let analysis = $state(null);
+  let analysis = $state(/** @type {any} */ (null));
 
   // Goals (for insight generation)
-  let goals = $state([]);
+  let goals = $state(/** @type {any[]} */ ([]));
 
   let gameModes = $derived([
     { value: null, label: $_('analysis.all_modes') },
@@ -64,6 +64,7 @@
     }
   }
 
+  /** @param {number} heroId */
   async function toggleFavorite(heroId) {
     try {
       const isFavorite = await invoke("toggle_favorite_hero", { heroId });
@@ -122,7 +123,9 @@
     return "→";
   }
 
+  /** @param {number | null} value */
   function formatPercentage(value) {
+    if (value === null) return '—';
     return value >= 0 ? `+${value.toFixed(1)}%` : `${value.toFixed(1)}%`;
   }
 

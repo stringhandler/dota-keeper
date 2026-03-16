@@ -8,9 +8,9 @@
   let error = $state("");
 
   // Either showing options or active progress
-  let options = $state([]);
-  let activeChallenge = $state(null);
-  let progress = $state(null);
+  let options = $state(/** @type {any[]} */ ([]));
+  let activeChallenge = $state(/** @type {any} */ (null));
+  let progress = $state(/** @type {any} */ (null));
   let rerollsUsed = $state(0);
   let isAccepting = $state(false);
   let isRerolling = $state(false);
@@ -42,6 +42,7 @@
     }
   }
 
+  /** @param {number} optionId */
   async function acceptChallenge(optionId) {
     isAccepting = true;
     error = "";
@@ -82,6 +83,7 @@
     }
   }
 
+  /** @param {string} type */
   function difficultyColor(type) {
     switch (type) {
       case "easy": return "#60c040";
@@ -91,6 +93,7 @@
     }
   }
 
+  /** @param {string} type */
   function difficultyTKey(type) {
     switch (type) {
       case "easy": return 'challenges.difficulty_easy';
@@ -100,11 +103,13 @@
     }
   }
 
+  /** @param {number} current @param {number} target */
   function progressPercent(current, target) {
     if (target <= 0) return 0;
     return Math.min(100, Math.round((current / target) * 100));
   }
 
+  /** @param {string} metric @param {number} target @param {number | null | undefined} targetGames @param {string} fallback */
   function challengeDesc(metric, target, targetGames, fallback) {
     const g = targetGames ?? 5;
     const keyMap = {
@@ -119,7 +124,7 @@
       hero_damage_total: 'challenges.desc_hero_damage_total',
       cs_at_10_avg: 'challenges.desc_cs_at_10_avg',
     };
-    const key = keyMap[metric];
+    const key = /** @type {Record<string, string>} */ (keyMap)[metric];
     if (!key) return fallback;
     return $_( key, { values: { n: target, g } });
   }
@@ -146,7 +151,7 @@
       {/if}
       <div class="active-header">
         <div class="difficulty-badge" style="color: {difficultyColor(activeChallenge.challenge_type)}">
-          {difficultyTKey(activeChallenge.challenge_type) ? $_(difficultyTKey(activeChallenge.challenge_type)) : activeChallenge.challenge_type}
+          {difficultyTKey(activeChallenge.challenge_type) ? $_(/** @type {string} */ (difficultyTKey(activeChallenge.challenge_type))) : activeChallenge.challenge_type}
         </div>
         <h2>{challengeDesc(activeChallenge.metric, activeChallenge.challenge_target, activeChallenge.challenge_target_games, activeChallenge.challenge_description)}</h2>
         {#if activeChallenge.hero_id !== null}
@@ -219,7 +224,7 @@
           <div class="option-card">
             <div class="option-top">
               <span class="option-difficulty" style="color: {difficultyColor(option.challenge_type)}">
-                {difficultyTKey(option.challenge_type) ? $_(difficultyTKey(option.challenge_type)) : option.challenge_type}
+                {difficultyTKey(option.challenge_type) ? $_(/** @type {string} */ (difficultyTKey(option.challenge_type))) : option.challenge_type}
               </span>
               <span class="option-type">{option.metric.replace(/_/g, ' ')}</span>
             </div>

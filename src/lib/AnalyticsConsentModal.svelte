@@ -6,6 +6,7 @@
   let { onClose = () => {} } = $props();
   let isSaving = $state(false);
 
+  /** @param {string} consent */
   async function handleConsent(consent) {
     isSaving = true;
     try {
@@ -26,8 +27,8 @@
   }
 </script>
 
-<div class="modal-backdrop" onclick={()  => {}}>
-  <div class="modal-card" onclick={(e) => e.stopPropagation()}>
+<div class="modal-backdrop" onclick={()  => {}} role="presentation">
+  <div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Analytics consent">
     <div class="modal-header">
       <h2>{$_('analytics_consent.title')}</h2>
     </div>

@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 class ParseQueueStore {
+  /** @type {number[]} */
   queue      = $state([]);
   active     = $state(new Set());
   errors     = $state(new Map());
@@ -18,6 +19,7 @@ export const pqs = new ParseQueueStore();
 
 let _isDraining   = false;
 let _steamId      = "";
+/** @type {(() => void | Promise<void>) | null} */
 let _onComplete   = null;
 let _timerStarted = false;
 
@@ -28,6 +30,10 @@ let _timerStarted = false;
  * matches after each parse. Resumes any drain that was in progress before
  * the user navigated away.
  */
+/**
+ * @param {string} steamId
+ * @param {() => void | Promise<void>} onComplete
+ */
 export function initQueue(steamId, onComplete) {
   _steamId    = steamId;
   _onComplete = onComplete;
@@ -35,13 +41,17 @@ export function initQueue(steamId, onComplete) {
   if (pqs.queue.length > 0 && !_isDraining) _drain();
 }
 
-/** Add a match to the queue. No-op if already queued or active. */
+/**
+ * Add a match to the queue. No-op if already queued or active.
+ * @param {number} matchId
+ */
 export function enqueueParse(matchId) {
   if (pqs.active.has(matchId) || pqs.queue.includes(matchId)) return;
   pqs.queue = [...pqs.queue, matchId];
   if (!_isDraining && _steamId) _drain();
 }
 
+/** @param {string} msg */
 export function isPendingError(msg) {
   return (
     msg.includes('not yet')   ||
@@ -67,6 +77,7 @@ async function _drain() {
   }
 }
 
+/** @param {number} matchId */
 async function _parseMatch(matchId) {
   pqs.active = new Set([...pqs.active, matchId]);
 

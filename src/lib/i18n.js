@@ -16,6 +16,7 @@ export function setupI18n() {
   });
 }
 
+/** @param {string} lang */
 export function setLocale(lang) {
   locale.set(lang);
   if (typeof localStorage !== 'undefined') {

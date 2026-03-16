@@ -5,7 +5,7 @@
 
   let isLoading = $state(true);
   let error = $state("");
-  let history = $state([]);
+  let history = $state(/** @type {any[]} */ ([]));
   let activeFilter = $state("all"); // "all", "weekly", "daily"
 
   onMount(async () => {
@@ -28,11 +28,13 @@
     }
   }
 
+  /** @param {string} f */
   async function setFilter(f) {
     activeFilter = f;
     await loadHistory();
   }
 
+  /** @param {string} dateStr */
   function formatDate(dateStr) {
     // dateStr is "YYYY-MM-DD" (week start date)
     return new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, {
@@ -42,6 +44,7 @@
     });
   }
 
+  /** @param {number | null | undefined} ts */
   function formatTimestamp(ts) {
     if (!ts) return "—";
     return new Date(ts * 1000).toLocaleDateString(undefined, {
@@ -52,6 +55,7 @@
 
   // Group history items by week (using period_start_date)
   let grouped = $derived(() => {
+    /** @type {Record<string, {dateStr: string, isWeekly: boolean, items: any[]}>} */
     const groups = {};
     for (const item of history) {
       const key = item.period_start_date;

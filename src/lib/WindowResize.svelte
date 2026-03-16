@@ -3,6 +3,7 @@
 
   const appWindow = getCurrentWindow();
 
+  /** @param {'North'|'South'|'East'|'West'|'NorthEast'|'NorthWest'|'SouthEast'|'SouthWest'} direction */
   async function startResize(direction) {
     await appWindow.startResizeDragging(direction);
   }

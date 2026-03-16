@@ -19,6 +19,7 @@
     { id: "challenges", icon: "🏆", labelKey: "onboarding.goal_challenges",  descKey: "onboarding.goal_challenges_desc" },
   ];
 
+  /** @param {string} id */
   function toggleGoal(id) {
     const next = new Set(selectedGoals);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -38,6 +39,7 @@
       : allHeroes.filter(h => h.name.toLowerCase().includes(heroSearch.toLowerCase()))
   );
 
+  /** @param {number} id */
   async function toggleHero(id) {
     if (selectedHeroIds.has(id)) {
       const next = new Set(selectedHeroIds);

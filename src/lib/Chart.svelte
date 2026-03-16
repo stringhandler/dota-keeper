@@ -32,7 +32,9 @@
 
   let { config, height = '300px' } = $props();
 
+  /** @type {HTMLCanvasElement | undefined} */
   let canvas;
+  /** @type {import('chart.js').Chart | undefined} */
   let chart;
 
   onDestroy(() => {

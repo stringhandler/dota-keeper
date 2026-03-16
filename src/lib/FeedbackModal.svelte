@@ -7,6 +7,7 @@
 
   import { PUBLIC_SUPABASE_URL as SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY as SUPABASE_ANON_KEY } from '$env/static/public';
 
+  /** @type {{ onClose?: () => void }} */
   let { onClose = () => {} } = $props();
 
   let category = $state(""); // 'bug' | 'feature' | 'positive'
@@ -129,7 +130,7 @@
       {#if category}
         <div class="field-group">
           <label class="field-label" for="feedback-text">
-            {$_(followUpPromptKeys[category])}
+            {$_(followUpPromptKeys[/** @type {keyof typeof followUpPromptKeys} */ (category)])}
           </label>
           <textarea
             id="feedback-text"

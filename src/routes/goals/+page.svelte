@@ -9,16 +9,16 @@
   import { showToast } from "$lib/toast.js";
   import { _ } from "svelte-i18n";
 
-  let pendingDeleteId = $state(null);
-  let goals = $state([]);
+  let pendingDeleteId = $state(/** @type {number | null} */ (null));
+  let goals = $state(/** @type {any[]} */ ([]));
   let isLoading = $state(true);
   let error = $state("");
   let isSaving = $state(false);
-  let items = $state([]);
+  let items = $state(/** @type {any[]} */ ([]));
   let showFormMobile = $state(false);
 
   // Form state
-  let editingGoal = $state(null);
+  let editingGoal = $state(/** @type {any} */ (null));
   let formHeroId = $state("");
   let formMetric = $state("LastHits");
   let formTargetValue = $state("");
@@ -29,7 +29,7 @@
   let formGameMode = $state("All");
 
   // Analysis data for contextual warnings
-  let analysisData = $state(null);
+  let analysisData = $state(/** @type {any} */ (null));
 
   const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
@@ -77,12 +77,14 @@
     }
   }
 
+  /** @param {number} heroId */
   function getHeroAverage(heroId) {
     if (!analysisData?.per_hero_stats) return null;
-    const stat = analysisData.per_hero_stats.find(s => s.hero_id === heroId);
+    const stat = analysisData.per_hero_stats.find((/** @type {any} */ s) => s.hero_id === heroId);
     return stat ? stat.average : null;
   }
 
+  /** @param {any} goal */
   function getContextualWarning(goal) {
     if (goal.metric !== 'LastHits' || goal.hero_id === null || goal.hero_scope !== null) return null;
     const avg = getHeroAverage(goal.hero_id);
@@ -100,6 +102,7 @@
     { value: "any_support", label: "Any Support (pos 4/5)" },
   ];
 
+  /** @param {string} val */
   function parseHeroValue(val) {
     if (!val) return { hero_id: null, hero_scope: null };
     if (HERO_SCOPES.includes(val)) return { hero_id: null, hero_scope: val };
@@ -119,6 +122,7 @@
     showFormMobile = false;
   }
 
+  /** @param {any} goal */
   function editGoal(goal) {
     editingGoal = goal;
     formHeroId = goal.hero_scope ?? (goal.hero_id !== null ? goal.hero_id.toString() : "");
@@ -135,6 +139,7 @@
     document.querySelector('.create-form')?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  /** @param {SubmitEvent} event */
   async function handleSubmit(event) {
     event.preventDefault();
     error = "";
@@ -216,6 +221,7 @@
     }
   }
 
+  /** @param {number} goalId */
   async function confirmDelete(goalId) {
     pendingDeleteId = goalId;
   }
@@ -224,6 +230,7 @@
     pendingDeleteId = null;
   }
 
+  /** @param {number} goalId */
   async function deleteGoal(goalId) {
     pendingDeleteId = null;
     try {
@@ -236,6 +243,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -249,6 +257,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -260,11 +269,13 @@
     }
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {any} goal */
   function getHeroLabel(goal) {
     if (goal.hero_scope) {
       const g = HERO_GROUP_OPTIONS.find(o => o.value === goal.hero_scope);
@@ -273,6 +284,7 @@
     return goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
   }
 
+  /** @param {any} goal */
   function formatGoalDescription(goal) {
     const heroName = getHeroLabel(goal);
     if (goal.metric === "ItemTiming") {
@@ -291,6 +303,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getGoalTypeTag(metric) {
     switch (metric) {
       case "LastHits": return { tkey: 'goals.tag_cs', cls: 'tag-cs' };

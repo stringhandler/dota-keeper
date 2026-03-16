@@ -8,11 +8,12 @@
   import Chart from "$lib/Chart.svelte";
   import { _ } from "svelte-i18n";
 
-  let matchId = $derived(parseInt($page.params.matchId));
+  let matchId = $derived(parseInt($page.params.matchId ?? '0'));
+  /** @type {any} */
   let match = $state(null);
-  let csData = $state([]);
-  let goalDetails = $state([]);
-  let items = $state([]);
+  let csData = $state(/** @type {any[]} */ ([]));
+  let goalDetails = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
   let isLoading = $state(true);
   let error = $state("");
 
@@ -29,7 +30,7 @@
         invoke("get_all_items"),
       ]);
 
-      match = allMatches.find((m) => m.match_id === matchId) ?? null;
+      match = allMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
       csData = cs;
       goalDetails = goals;
       items = allItems;
@@ -44,21 +45,25 @@
     }
   }
 
+  /** @param {number} seconds */
   function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     return new Date(timestamp * 1000).toLocaleString();
   }
 
+  /** @param {any} m */
   function isWin(m) {
     const isRadiant = m.player_slot < 128;
     return (isRadiant && m.radiant_win) || (!isRadiant && !m.radiant_win);
   }
 
+  /** @param {number} gameMode */
   function getGameModeName(gameMode) {
     switch (gameMode) {
       case 0: return "Unknown";
@@ -80,6 +85,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -91,6 +97,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -100,17 +107,20 @@
     }
   }
 
+  /** @param {number} totalSeconds */
   function formatSeconds(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {number} mid */
   async function openInOpenDota(mid) {
     try {
       await openUrl(`https://www.opendota.com/matches/${mid}`);

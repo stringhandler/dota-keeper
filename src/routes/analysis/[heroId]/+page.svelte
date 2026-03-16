@@ -13,14 +13,14 @@
   // Filters
   let timeMinutes = $state(10);
   let windowSize = $state(30);
-  let selectedGameMode = $state(null);
+  let selectedGameMode = $state(/** @type {number | null} */ (null));
 
   // Hero ID from URL
-  let heroId = $derived(parseInt($page.params.heroId));
+  let heroId = $derived(parseInt($page.params.heroId ?? '0'));
   let heroName = $derived(getHeroName(heroId));
 
   // Analysis data
-  let analysis = $state(null);
+  let analysis = $state(/** @type {any} */ (null));
 
   // Game modes
   let gameModes = $derived([
@@ -67,7 +67,7 @@
     const n = points.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
-    points.forEach((point, index) => {
+    points.forEach((/** @type {any} */ point, /** @type {number} */ index) => {
       const x = index;
       const y = point.last_hits;
       sumX += x;
@@ -82,6 +82,7 @@
     return { slope, intercept };
   }
 
+  /** @param {number} index */
   function getTrendLineValue(index) {
     const trend = calculateTrendLine();
     if (!trend) return null;
@@ -106,6 +107,7 @@
     return "declining";
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     const date = new Date(timestamp * 1000);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -122,7 +124,7 @@
 
     for (let currentMin = 0; currentMin < 100; currentMin += bucketSize) {
       const currentMax = currentMin + bucketSize;
-      const count = points.filter(p => p.last_hits >= currentMin && p.last_hits < currentMax).length;
+      const count = points.filter((/** @type {any} */ p) => p.last_hits >= currentMin && p.last_hits < currentMax).length;
       buckets.push({
         min: currentMin,
         max: currentMax,
@@ -147,10 +149,10 @@
     return {
       type: 'line',
       data: {
-        labels: buckets.map(b => b.label),
+        labels: buckets.map((/** @type {any} */ b) => b.label),
         datasets: [{
           label: 'Game Count',
-          data: buckets.map(b => b.count),
+          data: buckets.map((/** @type {any} */ b) => b.count),
           borderColor: '#f0b429',
           backgroundColor: 'rgba(240, 180, 41, 0.15)',
           borderWidth: 2,
@@ -181,6 +183,7 @@
             padding: 10,
             displayColors: false,
             callbacks: {
+              /** @param {import('chart.js').TooltipItem<'line'>} context */
               label: function(context) {
                 return `${context.parsed.y} games`;
               }
@@ -234,11 +237,11 @@
     return {
       type: 'line',
       data: {
-        labels: points.map((p, i) => `Game ${i + 1}`),
+        labels: points.map((/** @type {any} */ p, /** @type {number} */ i) => `Game ${i + 1}`),
         datasets: [
           {
             label: 'Last Hits',
-            data: points.map(p => p.last_hits),
+            data: points.map((/** @type {any} */ p) => p.last_hits),
             borderColor: '#f0b429',
             backgroundColor: 'rgba(240, 180, 41, 0.08)',
             borderWidth: 2,
@@ -252,7 +255,7 @@
           },
           trendLine ? {
             label: 'Trend',
-            data: points.map((_, i) => getTrendLineValue(i)),
+            data: points.map((/** @type {any} */ _, /** @type {number} */ i) => getTrendLineValue(i)),
             borderColor: 'rgba(74, 222, 128, 0.7)',
             backgroundColor: 'transparent',
             borderWidth: 1.5,
@@ -290,15 +293,17 @@
             borderWidth: 1,
             padding: 10,
             callbacks: {
+              /** @param {import('chart.js').TooltipItem<'line'>[]} context */
               title: function(context) {
                 const point = points[context[0].dataIndex];
                 return formatDate(point.start_time);
               },
+              /** @param {import('chart.js').TooltipItem<'line'>} context */
               label: function(context) {
                 if (context.datasetIndex === 0) {
                   return `Last Hits: ${context.parsed.y}`;
                 } else {
-                  return `Trend: ${context.parsed.y.toFixed(1)}`;
+                  return `Trend: ${(context.parsed.y ?? 0).toFixed(1)}`;
                 }
               }
             }

@@ -37,7 +37,7 @@
   let bgParsePending = $state(0);
   let appVersion = $state("");
   let checkingUpdate = $state(false);
-  let updateResult = $state(null);
+  let updateResult = $state(/** @type {{ available: boolean, version?: string, update?: import('@tauri-apps/plugin-updater').Update } | null} */ (null));
   let updateError = $state("");
   let isInstalling = $state(false);
 
@@ -47,7 +47,9 @@
   let opendotaApiKey = $state("");
   let isSavingProvider = $state(false);
 
+  /** @type {(() => void) | undefined} */
   let unlistenBgParse;
+  /** @type {(() => void) | undefined} */
   let unlistenBackfill;
 
   onMount(async () => {
@@ -149,6 +151,7 @@
     }
   }
 
+  /** @param {string} provider */
   async function saveDataProvider(provider) {
     dataProvider = provider;
     isSavingProvider = true;
@@ -261,6 +264,7 @@
     }
   }
 
+  /** @param {boolean} enabled */
   async function togglePrivacyMode(enabled) {
     try {
       await invoke("save_privacy_mode", { enabled });
@@ -280,6 +284,7 @@
     }
   }
 
+  /** @param {boolean} enabled */
   async function toggleBackgroundParse(enabled) {
     try {
       await invoke("save_background_parse_enabled", { enabled });
@@ -299,6 +304,7 @@
     }
   }
 
+  /** @param {string} frequency */
   async function saveCheckinFrequency(frequency) {
     checkinFrequency = frequency;
     try {
@@ -308,6 +314,7 @@
     }
   }
 
+  /** @param {boolean} enabled */
   async function toggleMentalHealth(enabled) {
     isSavingMentalHealth = true;
     error = "";
@@ -355,6 +362,7 @@
     }
   }
 
+  /** @param {string} consent */
   async function saveAnalytics(consent) {
     error = "";
     successMessage = "";
@@ -465,7 +473,7 @@
     isInstalling = true;
     updateError = "";
     try {
-      await updateResult.update.downloadAndInstall();
+      await updateResult.update?.downloadAndInstall();
       await relaunch();
     } catch (e) {
       updateError = `Failed to install update: ${e}`;
@@ -966,7 +974,7 @@
           <select
             class="frequency-select"
             value={checkinFrequency}
-            onchange={(e) => saveCheckinFrequency(e.target.value)}
+            onchange={(e) => saveCheckinFrequency(/** @type {HTMLSelectElement} */ (e.target).value)}
           >
             <option value="every_game">{$_('settings.freq_every')}</option>
             <option value="every_3">{$_('settings.freq_every_3')}</option>

@@ -41,6 +41,7 @@
     }
   ];
 
+  /** @param {{ href: string, exact: boolean }} item */
   function isActive(item) {
     if (item.exact) return $page.url.pathname === item.href;
     return $page.url.pathname.startsWith(item.href);

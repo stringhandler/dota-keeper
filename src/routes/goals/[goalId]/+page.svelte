@@ -10,9 +10,9 @@
   import { _ } from "svelte-i18n";
 
   let goalId = $derived($page.params.goalId);
-  let goal = $state(null);
-  let matchData = $state([]);
-  let items = $state([]);
+  let goal = $state(/** @type {any} */ (null));
+  let matchData = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
   let isLoading = $state(true);
   let error = $state("");
   let editSuccess = $state("");
@@ -97,7 +97,7 @@
         total: 0,
         achieved: 0,
         failed: 0,
-        achievementRate: 0,
+        achievementRate: '0',
         avgValue: 0,
         minValue: 0,
         maxValue: 0,
@@ -184,11 +184,13 @@
 
     const overlayPlugin = {
       id: 'goalLines',
+      /** @param {import('chart.js').Chart} chart */
       afterDraw(chart) {
         const ctx = chart.ctx;
         const xScale = chart.scales.x;
         const yScale = chart.scales.y;
 
+        /** @param {number} value @param {string} color @param {number[]} dash @param {string} label @param {number} labelY */
         const drawVLine = (value, color, dash, label, labelY) => {
           const binIdx = bins.findIndex((b, i) =>
             value >= b.start && (i === bins.length - 1 ? value < b.end + b.end - b.start : value < b.end)
@@ -211,15 +213,16 @@
           ctx.restore();
         };
 
+        /** @param {number} v */
         const fmt = (v) => goal.metric === 'ItemTiming' ? formatSeconds(v) : String(v);
 
         drawVLine(goal.target_value, '#f0b429', [5, 5], `Target: ${fmt(goal.target_value)}`, yScale.top - 4);
 
-        if (stats.avgWinValue !== null) {
-          drawVLine(stats.avgWinValue, 'rgba(74,222,128,0.9)', [4, 3], `W avg: ${fmt(stats.avgWinValue)}`, yScale.top + 12);
+        if (stats.avgWinValue !== null && stats.avgWinValue !== undefined) {
+          drawVLine(/** @type {number} */ (stats.avgWinValue), 'rgba(74,222,128,0.9)', [4, 3], `W avg: ${fmt(/** @type {number} */ (stats.avgWinValue))}`, yScale.top + 12);
         }
-        if (stats.avgLossValue !== null) {
-          drawVLine(stats.avgLossValue, 'rgba(248,113,113,0.9)', [4, 3], `L avg: ${fmt(stats.avgLossValue)}`, yScale.top + 24);
+        if (stats.avgLossValue !== null && stats.avgLossValue !== undefined) {
+          drawVLine(/** @type {number} */ (stats.avgLossValue), 'rgba(248,113,113,0.9)', [4, 3], `L avg: ${fmt(/** @type {number} */ (stats.avgLossValue))}`, yScale.top + 24);
         }
       }
     };
@@ -261,13 +264,13 @@
             padding: 10,
             displayColors: true,
             callbacks: {
-              title: (items) => {
+              title: (/** @type {import('chart.js').TooltipItem<'bar'>[]} */ items) => {
                 const b = bins[items[0].dataIndex];
                 return goal.metric === 'ItemTiming'
                   ? `${formatSeconds(b.start)} – ${formatSeconds(b.end)}`
                   : `${b.start} – ${b.end - 1}`;
               },
-              label: (item) => `${item.dataset.label}: ${item.parsed.y} games`,
+              label: (/** @type {import('chart.js').TooltipItem<'bar'>} */ item) => `${item.dataset.label}: ${item.parsed.y} games`,
             },
           },
         },
@@ -301,7 +304,7 @@
   });
 
   let bannerDismissed = $state(false);
-  let hoveredDot = $state(null);
+  let hoveredDot = $state(/** @type {any} */ (null));
 
   function dismissBanner() {
     bannerDismissed = true;
@@ -310,6 +313,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** @param {number} suggestedValue */
   function applyGoalSuggestion(suggestedValue) {
     startEdit();
     if (goal?.metric === 'ItemTiming') {
@@ -320,6 +324,7 @@
     }
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     return new Date(timestamp * 1000).toLocaleDateString();
   }
@@ -343,8 +348,8 @@
     error = "";
     try {
       [goal, matchData, items] = await Promise.all([
-        invoke("get_goal", { goalId: parseInt(goalId) }),
-        invoke("get_goal_histogram_data", { goalId: parseInt(goalId) }),
+        invoke("get_goal", { goalId: parseInt(goalId ?? '0') }),
+        invoke("get_goal_histogram_data", { goalId: parseInt(goalId ?? '0') }),
         invoke("get_all_items"),
       ]);
     } catch (e) {
@@ -354,11 +359,13 @@
     }
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {number} totalSeconds */
   function formatSeconds(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -370,6 +377,7 @@
     selectedPeriod = "";
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth":
@@ -391,6 +399,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth":
@@ -412,6 +421,7 @@
     }
   }
 
+  /** @param {any} g */
   function getHeroLabel(g) {
     if (g.hero_scope) {
       const opt = HERO_GROUP_OPTIONS.find(o => o.value === g.hero_scope);
@@ -420,6 +430,7 @@
     return g.hero_id !== null ? getHeroName(g.hero_id) : "Any Hero";
   }
 
+  /** @param {any} g */
   function formatGoalDescription(g) {
     if (!g) return "";
     const heroName = getHeroLabel(g);
@@ -437,6 +448,7 @@
     return `${heroName}: ${valueStr} by ${g.target_time_minutes} min${modeStr}`;
   }
 
+  /** @param {any} value @param {string} metric */
   function formatStatValue(value, metric) {
     if (metric === "ItemTiming") return formatSeconds(value);
     return value;
@@ -449,6 +461,7 @@
     { value: "any_support", label: "Any Support (pos 4/5)" },
   ];
 
+  /** @param {string} val */
   function parseHeroValue(val) {
     if (!val) return { hero_id: null, hero_scope: null };
     if (HERO_SCOPES.includes(val)) return { hero_id: null, hero_scope: val };

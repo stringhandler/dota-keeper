@@ -2,8 +2,9 @@
   import { getHeroIconUrl } from './heroes.js';
   import { _ } from "svelte-i18n";
 
+  /** @type {{ value?: string|number|null, heroes?: Array<{id: number|string, name: string}>, favoriteIds?: Set<any>, anyLabel?: string, anyValue?: string|null, groupOptions?: Array<{value: string, label: string}>, onchange?: (() => void) | null }} */
   let {
-    value = $bindable(''),
+    value = $bindable(/** @type {string|number|null} */ ('')),
     heroes = [],
     favoriteIds = new Set(),
     anyLabel = 'Any Hero',
@@ -13,7 +14,7 @@
   } = $props();
 
   let isOpen = $state(false);
-  let containerEl = $state(null);
+  let containerEl = /** @type {HTMLDivElement | null} */ ($state(null));
   let triggerImgError = $state(false);
 
   let favoriteHeroList = $derived(heroes.filter(h => favoriteIds.has(h.id)));
@@ -36,6 +37,15 @@
     triggerImgError = false;
   });
 
+  /**
+   * @param {{id: number|string, name: string}} hero
+   * @param {boolean} isSelected
+   */
+  function heroOptionData(hero, isSelected) {
+    return { typedHero: hero, isSelected, iconUrl: getHeroIconUrl(hero.id) };
+  }
+
+  /** @param {string|number} heroId */
   function selectHero(heroId) {
     value = heroId;
     isOpen = false;
@@ -54,11 +64,13 @@
 
   $effect(() => {
     if (!isOpen) return;
+    /** @param {MouseEvent} e */
     function handleClick(e) {
-      if (containerEl && !containerEl.contains(e.target)) {
+      if (containerEl && !containerEl.contains(/** @type {Node} */ (e.target))) {
         isOpen = false;
       }
     }
+    /** @param {KeyboardEvent} e */
     function handleKeydown(e) {
       if (e.key === 'Escape') isOpen = false;
     }
@@ -71,34 +83,6 @@
   });
 </script>
 
-{#snippet heroOptionRow(hero, selected)}
-  {@const iconUrl = getHeroIconUrl(hero.id)}
-  <div
-    class="hero-option"
-    class:selected
-    role="option"
-    aria-selected={selected}
-    tabindex="0"
-    onclick={() => selectHero(hero.id)}
-    onkeydown={(e) => e.key === 'Enter' && selectHero(hero.id)}
-  >
-    <span class="option-icon-wrap">
-      {#if iconUrl}
-        <img
-          src={iconUrl}
-          alt={hero.name}
-          class="option-icon"
-          loading="lazy"
-          onerror={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
-        />
-        <span class="option-icon-fallback" style="display:none">{hero.name.substring(0, 2).toUpperCase()}</span>
-      {:else}
-        <span class="option-icon-fallback">{hero.name.substring(0, 2).toUpperCase()}</span>
-      {/if}
-    </span>
-    <span class="option-name">{hero.name}</span>
-  </div>
-{/snippet}
 
 <div class="hero-select" bind:this={containerEl}>
   <button type="button" class="hero-select-trigger" class:open={isOpen} onclick={toggle}>
@@ -158,13 +142,53 @@
       {#if favoriteHeroList.length > 0}
         <div class="group-label">{$_('hero_select.favorites')}</div>
         {#each favoriteHeroList as hero (hero.id)}
-          {@render heroOptionRow(hero, hero.id == value)}
+          {@const hd = heroOptionData(hero, hero.id == value)}
+          <div
+            class="hero-option"
+            class:selected={hd.isSelected}
+            role="option"
+            aria-selected={hd.isSelected}
+            tabindex="0"
+            onclick={() => selectHero(hd.typedHero.id)}
+            onkeydown={(e) => e.key === 'Enter' && selectHero(hd.typedHero.id)}
+          >
+            <span class="option-icon-wrap">
+              {#if hd.iconUrl}
+                <img src={hd.iconUrl} alt={hd.typedHero.name} class="option-icon" loading="lazy"
+                  onerror={(e) => { const img = /** @type {HTMLImageElement} */ (e.currentTarget); img.style.display = 'none'; const sib = /** @type {HTMLElement | null} */ (img.nextElementSibling); if (sib) sib.style.display = 'flex'; }} />
+                <span class="option-icon-fallback" style="display:none">{hd.typedHero.name.substring(0, 2).toUpperCase()}</span>
+              {:else}
+                <span class="option-icon-fallback">{hd.typedHero.name.substring(0, 2).toUpperCase()}</span>
+              {/if}
+            </span>
+            <span class="option-name">{hd.typedHero.name}</span>
+          </div>
         {/each}
       {/if}
 
       <div class="group-label">{$_('hero_select.all_heroes')}</div>
       {#each otherHeroList as hero (hero.id)}
-        {@render heroOptionRow(hero, hero.id == value)}
+        {@const hd = heroOptionData(hero, hero.id == value)}
+        <div
+          class="hero-option"
+          class:selected={hd.isSelected}
+          role="option"
+          aria-selected={hd.isSelected}
+          tabindex="0"
+          onclick={() => selectHero(hd.typedHero.id)}
+          onkeydown={(e) => e.key === 'Enter' && selectHero(hd.typedHero.id)}
+        >
+          <span class="option-icon-wrap">
+            {#if hd.iconUrl}
+              <img src={hd.iconUrl} alt={hd.typedHero.name} class="option-icon" loading="lazy"
+                onerror={(e) => { const img = /** @type {HTMLImageElement} */ (e.currentTarget); img.style.display = 'none'; const sib = /** @type {HTMLElement | null} */ (img.nextElementSibling); if (sib) sib.style.display = 'flex'; }} />
+              <span class="option-icon-fallback" style="display:none">{hd.typedHero.name.substring(0, 2).toUpperCase()}</span>
+            {:else}
+              <span class="option-icon-fallback">{hd.typedHero.name.substring(0, 2).toUpperCase()}</span>
+            {/if}
+          </span>
+          <span class="option-name">{hd.typedHero.name}</span>
+        </div>
       {/each}
     </div>
   {/if}

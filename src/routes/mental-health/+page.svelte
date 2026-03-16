@@ -7,8 +7,8 @@
 
   let isLoading = $state(true);
   let error = $state("");
-  let assessment = $state(null);
-  let history = $state([]);
+  let assessment = $state(/** @type {any} */ (null));
+  let history = $state(/** @type {any[]} */ ([]));
   let trackingEnabled = $state(false);
 
   onMount(async () => {
@@ -38,10 +38,12 @@
     }
   }
 
+  /** @param {number} ts */
   function formatDate(ts) {
     return new Date(ts * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   }
 
+  /** @param {number} ts */
   function formatTime(ts) {
     return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   }
@@ -51,6 +53,7 @@
   const energyLabels = ["", "Drained", "Tired", "Neutral", "Good", "Energised"];
   const calmLabels   = ["", "Very frustrated", "Frustrated", "Neutral", "Calm", "Zen"];
 
+  /** @param {string} trend */
   function trendArrow(trend) {
     if (trend === "improving") return "↗";
     if (trend === "declining") return "↘";
@@ -58,6 +61,7 @@
     return "";
   }
 
+  /** @param {string} trend */
   function trendTKey(trend) {
     if (trend === "improving") return 'mental_health.trend_improving';
     if (trend === "declining") return 'mental_health.trend_declining';
@@ -65,12 +69,14 @@
     return null;
   }
 
+  /** @param {string} trend */
   function trendColor(trend) {
     if (trend === "improving") return "var(--green)";
     if (trend === "declining") return "var(--red)";
     return "var(--gold)";
   }
 
+  /** @param {number} value @param {number} [max] */
   function barPct(value, max = 5) {
     return `${Math.round((value / max) * 100)}%`;
   }
@@ -140,7 +146,7 @@
 
           {#if assessment.trend !== "insufficient_data"}
             <div class="trend-line" style="color: {trendColor(assessment.trend)}">
-              {trendArrow(assessment.trend)} {trendTKey(assessment.trend) ? $_(trendTKey(assessment.trend)) : ''}
+              {trendArrow(assessment.trend)} {#if trendTKey(assessment.trend)}{$_(/** @type {string} */ (trendTKey(assessment.trend)))}{/if}
             </div>
           {/if}
         {/if}

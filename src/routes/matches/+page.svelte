@@ -13,14 +13,16 @@
 
   let isLoading = $state(true);
   let error = $state("");
-  let matches = $state([]);
-  let items = $state([]);
+  let matches = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
   let isRefreshing = $state(false);
-  let selectedMatch = $state(null);
-  let goalDetails = $state([]);
-  let copiedMatchId = $state(null);
+  let selectedMatch = $state(/** @type {any} */ (null));
+  let goalDetails = $state(/** @type {any[]} */ ([]));
+  let copiedMatchId = $state(/** @type {number | null} */ (null));
   let currentSteamId = $state("");
+  /** @type {(() => void) | null} */
   let unlistenMatchStateChanged = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
   let autoRefreshTimer = null;
 
   // Filter
@@ -135,36 +137,43 @@
     }
   }
 
+  /** @param {number} seconds */
   function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     const d = new Date(timestamp * 1000);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
+  /** @param {any} match */
   function isWin(match) {
     const isRadiant = match.player_slot < 128;
     return (isRadiant && match.radiant_win) || (!isRadiant && !match.radiant_win);
   }
 
+  /** @param {number} gameMode */
   function isTurbo(gameMode) {
     return gameMode === 21 || gameMode === 23;
   }
 
+  /** @param {number} gameMode */
   function isRanked(gameMode) {
     return gameMode === 20 || gameMode === 22;
   }
 
+  /** @param {number} gameMode */
   function getModeTag(gameMode) {
     if (isTurbo(gameMode)) return { cls: 'mode-turbo', label: 'Turbo' };
     if (isRanked(gameMode)) return { cls: 'mode-ranked', label: 'Ranked' };
     return { cls: 'mode-other', label: getGameModeName(gameMode) };
   }
 
+  /** @param {any} match */
   async function showGoalDetails(match) {
     selectedMatch = match;
     try {
@@ -180,6 +189,7 @@
     goalDetails = [];
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -191,6 +201,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -201,17 +212,20 @@
     }
   }
 
+  /** @param {number} totalSeconds */
   function formatSeconds(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {number} matchId */
   async function copyMatchId(matchId) {
     try {
       await navigator.clipboard.writeText(matchId.toString());
@@ -222,6 +236,7 @@
     }
   }
 
+  /** @param {number} matchId */
   async function openInOpenDota(matchId) {
     try {
       await openUrl(`https://www.opendota.com/matches/${matchId}`);
@@ -243,6 +258,7 @@
     }
   }
 
+  /** @param {number} role */
   function getRoleTKey(role) {
     switch (role) {
       case 1: return "matches.role_carry";
@@ -254,6 +270,7 @@
     }
   }
 
+  /** @param {number} gameMode */
   function getGameModeName(gameMode) {
     switch (gameMode) {
       case 0: return "Unknown";
@@ -270,6 +287,7 @@
   }
 
   // Filter logic
+  /** @param {string} filter */
   function setFilter(filter) {
     activeFilter = filter;
     currentPage = 1;
@@ -312,6 +330,7 @@
     return Math.ceil(getFilteredMatches().length / pageSize);
   }
 
+  /** @param {number} page */
   function goToPage(page) {
     const totalPages = getTotalPages();
     if (page >= 1 && page <= totalPages) currentPage = page;
@@ -416,7 +435,7 @@
           </div>
 
           <!-- Role -->
-          <div class="td-role td-text">{getRoleTKey(match.role) ? $_( getRoleTKey(match.role)) : '—'}</div>
+          <div class="td-role td-text">{getRoleTKey(match.role) ? $_(/** @type {string} */ (getRoleTKey(match.role))) : '—'}</div>
 
           <!-- Result -->
           <div class="td-result {isWin(match) ? 'result-win' : 'result-loss'}">
@@ -437,7 +456,7 @@
             {#if match.parse_state === "Parsing" || pqs.active.has(match.match_id)}
               <span class="parsing-badge">Parsing…</span>
             {:else if pqs.errors.has(match.match_id)}
-              {@const errMsg = pqs.errors.get(match.match_id)}
+              {@const errMsg = pqs.errors.get(match.match_id) ?? ''}
               {@const pending = isPendingError(errMsg)}
               {@const countdown = pqs.countdowns.get(match.match_id)}
               {#if pending}

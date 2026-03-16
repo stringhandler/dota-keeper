@@ -129,8 +129,12 @@ export const heroes = {
   155: "Largo",
 };
 
+/**
+ * @param {number | string} heroId
+ * @returns {string}
+ */
 export function getHeroName(heroId) {
-  return heroes[heroId] || `Unknown (${heroId})`;
+  return /** @type {Record<number | string, string>} */ (heroes)[heroId] || `Unknown (${heroId})`;
 }
 
 /**
@@ -140,8 +144,12 @@ export function getHeroName(heroId) {
  * - "Queen of Pain" -> "queenofpain"
  * - "Nature's Prophet" -> "furion"
  */
+/**
+ * @param {number | string} heroId
+ * @returns {string | null}
+ */
 export function getHeroUrlName(heroId) {
-  const heroName = heroes[heroId];
+  const heroName = /** @type {Record<number | string, string>} */ (heroes)[heroId];
   if (!heroName) return null;
 
   // Special cases that don't follow the pattern
@@ -167,8 +175,8 @@ export function getHeroUrlName(heroId) {
     "Zeus": "zuus",
   };
 
-  if (specialCases[heroName]) {
-    return specialCases[heroName];
+  if (/** @type {Record<string, string>} */ (specialCases)[heroName]) {
+    return /** @type {Record<string, string>} */ (specialCases)[heroName];
   }
 
   // Default transformation: lowercase, remove special chars, replace spaces with underscores
@@ -180,6 +188,10 @@ export function getHeroUrlName(heroId) {
 
 /**
  * Get the OpenDota CDN URL for a hero's icon
+ */
+/**
+ * @param {number | string} heroId
+ * @returns {string | null}
  */
 export function getHeroIconUrl(heroId) {
   const urlName = getHeroUrlName(heroId);

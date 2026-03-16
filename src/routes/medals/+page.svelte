@@ -5,8 +5,8 @@
 
   let isLoading = $state(true);
   let error = $state("");
-  let history = $state([]);
-  let stats = $state(null);
+  let history = $state(/** @type {any[]} */ ([]));
+  let stats = $state(/** @type {any} */ (null));
 
   // rank_tier encoding: major = Math.floor(tier / 10), stars = tier % 10
   // 11-15 = Herald 1-5, 21-25 = Guardian 1-5, ..., 71-75 = Divine 1-5, 80 = Immortal
@@ -23,6 +23,7 @@
     "#f0b429", // Immortal
   ];
 
+  /** @param {number} rankTier */
   function getMedalName(rankTier) {
     if (!rankTier) return "Unranked";
     const major = Math.floor(rankTier / 10);
@@ -32,17 +33,20 @@
     return "Unranked";
   }
 
+  /** @param {number | null | undefined} rankTier */
   function getMedalColor(rankTier) {
     if (!rankTier) return "#555";
     const major = Math.floor(rankTier / 10);
     return MEDAL_COLORS[major] || "#555";
   }
 
+  /** @param {number} rankTier */
   function getMedalMajor(rankTier) {
     if (!rankTier) return 0;
     return Math.floor(rankTier / 10);
   }
 
+  /** @param {number} rankTier */
   function getMedalStars(rankTier) {
     if (!rankTier) return 0;
     const major = Math.floor(rankTier / 10);
@@ -50,6 +54,7 @@
     return rankTier % 10;
   }
 
+  /** @param {number} ts */
   function formatDate(ts) {
     return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }

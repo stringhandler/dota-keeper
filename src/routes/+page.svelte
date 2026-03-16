@@ -12,19 +12,20 @@
 
   let isLoading = $state(true);
   let error = $state("");
-  let goalCalendar = $state([]);
-  let heroSuggestion = $state(null);
-  let goals = $state([]);
-  let items = $state([]);
-  let dailyProgress = $state(null);
+  let goalCalendar = $state(/** @type {any[]} */ ([]));
+  let heroSuggestion = $state(/** @type {any} */ (null));
+  let goals = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
+  let dailyProgress = $state(/** @type {any} */ (null));
   let dailyStreak = $state(0);
   let timeUntilMidnight = $state("");
+  /** @type {ReturnType<typeof setInterval> | null} */
   let midnightTimer = null;
-  let weeklyProgress = $state(null);
+  let weeklyProgress = $state(/** @type {any} */ (null));
 
   // Quick stats
-  let recentMatches = $state([]);
-  let analysisData = $state(null);
+  let recentMatches = $state(/** @type {any[]} */ ([]));
+  let analysisData = $state(/** @type {any} */ (null));
 
   // Mental health check-in (set by matches page after finding new matches)
   let pendingCheckin = $derived($pendingCheckinStore);
@@ -94,7 +95,7 @@
     const now = new Date();
     const midnight = new Date(now);
     midnight.setHours(24, 0, 0, 0);
-    const diffMs = midnight - now;
+    const diffMs = midnight.getTime() - now.getTime();
     const hours = Math.floor(diffMs / 3600000);
     const mins = Math.floor((diffMs % 3600000) / 60000);
     timeUntilMidnight = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -139,16 +140,19 @@
     }
   }
 
+  /** @param {any} p */
   function weeklyProgressPct(p) {
     if (!p || p.target <= 0) return 0;
     return Math.min(100, Math.round((p.current_value / p.target) * 100));
   }
 
+  /** @param {any} progress */
   function getDailyProgressPct(progress) {
     if (!progress) return 0;
     return Math.min(100, Math.round((progress.current_value / progress.target) * 100));
   }
 
+  /** @param {any} progress */
   function formatDailyDescription(progress) {
     if (!progress) return "";
     const c = progress.challenge;
@@ -187,6 +191,7 @@
     }
   }
 
+  /** @param {any} suggestion */
   async function acceptSuggestion(suggestion) {
     try {
       await invoke("create_goal", {
@@ -212,6 +217,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -222,6 +228,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -232,11 +239,13 @@
     }
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {any} goal */
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
     if (goal.metric === "ItemTiming") {
@@ -253,76 +262,83 @@
     }
   }
 
+  /** @param {any} day */
   function getDotClass(day) {
     if (day.total === 0) return 'empty';
     return day.achieved > 0 ? 'hit' : 'miss';
   }
 
+  /** @param {any} day */
   function getDotContent(day) {
     if (day.total === 0) return '';
     return day.achieved > 0 ? '✓' : '✗';
   }
 
+  /** @param {any} goalData */
   function getHitRate(goalData) {
-    const total = goalData.daily_progress.reduce((s, d) => s + d.total, 0);
-    const hit = goalData.daily_progress.reduce((s, d) => s + d.achieved, 0);
+    const total = goalData.daily_progress.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
+    const hit = goalData.daily_progress.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0);
     if (total === 0) return 0;
     return (hit / total) * 100;
   }
 
+  /** @param {any} goalData */
   function getTrendLabel(goalData) {
     const days = goalData.daily_progress;
     const recent = days.slice(-3);
     const earlier = days.slice(0, 4);
-    const recentTotal = recent.reduce((s, d) => s + d.total, 0);
-    const earlierTotal = earlier.reduce((s, d) => s + d.total, 0);
+    const recentTotal = recent.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
+    const earlierTotal = earlier.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
     if (recentTotal === 0 && earlierTotal === 0) return null;
     const recentRate = recentTotal > 0
-      ? recent.reduce((s, d) => s + d.achieved, 0) / recentTotal
+      ? recent.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0) / recentTotal
       : 0;
     const earlierRate = earlierTotal > 0
-      ? earlier.reduce((s, d) => s + d.achieved, 0) / earlierTotal
+      ? earlier.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0) / earlierTotal
       : 0;
     if (recentRate > earlierRate + 0.15) return { label: $_('dashboard.improving'), cls: 'improving' };
     if (recentRate < earlierRate - 0.15) return { label: $_('dashboard.declining'), cls: 'declining' };
     return { label: $_('dashboard.stable'), cls: 'stable' };
   }
 
+  /** @param {any} goalData */
   function getSparklineData(goalData) {
     const days = goalData.daily_progress;
     const n = days.length;
     if (n === 0) return null;
 
-    const rates = days.map(d => d.total > 0 ? d.achieved / d.total : null);
+    const rates = days.map((/** @type {any} */ d) => d.total > 0 ? d.achieved / d.total : null);
 
     // 3-day trailing moving average
-    const ma = rates.map((_, i) => {
-      const win = rates.slice(Math.max(0, i - 2), i + 1).filter(r => r !== null);
-      return win.length > 0 ? win.reduce((a, b) => a + b, 0) / win.length : null;
+    const ma = rates.map((/** @type {number | null} */ _, /** @type {number} */ i) => {
+      const win = rates.slice(Math.max(0, i - 2), i + 1).filter((/** @type {number | null} */ r) => r !== null);
+      return win.length > 0 ? win.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) / win.length : null;
     });
 
     const W = 110, H = 40, px = 8, py = 6;
     const iW = W - px * 2, iH = H - py * 2;
 
-    const pts = ma
-      .map((v, i) => v !== null
+    const pts = /** @type {{x: number, y: number}[]} */ (ma
+      .map((/** @type {number | null} */ v, /** @type {number} */ i) => v !== null
         ? { x: px + (n > 1 ? (i / (n - 1)) * iW : iW / 2), y: py + (1 - v) * iH }
         : null)
-      .filter(Boolean);
+      .filter(Boolean));
 
     if (pts.length === 0) return null;
 
+    /** @param {{x: number, y: number}} p */
     const fmt = p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
     const bottom = H - py;
     const linePoints = pts.map(fmt).join(' ');
     const fillPath =
       `M${fmt(pts[0])} ` +
-      pts.slice(1).map(p => `L${fmt(p)}`).join(' ') +
+      pts.slice(1).map((/** @type {{x: number, y: number}} */ p) => `L${fmt(p)}`).join(' ') +
       ` L${pts[pts.length - 1].x.toFixed(1)},${bottom} L${pts[0].x.toFixed(1)},${bottom} Z`;
 
     return { linePoints, fillPath, lastPt: pts[pts.length - 1] };
   }
 
+  /** @param {string} dateString */
   function formatDayLabel(dateString) {
     const date = new Date(dateString + "T00:00:00Z");
     const today = new Date();
