@@ -1,23 +1,23 @@
 {
-  "version": "0.4.0",
-  "notes": "Beta release v0.4.0",
-  "pub_date": "2026-03-15T17:20:11Z",
+  "version": "0.4.2",
+  "notes": "Beta release v0.4.2",
+  "pub_date": "2026-03-17T07:13:07Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.0-beta/Dota.Keeper.Beta_0.4.0_x64_en-US.msi"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3B6Q29iUnNzSjJGWWp3bkFSMGEyTFNKVkJQYll3QlZYdS90NDl1Yzh1dXRrYUZhRkV5dTY3a05NSzIxVW5WVXFmZGpMNVA5b29qVGEycys4WURDZUFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTk1MTk3CWZpbGU6RG90YSBLZWVwZXJfMC40LjJfeDY0X2VuLVVTLm1zaQozSlpzaGdGSktLSFZZOEZkOWZTbTRTaWNYWDlIb1J4Tndscnc3YlRPaWthL3RMbytjOHF3anlWSW4xVnVLZWZPdGJFcEZJb2FNZEs3RDJUdG91WjVCQT09Cg==",
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.2-beta/Dota.Keeper.Beta_0.4.2_x64_en-US.msi"
     },
     "linux-x86_64": {
-      "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.0-beta/Dota.Keeper.Beta_0.4.0_amd64.AppImage.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c3BQYzZUUGQrQzQzR0hwdENySVo1eTltcktWdmd2ckhmdnZHR3ZjeVFaWjFuczFLWVJYMGxrYzdROGozYXEyNjBVck5HbytLdG16bXRoZE5FYnlBU3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTk1MTE0CWZpbGU6RG90YSBLZWVwZXJfMC40LjJfYW1kNjQuZGViCnAxclA3MzlQdmVEd1VKV2s2eFQyT1ZOR1E2TUx2K2ZJUDAvWHdwNXBVVlQxdjJRMk1qNHJkZlN4Z01Cb1pwNWRrK0hVbExGdEJXOEdJMmZ0eUxBTkNBPT0K",
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.2-beta/Dota.Keeper.Beta_0.4.2_amd64.AppImage.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.0-beta/Dota.Keeper.Beta_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c29vYlJ6MDRESFE5TmxNNEpqZmgwK0xqQ1JCZzh0NUNqZVpmV2RHV2pBSFVFR0tvcWh4U2VlUEQ3UHhYeUowMlAxcGlybldycFNEd1dIUFdlNUJXZ3d3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTk0OTIxCWZpbGU6RG90YSBLZWVwZXIuYXBwLnRhci5negpKbUJqUHZ0WWhsWWlXa1IxY1RudXFxOWsweUJNVFRCZ2VNRzJSSmRYVHl5U3hxWCtlU0tKai9Ea3hRbWsvVVFQemZ6Y09Bb21IeW1ManRSYWNQMGRCQT09Cg==",
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.2-beta/Dota.Keeper.Beta_x64.app.tar.gz"
     },
     "darwin-aarch64": {
-      "signature": "",
-      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.0-beta/Dota.Keeper.Beta_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUm9hc1VjYVA3c2dmOEd2NGZsQlhkZ1FteDZ3Y0Znekh6SmIrVGdhbnRhdEtDQk9mcjA0RUd6aFhWQmpuWnRqOFVhTi9ZRUNPQXBOWWU3VjcwRjV1UHJybzBMVTJvOFFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTk0OTI1CWZpbGU6RG90YSBLZWVwZXIuYXBwLnRhci5negowUWpacmgzUXhVQUFoYVIrcEFYNEVVOWNEOUY5cktPUG8rSzBuSzFMU3RoYktsMS9zNTZVOTYvcGZUeFdnWmMrcC9pV1dHQVgwczV2dmhWUVJwYlFBQT09Cg==",
+      "url": "https://github.com/stringhandler/dota-keeper/releases/download/v0.4.2-beta/Dota.Keeper.Beta_aarch64.app.tar.gz"
     }
   }
 }
