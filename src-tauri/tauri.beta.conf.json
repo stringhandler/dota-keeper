@@ -1,6 +1,6 @@
 {
   "productName": "Dota Keeper Beta",
-  "identifier": "com.volthawk.dota-keeper-beta",
+  "identifier": "com.dotakeeper.dotakeeper.beta",
   "plugins": {
     "updater": {
       "endpoints": [
