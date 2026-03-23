@@ -25,6 +25,45 @@
   /** @type {ReturnType<typeof setInterval> | null} */
   let autoRefreshTimer = null;
 
+  // Pull-to-refresh
+  let pullStartY = $state(0);
+  let pullDistance = $state(0);
+  let isPulling = $state(false);
+  const PULL_THRESHOLD = 80;
+
+  /** @param {TouchEvent} e */
+  function onTouchStart(e) {
+    const el = /** @type {HTMLElement} */ (e.currentTarget);
+    if (el.scrollTop === 0) {
+      pullStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }
+
+  /** @param {TouchEvent} e */
+  function onTouchMove(e) {
+    if (!isPulling) return;
+    const delta = e.touches[0].clientY - pullStartY;
+    if (delta > 0) {
+      pullDistance = Math.min(delta, PULL_THRESHOLD * 1.5);
+    } else {
+      isPulling = false;
+      pullDistance = 0;
+    }
+  }
+
+  /** @param {TouchEvent} _e */
+  async function onTouchEnd(_e) {
+    if (isPulling && pullDistance >= PULL_THRESHOLD && !isRefreshing) {
+      pullDistance = 0;
+      isPulling = false;
+      await handleRefresh();
+    } else {
+      pullDistance = 0;
+      isPulling = false;
+    }
+  }
+
   // Filter
   let activeFilter = $state('all');
 
@@ -337,7 +376,19 @@
   }
 </script>
 
-<div class="matches-content">
+<div class="matches-content"
+  ontouchstart={onTouchStart}
+  ontouchmove={onTouchMove}
+  ontouchend={onTouchEnd}
+>
+  <!-- Pull-to-refresh indicator -->
+  {#if pullDistance > 0 || isRefreshing}
+    <div class="pull-indicator" style="height: {Math.min(pullDistance, PULL_THRESHOLD)}px; opacity: {Math.min(pullDistance / PULL_THRESHOLD, 1)}">
+      <span class="pull-arrow" class:spinning={isRefreshing} style="transform: rotate({Math.min(pullDistance / PULL_THRESHOLD, 1) * 180}deg)">↻</span>
+      <span class="pull-label">{pullDistance >= PULL_THRESHOLD || isRefreshing ? (isRefreshing ? $_('matches.refreshing') : 'Release to refresh') : 'Pull to refresh'}</span>
+    </div>
+  {/if}
+
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -616,6 +667,30 @@
 
 <style>
   .matches-content { max-width: 1400px; margin: 0 auto; }
+
+  /* Pull-to-refresh */
+  .pull-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    overflow: hidden;
+    transition: height 0.1s ease;
+    color: var(--color-text-muted, #888);
+    font-size: 0.85rem;
+  }
+  .pull-arrow {
+    font-size: 1.4rem;
+    display: inline-block;
+    transition: transform 0.2s ease;
+    line-height: 1;
+  }
+  .pull-arrow.spinning {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   /* Filter bar */
   .match-filters-wrap {
