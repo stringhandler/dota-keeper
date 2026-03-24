@@ -5,6 +5,19 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-24
+
+### Added
+- **Goal Frequency Type**: Goals now have a "How often?" field — choose from Just once, On average, 50% / 75% / 90% of games. The goal detail page adapts its achievement status display accordingly. Default remains 75%.
+- **What's New Dialog**: A "What's New" modal is shown once after each app upgrade, displaying the release notes for the installed version.
+- **App Version Display**: App version is now shown in the top-left brand area of the sidebar.
+
+### Changed
+- **Performance Range Card**: Stat order changed to Worst → Avg → Best (left to right).
+
+### Fixed
+- **Clear All Matches**: Now correctly clears all match-related tables (`goal_progress`, `player_networth`, `item_timings`, `mood_checkins`) before deleting matches. Previously, orphaned records in these tables caused re-sync and re-parsing issues.
+
 ## [0.4.5] - 2026-03-23
 
 ### Added

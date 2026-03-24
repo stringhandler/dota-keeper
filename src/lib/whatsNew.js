@@ -1,5 +1,12 @@
 /** @type {Record<string, string[]>} */
 export const releaseNotes = {
+  '0.5.0': [
+    'Goal frequency type — choose how often you want to hit a goal: Just once, On average, 50% / 75% / 90% of games',
+    'What\'s New dialog shown after each upgrade',
+    'App version now shown in the sidebar',
+    'Performance Range card now ordered Worst → Avg → Best',
+    'Fixed: Clear All Matches now fully clears all related data',
+  ],
   '0.4.5': [
     'Pull-to-refresh gesture on mobile',
     'Task tracking feature',
