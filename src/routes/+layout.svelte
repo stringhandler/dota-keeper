@@ -15,6 +15,8 @@
   import WindowResize from "$lib/WindowResize.svelte";
   import BottomNav from "$lib/BottomNav.svelte";
   import FeedbackModal from "$lib/FeedbackModal.svelte";
+  import WhatsNewModal from "$lib/WhatsNewModal.svelte";
+  import { releaseNotes } from "$lib/whatsNew.js";
   import Toast from "$lib/Toast.svelte";
   import { showToast } from "$lib/toast.js";
   import { privacyStore, loadPrivacyMode } from "$lib/privacy-store.svelte.js";
@@ -41,6 +43,7 @@
   let steamLoginPending = $state(false);
   let showFeedbackModal = $state(false);
   let appVersion = $state("");
+  let showWhatsNew = $state(false);
 
   onMount(async () => {
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
@@ -49,6 +52,12 @@
 
     await loadSettings();
     appVersion = await getVersion();
+
+    const lastSeen = localStorage.getItem('last_seen_version');
+    if (lastSeen !== null && lastSeen !== appVersion && releaseNotes[appVersion]) {
+      showWhatsNew = true;
+    }
+    localStorage.setItem('last_seen_version', appVersion);
 
     // Auto-detect OS language on first run (no saved preference)
     if (!localStorage.getItem('locale')) {
@@ -430,6 +439,11 @@
 <!-- Analytics Consent Modal -->
 {#if showConsentModal}
   <AnalyticsConsentModal onClose={() => showConsentModal = false} />
+{/if}
+
+<!-- What's New Modal -->
+{#if showWhatsNew}
+  <WhatsNewModal version={appVersion} notes={releaseNotes[appVersion]} onClose={() => showWhatsNew = false} />
 {/if}
 
 <!-- Feedback Modal -->
