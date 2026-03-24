@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { getVersion } from '@tauri-apps/api/app';
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { listen } from '@tauri-apps/api/event';
@@ -39,6 +40,7 @@
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
   let showFeedbackModal = $state(false);
+  let appVersion = $state("");
 
   onMount(async () => {
     const checkMobile = () => { isMobile = window.innerWidth < 640; };
@@ -46,6 +48,7 @@
     window.addEventListener('resize', checkMobile);
 
     await loadSettings();
+    appVersion = await getVersion();
 
     // Auto-detect OS language on first run (no saved preference)
     if (!localStorage.getItem('locale')) {
@@ -313,6 +316,7 @@
     <aside class="sidebar" class:sidebar-hidden={isMobile}>
       <div class="brand">
         <div class="brand-name">Dota Keeper</div>
+        {#if appVersion}<div class="app-version">v{appVersion}</div>{/if}
         <div class="brand-id">{$_('layout.steam_id_label')}</div>
         <div class="steam-badge">{displaySteamId}</div>
       </div>
@@ -646,6 +650,13 @@
     letter-spacing: 3px;
     color: var(--gold);
     text-transform: uppercase;
+  }
+
+  .app-version {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    font-family: 'Barlow Condensed', sans-serif;
   }
 
   .brand-id {
