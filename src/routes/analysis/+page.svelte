@@ -332,16 +332,16 @@
         <div class="analysis-card-title">{$_('analysis.range_title', { values: { count: analysis.current_period.count } })}</div>
         <div class="range-stats">
           <div class="range-stat">
+            <div class="range-label">{$_('analysis.worst')}</div>
+            <div class="range-value" style="color:var(--red)">{analysis.current_period.min}</div>
+          </div>
+          <div class="range-stat">
             <div class="range-label">{$_('analysis.avg')}</div>
             <div class="range-value" style="color:var(--gold)">{analysis.current_period.average.toFixed(1)}</div>
           </div>
           <div class="range-stat">
             <div class="range-label">{$_('analysis.best')}</div>
             <div class="range-value" style="color:var(--green)">{analysis.current_period.max}</div>
-          </div>
-          <div class="range-stat">
-            <div class="range-label">{$_('analysis.worst')}</div>
-            <div class="range-value" style="color:var(--red)">{analysis.current_period.min}</div>
           </div>
         </div>
         <div class="range-bar-wrap" style="margin-top:16px">
