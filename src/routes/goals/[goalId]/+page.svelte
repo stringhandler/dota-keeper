@@ -29,6 +29,7 @@
   let editItemMinutes = $state("");
   let editItemSeconds = $state("");
   let editGameMode = $state("All");
+  let editFrequencyType = $state("Pct75");
 
   // Filters
   let selectedHeroId = $state("");
@@ -129,15 +130,40 @@
       .slice(-10);
   });
 
-  // Achievement status indicator
+  // Achievement status indicator — behaviour depends on frequency_type
   let achievementStatus = $derived.by(() => {
+    if (stats.total === 0 || !goal) return null;
+    const freq = goal.frequency_type ?? 'Pct75';
+
+    if (freq === 'JustOnce') {
+      const everAchieved = filteredData.some(d => d.achieved);
+      return everAchieved
+        ? { label: 'Achieved!', color: '#4ade80', desc: 'You hit this at least once.', target: null }
+        : { label: 'Not yet', color: '#f97316', desc: 'Keep going — you just need one!', target: null };
+    }
+
+    if (freq === 'OnAverage') {
+      const avg = stats.avgValue;
+      const target = goal.target_value;
+      const isItemTiming = goal.metric === 'ItemTiming';
+      const passing = isItemTiming ? avg <= target : avg >= target;
+      const diff = isItemTiming ? target - avg : avg - target;
+      const pct = target > 0 ? Math.abs(diff / target) * 100 : 0;
+      if (passing && pct > 10) return { label: 'Above average', color: '#60a5fa', desc: 'Avg comfortably exceeds target', target: null };
+      if (passing)             return { label: 'On track', color: '#4ade80', desc: 'Average is meeting the goal', target: null };
+      if (pct <= 10)           return { label: 'Close', color: '#fbbf24', desc: `Average is within 10% of target`, target: null };
+      if (pct <= 20)           return { label: 'Below', color: '#f97316', desc: `Average is falling short`, target: null };
+      return { label: 'Far off', color: '#f87171', desc: 'Average is well below target', target: null };
+    }
+
+    // Percentage-based types
+    const targetRate = freq === 'Pct50' ? 50 : freq === 'Pct90' ? 90 : 75;
     const rate = parseFloat(stats.achievementRate);
-    if (stats.total === 0) return null;
-    if (rate > 85) return { label: 'Too Easy', color: '#60a5fa', desc: 'Time to raise the bar!' };
-    if (rate >= 75) return { label: 'Excellent', color: '#4ade80', desc: 'Well-calibrated goal!' };
-    if (rate >= 65) return { label: 'Good', color: '#fbbf24', desc: 'Close! Keep pushing.' };
-    if (rate >= 50) return { label: 'Low', color: '#f97316', desc: 'Consider lowering goal' };
-    return { label: 'Critical', color: '#f87171', desc: 'Goal too ambitious' };
+    if (rate > targetRate + 10) return { label: 'Too Easy',  color: '#60a5fa', desc: 'Time to raise the bar!',      target: targetRate };
+    if (rate >= targetRate)     return { label: 'Excellent', color: '#4ade80', desc: 'Well-calibrated goal!',        target: targetRate };
+    if (rate >= targetRate - 10) return { label: 'Good',     color: '#fbbf24', desc: 'Close! Keep pushing.',         target: targetRate };
+    if (rate >= targetRate - 20) return { label: 'Low',      color: '#f97316', desc: 'Consider lowering goal',       target: targetRate };
+    return { label: 'Critical', color: '#f87171', desc: 'Goal too ambitious',  target: targetRate };
   });
 
   // Goal suggestion based on last 10 games pass rate
@@ -461,6 +487,18 @@
     { value: "any_support", label: "Any Support (pos 4/5)" },
   ];
 
+  /** @param {string} freq */
+  function getFrequencyLabel(freq) {
+    switch (freq) {
+      case "JustOnce":  return "Just once";
+      case "OnAverage": return "On average";
+      case "Pct50":     return "50% of games";
+      case "Pct75":     return "75% of games";
+      case "Pct90":     return "90% of games";
+      default:          return "75% of games";
+    }
+  }
+
   /** @param {string} val */
   function parseHeroValue(val) {
     if (!val) return { hero_id: null, hero_scope: null };
@@ -479,6 +517,7 @@
       editItemSeconds = (goal.target_value % 60).toString();
     }
     editGameMode = goal.game_mode;
+    editFrequencyType = goal.frequency_type ?? "Pct75";
     isEditing = true;
     editSuccess = "";
     error = "";
@@ -519,6 +558,7 @@
           target_time_minutes: targetTime,
           item_id: editItemId ? parseInt(editItemId) : null,
           game_mode: editGameMode,
+          frequency_type: editFrequencyType,
           created_at: goal.created_at,
         },
       });
@@ -589,6 +629,16 @@
                   <option value="Turbo">{$_('goals.mode_turbo')}</option>
                 </select>
               </label>
+              <label style="flex: 1;">
+                How often?
+                <select bind:value={editFrequencyType} class="form-select">
+                  <option value="JustOnce">Just once</option>
+                  <option value="OnAverage">On average</option>
+                  <option value="Pct50">50% of games</option>
+                  <option value="Pct75">75% of games</option>
+                  <option value="Pct90">90% of games</option>
+                </select>
+              </label>
             </div>
 
             {#if editMetric === "ItemTiming"}
@@ -646,6 +696,7 @@
             {/if}
             {formatGoalDescription(goal)}
           </p>
+          <div class="goal-freq-badge">{getFrequencyLabel(goal.frequency_type)}</div>
         {/if}
       </div>
     </div>
@@ -881,19 +932,32 @@
         <div class="achievement-rate-card">
           <div class="achievement-rate-row">
             <div class="achievement-rate-info">
-              <span class="achievement-rate-label">Achievement Rate</span>
-              <span class="achievement-rate-value">{stats.achievementRate}%</span>
-              <span class="achievement-rate-count">({stats.achieved}/{stats.total} games)</span>
+              {#if goal.frequency_type === 'JustOnce'}
+                <span class="achievement-rate-label">One-time goal</span>
+                <span class="achievement-rate-count">({stats.achieved}/{stats.total} games hit target)</span>
+              {:else if goal.frequency_type === 'OnAverage'}
+                <span class="achievement-rate-label">Average</span>
+                <span class="achievement-rate-value">{stats.avgValue}</span>
+                <span class="achievement-rate-count">vs target {goal.target_value}</span>
+              {:else}
+                <span class="achievement-rate-label">Achievement Rate</span>
+                <span class="achievement-rate-value">{stats.achievementRate}%</span>
+                <span class="achievement-rate-count">({stats.achieved}/{stats.total} games)</span>
+              {/if}
             </div>
-            <div class="achievement-target">Target: ~75%</div>
+            {#if achievementStatus.target !== null}
+              <div class="achievement-target">Target: ~{achievementStatus.target}%</div>
+            {/if}
           </div>
           <div class="achievement-status" style="color: {achievementStatus.color}">
             {achievementStatus.label} — {achievementStatus.desc}
           </div>
-          <div class="achievement-bar-track">
-            <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats.achievementRate))}%; background: {achievementStatus.color}"></div>
-            <div class="achievement-bar-target"></div>
-          </div>
+          {#if goal.frequency_type !== 'JustOnce' && goal.frequency_type !== 'OnAverage'}
+            <div class="achievement-bar-track">
+              <div class="achievement-bar-fill" style="width: {Math.min(100, parseFloat(stats.achievementRate))}%; background: {achievementStatus.color}"></div>
+              <div class="achievement-bar-target"></div>
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
@@ -978,6 +1042,20 @@
     display: flex;
     align-items: center;
     gap: 12px;
+  }
+
+  .goal-freq-badge {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 10px;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: rgba(154, 142, 124, 0.1);
+    border: 1px solid rgba(154, 142, 124, 0.25);
+    border-radius: 3px;
+    padding: 2px 6px;
   }
 
   .header-row {

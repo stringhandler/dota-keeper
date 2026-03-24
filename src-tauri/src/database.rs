@@ -77,6 +77,38 @@ impl GoalMetric {
     }
 }
 
+/// Frequency / consistency type for goals
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum FrequencyType {
+    JustOnce,
+    OnAverage,
+    Pct50,
+    Pct75,
+    Pct90,
+}
+
+impl FrequencyType {
+    fn to_string(&self) -> &'static str {
+        match self {
+            FrequencyType::JustOnce   => "just_once",
+            FrequencyType::OnAverage  => "on_average",
+            FrequencyType::Pct50      => "pct_50",
+            FrequencyType::Pct75      => "pct_75",
+            FrequencyType::Pct90      => "pct_90",
+        }
+    }
+
+    fn from_string(s: &str) -> Self {
+        match s {
+            "just_once"  => FrequencyType::JustOnce,
+            "on_average" => FrequencyType::OnAverage,
+            "pct_50"     => FrequencyType::Pct50,
+            "pct_90"     => FrequencyType::Pct90,
+            _            => FrequencyType::Pct75,
+        }
+    }
+}
+
 /// Game mode for goals (Ranked, Turbo, or All)
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum GoalGameMode {
@@ -115,6 +147,7 @@ pub struct Goal {
     pub target_time_minutes: i32,  // Not used for ItemTiming goals
     pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
+    pub frequency_type: FrequencyType,
     pub created_at: i64,
 }
 
@@ -128,6 +161,7 @@ pub struct NewGoal {
     pub target_time_minutes: i32,
     pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
+    pub frequency_type: FrequencyType,
 }
 
 /// Hero goal suggestion (weekly personalized goal)
@@ -368,6 +402,12 @@ pub fn init_db() -> Result<Connection, String> {
     // Add hero_scope column if it doesn't exist (for role-group goals)
     let _ = conn.execute(
         "ALTER TABLE goals ADD COLUMN hero_scope TEXT",
+        [],
+    );
+
+    // Add frequency_type column if it doesn't exist
+    let _ = conn.execute(
+        "ALTER TABLE goals ADD COLUMN frequency_type TEXT DEFAULT 'pct_75'",
         [],
     );
 
@@ -628,11 +668,17 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
 
 /// Clear all matches and related data from the database
 pub fn clear_all_matches(conn: &Connection) -> Result<(), String> {
-    // Delete all match CS data first (foreign key constraint)
+    // Clear all child tables before matches to avoid FK constraint issues
     conn.execute("DELETE FROM match_cs", [])
         .map_err(|e| format!("Failed to delete match CS data: {}", e))?;
-
-    // Delete all matches
+    conn.execute("DELETE FROM goal_progress", [])
+        .map_err(|e| format!("Failed to delete goal progress: {}", e))?;
+    conn.execute("DELETE FROM player_networth", [])
+        .map_err(|e| format!("Failed to delete player networth: {}", e))?;
+    conn.execute("DELETE FROM item_timings", [])
+        .map_err(|e| format!("Failed to delete item timings: {}", e))?;
+    conn.execute("DELETE FROM mood_checkins", [])
+        .map_err(|e| format!("Failed to delete mood check-ins: {}", e))?;
     conn.execute("DELETE FROM matches", [])
         .map_err(|e| format!("Failed to delete matches: {}", e))?;
 
@@ -721,8 +767,8 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         .as_secs() as i64;
 
     conn.execute(
-        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, item_id, created_at, hero_scope)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, item_id, created_at, hero_scope, frequency_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             goal.hero_id,
             goal.metric.to_string(),
@@ -732,6 +778,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
             goal.item_id,
             now,
             goal.hero_scope,
+            goal.frequency_type.to_string(),
         ],
     ).map_err(|e| format!("Failed to insert goal: {}", e))?;
 
@@ -746,6 +793,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         target_time_minutes: goal.target_time_minutes,
         item_id: goal.item_id,
         game_mode: goal.game_mode.clone(),
+        frequency_type: goal.frequency_type.clone(),
         created_at: now,
     })
 }
@@ -754,7 +802,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
 pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope
+            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope, frequency_type
              FROM goals ORDER BY created_at DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -763,6 +811,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
         .query_map([], |row| {
             let metric_str: String = row.get(2)?;
             let game_mode_str: String = row.get(5)?;
+            let freq_str: String = row.get(9).unwrap_or_else(|_| "pct_75".to_string());
             Ok(Goal {
                 id: row.get(0)?,
                 hero_id: row.get(1)?,
@@ -773,6 +822,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
                 created_at: row.get(6)?,
                 item_id: row.get(7)?,
                 hero_scope: row.get(8).unwrap_or(None),
+                frequency_type: FrequencyType::from_string(&freq_str),
             })
         })
         .map_err(|e| format!("Failed to query goals: {}", e))?;
@@ -789,7 +839,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
 pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
     conn.execute(
         "UPDATE goals SET hero_id = ?1, metric = ?2, target_value = ?3,
-         target_time_minutes = ?4, game_mode = ?5, item_id = ?6, hero_scope = ?7 WHERE id = ?8",
+         target_time_minutes = ?4, game_mode = ?5, item_id = ?6, hero_scope = ?7, frequency_type = ?8 WHERE id = ?9",
         params![
             goal.hero_id,
             goal.metric.to_string(),
@@ -798,6 +848,7 @@ pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
             goal.game_mode.to_string(),
             goal.item_id,
             goal.hero_scope,
+            goal.frequency_type.to_string(),
             goal.id,
         ],
     ).map_err(|e| format!("Failed to update goal: {}", e))?;
@@ -1480,12 +1531,13 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
 /// Get a single goal by ID
 pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
     let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope FROM goals WHERE id = ?1")
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope, frequency_type FROM goals WHERE id = ?1")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     stmt.query_row(params![goal_id], |row| {
         let metric_str: String = row.get(2)?;
         let game_mode_str: String = row.get(5)?;
+        let freq_str: String = row.get(9).unwrap_or_else(|_| "pct_75".to_string());
         Ok(Goal {
             id: row.get(0)?,
             hero_id: row.get(1)?,
@@ -1496,6 +1548,7 @@ pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
             created_at: row.get(6)?,
             item_id: row.get(7)?,
             hero_scope: row.get(8).unwrap_or(None),
+            frequency_type: FrequencyType::from_string(&freq_str),
         })
     })
     .map_err(|e| format!("Failed to get goal: {}", e))

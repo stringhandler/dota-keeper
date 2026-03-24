@@ -27,6 +27,7 @@
   let formItemMinutes = $state("");
   let formItemSeconds = $state("");
   let formGameMode = $state("All");
+  let formFrequencyType = $state("Pct75");
 
   // Analysis data for contextual warnings
   let analysisData = $state(/** @type {any} */ (null));
@@ -119,6 +120,7 @@
     formItemMinutes = "";
     formItemSeconds = "";
     formGameMode = "Ranked";
+    formFrequencyType = "Pct75";
     showFormMobile = false;
   }
 
@@ -135,6 +137,7 @@
       formItemSeconds = (goal.target_value % 60).toString();
     }
     formGameMode = goal.game_mode;
+    formFrequencyType = goal.frequency_type ?? "Pct75";
     // Scroll to form
     document.querySelector('.create-form')?.scrollIntoView({ behavior: 'smooth' });
   }
@@ -178,6 +181,7 @@
             target_time_minutes: targetTime,
             item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
+            frequency_type: formFrequencyType,
             created_at: editingGoal.created_at,
           },
         });
@@ -200,6 +204,7 @@
             target_time_minutes: targetTime,
             item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
+            frequency_type: formFrequencyType,
           },
         });
         trackEvent("goal_created", {
@@ -303,6 +308,18 @@
     }
   }
 
+  /** @param {string} freq */
+  function getFrequencyLabel(freq) {
+    switch (freq) {
+      case "JustOnce":   return "Just once";
+      case "OnAverage":  return "On average";
+      case "Pct50":      return "50% of games";
+      case "Pct75":      return "75% of games";
+      case "Pct90":      return "90% of games";
+      default:           return "75% of games";
+    }
+  }
+
   /** @param {string} metric */
   function getGoalTypeTag(metric) {
     switch (metric) {
@@ -395,6 +412,17 @@
           </select>
         </div>
 
+        <div class="fg">
+          <div class="form-label">How often?</div>
+          <select class="form-select" bind:value={formFrequencyType}>
+            <option value="JustOnce">Just once</option>
+            <option value="OnAverage">On average</option>
+            <option value="Pct50">50% of games</option>
+            <option value="Pct75">75% of games</option>
+            <option value="Pct90">90% of games</option>
+          </select>
+        </div>
+
         <div class="fg fg-action">
           <div class="form-label">&nbsp;</div>
           <button type="submit" class="btn btn-primary" disabled={isSaving}>
@@ -465,6 +493,7 @@
             <div class="goal-meta">
               <span class="goal-tag {tag.cls}">{tag.tkey ? $_(tag.tkey) : goal.metric}</span>
               <span>{goal.game_mode === 'All' ? $_('goals.mode_any') : goal.game_mode}</span>
+              <span class="goal-tag tag-freq">{getFrequencyLabel(goal.frequency_type)}</span>
               {#if warning}
                 <span class="warning-tag">⚠ {warning}</span>
               {/if}
@@ -630,6 +659,12 @@
     color: var(--green);
     border-color: rgba(74, 222, 128, 0.3);
     background: rgba(74, 222, 128, 0.08);
+  }
+
+  .tag-freq {
+    color: var(--text-secondary);
+    border-color: rgba(154, 142, 124, 0.3);
+    background: rgba(154, 142, 124, 0.08);
   }
 
   /* Contextual warning */
