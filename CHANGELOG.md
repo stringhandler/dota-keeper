@@ -5,6 +5,12 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-03-26
+
+### Added
+- **Patch Version Tracking**: Dota 2 patch version (e.g., "7.40e") is now stored on each match and shown as a badge in the match list. Use **Settings → Sync Patches** to fetch patch data from OpenDota and back-fill existing matches.
+- **Patch Filter on Matches Page**: Filter chips for recent major patches (e.g., "7.40") appear in the match filter bar. Selecting a major patch shows all sub-versions (7.40, 7.40b … 7.40e).
+
 ## [0.5.0] - 2026-03-24
 
 ### Added
