@@ -264,6 +264,7 @@ impl StratzMatch {
             parse_state: MatchState::Unparsed,
             role: 0,
             rank_tier: None,
+            patch: None, // assigned after insert using patch lookup
         }
     }
 }

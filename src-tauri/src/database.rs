@@ -136,6 +136,13 @@ impl GoalGameMode {
     }
 }
 
+/// Patch version info cached from OpenDota constants
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PatchInfo {
+    pub name: String,       // e.g., "7.40e"
+    pub date_epoch: i64,    // Unix timestamp of patch release
+}
+
 /// Represents a performance goal
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Goal {
@@ -244,6 +251,7 @@ pub struct Match {
     pub parse_state: MatchState,
     pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
     pub rank_tier: Option<i32>,  // OpenDota rank_tier: 11-15=Herald, 21-25=Guardian, ..., 80=Immortal
+    pub patch: Option<String>,   // e.g., "7.40e" — determined from start_time via patches table
 }
 
 impl Match {
@@ -411,6 +419,21 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     );
 
+    // Add patch column to matches if it doesn't exist
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN patch TEXT",
+        [],
+    );
+
+    // Create the patches cache table (stores Dota 2 patch versions with release dates)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS patches (
+            name TEXT PRIMARY KEY,
+            date_epoch INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create patches table: {}", e))?;
+
     // Create the hero_favorites table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS hero_favorites (
@@ -571,8 +594,8 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
         "INSERT OR IGNORE INTO matches (
             match_id, hero_id, start_time, duration, game_mode, lobby_type,
             radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             m.match_id,
             m.hero_id,
@@ -595,6 +618,7 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
             m.parse_state.to_string(),
             m.role,
             m.rank_tier,
+            m.patch,
         ],
     ).map_err(|e| format!("Failed to insert match: {}", e))?;
 
@@ -622,7 +646,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches
              WHERE parse_state = 'unparsed' OR parse_state = 'failed'
              ORDER BY start_time DESC",
@@ -654,6 +678,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
                 rank_tier: row.get(20).ok(),
+                patch: row.get(21).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -717,7 +742,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -747,6 +772,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
                 rank_tier: row.get(20).ok(),
+                patch: row.get(21).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -864,6 +890,80 @@ pub fn delete_goal(conn: &Connection, goal_id: i64) -> Result<(), String> {
     ).map_err(|e| format!("Failed to delete goal: {}", e))?;
 
     Ok(())
+}
+
+/// Insert or replace patch data in the patches cache table
+pub fn upsert_patches(conn: &Connection, patches: &[PatchInfo]) -> Result<(), String> {
+    for p in patches {
+        conn.execute(
+            "INSERT OR REPLACE INTO patches (name, date_epoch) VALUES (?1, ?2)",
+            params![p.name, p.date_epoch],
+        ).map_err(|e| format!("Failed to upsert patch {}: {}", p.name, e))?;
+    }
+    Ok(())
+}
+
+/// Get all cached patches ordered oldest first
+pub fn get_all_patches(conn: &Connection) -> Result<Vec<PatchInfo>, String> {
+    let mut stmt = conn
+        .prepare("SELECT name, date_epoch FROM patches ORDER BY date_epoch ASC")
+        .map_err(|e| format!("Failed to prepare patches query: {}", e))?;
+
+    let patches = stmt
+        .query_map([], |row| {
+            Ok(PatchInfo {
+                name: row.get(0)?,
+                date_epoch: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query patches: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read patch: {}", e))?;
+
+    Ok(patches)
+}
+
+/// Determine the patch name for a given Unix timestamp.
+/// Returns the most recent patch whose release date is <= the timestamp.
+pub fn get_patch_for_timestamp(conn: &Connection, timestamp: i64) -> Option<String> {
+    conn.query_row(
+        "SELECT name FROM patches WHERE date_epoch <= ?1 ORDER BY date_epoch DESC LIMIT 1",
+        params![timestamp],
+        |row| row.get(0),
+    ).optional().unwrap_or(None)
+}
+
+/// Set the patch field on a match
+pub fn update_match_patch(conn: &Connection, match_id: i64, patch: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET patch = ?1 WHERE match_id = ?2",
+        params![patch, match_id],
+    ).map_err(|e| format!("Failed to update match patch: {}", e))?;
+    Ok(())
+}
+
+/// Back-fill patch data for all matches that have NULL patch.
+/// Returns the number of matches updated.
+pub fn backfill_match_patches(conn: &Connection) -> Result<usize, String> {
+    let match_ids: Vec<(i64, i64)> = {
+        let mut stmt = conn
+            .prepare("SELECT match_id, start_time FROM matches WHERE patch IS NULL")
+            .map_err(|e| format!("Failed to prepare backfill query: {}", e))?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| format!("Failed to query matches for backfill: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read match for backfill: {}", e))?;
+        rows
+    };
+
+    let mut updated = 0;
+    for (match_id, start_time) in match_ids {
+        if let Some(patch) = get_patch_for_timestamp(conn, start_time) {
+            update_match_patch(conn, match_id, &patch)?;
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 /// Result of evaluating a goal against a match
@@ -2188,6 +2288,7 @@ fn row_to_match(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         parse_state: MatchState::from_string(&row.get::<_, String>(18)?),
         role: row.get(19).unwrap_or(0),
         rank_tier: row.get(20).ok(),
+        patch: row.get(21).ok(),
     })
 }
 
@@ -2197,7 +2298,7 @@ fn get_matches_since(conn: &Connection, since_timestamp: i64) -> Result<Vec<Matc
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches WHERE start_time >= ?1 ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;

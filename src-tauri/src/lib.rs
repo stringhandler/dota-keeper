@@ -76,13 +76,15 @@ use database::{
     get_last_hits_analysis, get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp,
     get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
     get_weekly_challenge_options, get_weekly_challenge_progress, init_db, init_shared_db,
-    insert_goal, insert_item_timing, insert_match, insert_match_cs_data, insert_player_networth,
+    backfill_match_patches, get_all_patches, insert_goal, insert_item_timing, insert_match,
+    insert_match_cs_data, insert_player_networth,
     match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
     skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
-    update_match_role, update_match_state, ChallengeHistoryItem, ChallengeOption, DailyChallenge,
+    update_match_patch, update_match_role, update_match_state, upsert_patches,
+    ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
     LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
-    WeeklyChallenge, WeeklyChallengeProgress,
+    PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
 };
 use serde_json;
 use settings::{set_settings_dir, AnalyticsConsent, Settings};
@@ -912,6 +914,10 @@ async fn refresh_matches() -> Result<RefreshResult, String> {
     for m in matches {
         if !match_exists(&conn, m.match_id)? {
             insert_match(&conn, &m)?;
+            // Assign patch based on start_time
+            if let Some(patch) = database::get_patch_for_timestamp(&conn, m.start_time) {
+                let _ = update_match_patch(&conn, m.match_id, &patch);
+            }
             new_count += 1;
         }
     }
@@ -969,6 +975,25 @@ fn save_goal(goal: Goal) -> Result<(), String> {
 fn remove_goal(goal_id: i64) -> Result<(), String> {
     let conn = get_db_conn()?;
     delete_goal(&conn, goal_id)
+}
+
+/// Get all cached patches (sorted oldest first)
+#[tauri::command]
+fn get_patches() -> Result<Vec<PatchInfo>, String> {
+    let conn = get_db_conn()?;
+    get_all_patches(&conn)
+}
+
+/// Fetch patch list from OpenDota, cache in DB, then back-fill patch on existing matches.
+#[tauri::command]
+async fn sync_patches() -> Result<usize, String> {
+    let settings = Settings::load();
+    let api_key = settings.opendota_api_key.as_deref();
+    let patches = opendota::fetch_patches(api_key).await?;
+    let conn = get_db_conn()?;
+    upsert_patches(&conn, &patches)?;
+    let updated = backfill_match_patches(&conn)?;
+    Ok(updated)
 }
 
 /// Evaluate goals for a specific match
@@ -1319,6 +1344,9 @@ async fn run_backfill_task(
         for m in &matches {
             if matches!(match_exists(&conn, m.match_id), Ok(false)) {
                 if insert_match(&conn, m).is_ok() {
+                    if let Some(patch) = database::get_patch_for_timestamp(&conn, m.start_time) {
+                        let _ = update_match_patch(&conn, m.match_id, &patch);
+                    }
                     new_count += 1;
                 }
             }
@@ -2381,7 +2409,9 @@ pub fn run() {
             save_opendota_api_key,
             factory_reset,
             get_medal_history,
-            get_medal_stats
+            get_medal_stats,
+            get_patches,
+            sync_patches
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

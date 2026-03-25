@@ -427,6 +427,35 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
+.filter-chip-patch.active {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+}
+
+.filter-divider {
+  color: var(--border);
+  font-size: 14px;
+  padding: 0 2px;
+  user-select: none;
+}
+
+/* Patch version badge shown on match rows */
+.patch-badge {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
 /* Analysis cards */
 .analysis-card {
   background: var(--bg-card);

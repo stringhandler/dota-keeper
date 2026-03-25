@@ -15,6 +15,7 @@
   let error = $state("");
   let matches = $state(/** @type {any[]} */ ([]));
   let items = $state(/** @type {any[]} */ ([]));
+  let patches = $state(/** @type {any[]} */ ([]));
   let isRefreshing = $state(false);
   let selectedMatch = $state(/** @type {any} */ (null));
   let goalDetails = $state(/** @type {any[]} */ ([]));
@@ -131,12 +132,14 @@
 
   async function loadData() {
     try {
-      const [settings, allItems] = await Promise.all([
+      const [settings, allItems, allPatches] = await Promise.all([
         invoke("get_settings"),
         invoke("get_all_items"),
+        invoke("get_patches").catch(() => []),
       ]);
       currentSteamId = settings.steam_id || "";
       items = allItems;
+      patches = allPatches;
       await loadMatches();
       initQueue(currentSteamId, loadMatches);
     } catch (e) {
@@ -325,11 +328,48 @@
     }
   }
 
+  // Derived: unique major patch versions (e.g. "7.40") from matches with patches, most recent first
+  let trackedMajorPatches = $derived.by(() => {
+    const seen = new Set();
+    const result = [];
+    for (const m of matches) {
+      if (m.patch) {
+        // Major = numeric prefix, e.g. "7.40" from "7.40e"
+        const major = m.patch.replace(/[a-z]+$/, '');
+        if (!seen.has(major)) {
+          seen.add(major);
+          result.push(major);
+        }
+      }
+    }
+    return result.slice(0, 4); // show up to 4 recent major patches
+  });
+
+  /** Returns all specific patches for a given major patch, sorted newest first */
+  /** @param {string} major */
+  function getMinorPatches(major) {
+    return patches
+      .filter(p => p.name === major || (p.name.startsWith(major) && p.name.length === major.length + 1 && /[a-z]/.test(p.name.slice(-1))))
+      .sort((a, b) => b.date_epoch - a.date_epoch);
+  }
+
   // Filter logic
   /** @param {string} filter */
   function setFilter(filter) {
     activeFilter = filter;
     currentPage = 1;
+  }
+
+  /** @param {any} match @param {string} patchFilter */
+  function matchesPatch(match, patchFilter) {
+    if (!match.patch) return false;
+    if (match.patch === patchFilter) return true;
+    // Major filter: patchFilter ends with digit → match sub-versions too
+    if (/\d$/.test(patchFilter) && match.patch.startsWith(patchFilter)) {
+      const suffix = match.patch.slice(patchFilter.length);
+      return suffix.length === 1 && /[a-z]/.test(suffix);
+    }
+    return false;
   }
 
   function getFilteredMatches() {
@@ -346,6 +386,10 @@
         if (activeFilter.startsWith('hero-')) {
           const heroId = parseInt(activeFilter.split('-')[1]);
           return matches.filter(m => m.hero_id === heroId);
+        }
+        if (activeFilter.startsWith('patch-')) {
+          const patchFilter = activeFilter.slice(6);
+          return matches.filter(m => matchesPatch(m, patchFilter));
         }
         return matches;
     }
@@ -406,6 +450,14 @@
           {hero.name}
         </button>
       {/each}
+      {#if trackedMajorPatches.length > 0}
+        <span class="filter-divider">|</span>
+        {#each trackedMajorPatches as major}
+          <button class="filter-chip filter-chip-patch" class:active={activeFilter === `patch-${major}`} onclick={() => setFilter(`patch-${major}`)}>
+            {major}
+          </button>
+        {/each}
+      {/if}
     </div>
     {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !pqs.active.has(m.match_id) && !pqs.queue.includes(m.match_id) && !pqs.countdowns.has(m.match_id))}
       <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
@@ -471,8 +523,13 @@
             </div>
           </div>
 
-          <!-- Date -->
-          <div class="td-text td-date">{formatDate(match.start_time)}</div>
+          <!-- Date + patch -->
+          <div class="td-text td-date">
+            {formatDate(match.start_time)}
+            {#if match.patch}
+              <span class="patch-badge">{match.patch}</span>
+            {/if}
+          </div>
 
           <!-- Hero -->
           <div class="match-hero">

@@ -65,6 +65,7 @@
     }
   }
 
+
   async function loadAnalysisForWarnings() {
     try {
       analysisData = await invoke("get_last_hits_analysis_data", {

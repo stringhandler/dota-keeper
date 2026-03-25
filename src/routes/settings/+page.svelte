@@ -18,6 +18,7 @@
   let error = $state("");
   let successMessage = $state("");
   let isBackfilling = $state(false);
+  let isSyncingPatches = $state(false);
   let isReparsing = $state(false);
   let isClearing = $state(false);
   let steamId = $state("");
@@ -419,6 +420,19 @@
       showToast("Backfill started. You can navigate away — it will continue in the background.", "success");
     } catch (e) {
       error = `Failed to start backfill: ${e}`;
+    }
+  }
+
+  async function syncPatches() {
+    isSyncingPatches = true;
+    error = "";
+    try {
+      const updated = await invoke("sync_patches");
+      showToast(`Patches synced. ${updated} match${updated !== 1 ? 'es' : ''} updated.`, "success");
+    } catch (e) {
+      error = `Failed to sync patches: ${e}`;
+    } finally {
+      isSyncingPatches = false;
     }
   }
 
@@ -834,6 +848,22 @@
         disabled={isBackfilling || !steamId}
       >
         {isBackfilling ? $_('settings.backfilling') : $_('settings.backfill_btn')}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Sync Patch Data</h3>
+        <p class="setting-description">
+          Fetch the latest Dota 2 patch versions from OpenDota and assign them to your matches. Run this after a new patch releases to keep filters up to date.
+        </p>
+      </div>
+      <button
+        class="backfill-btn"
+        onclick={syncPatches}
+        disabled={isSyncingPatches}
+      >
+        {isSyncingPatches ? 'Syncing…' : 'Sync Patches'}
       </button>
     </div>
 

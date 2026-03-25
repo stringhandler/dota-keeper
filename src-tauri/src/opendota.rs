@@ -1,4 +1,4 @@
-use crate::database::{Match, MatchState};
+use crate::database::{Match, MatchState, PatchInfo};
 use serde::Deserialize;
 use tracing::debug;
 
@@ -94,6 +94,7 @@ impl From<OpenDotaMatch> for Match {
             parse_state: MatchState::Unparsed,
             role: 0,
             rank_tier: m.rank_tier,
+            patch: None, // assigned after insert using patch lookup
         }
     }
 }
@@ -446,4 +447,56 @@ pub async fn fetch_match_details(match_id: i64, api_key: Option<&str>) -> Result
 
     debug!("fetch_match_details match_id={} OK players={}", match_id, match_details.players.len());
     Ok(match_details)
+}
+
+/// Response entry from OpenDota /constants/patch
+#[derive(Debug, Deserialize)]
+struct OpenDotaPatchEntry {
+    name: String,
+    date: String, // ISO 8601, e.g. "2024-09-15T00:00:00.000Z"
+}
+
+/// Fetch the list of Dota 2 patches from OpenDota constants.
+/// Returns patches as PatchInfo with Unix epoch timestamps.
+pub async fn fetch_patches(api_key: Option<&str>) -> Result<Vec<PatchInfo>, String> {
+    let mut url = format!("{}/constants/patch", OPENDOTA_API_BASE);
+    if let Some(key) = api_key {
+        url.push_str(&format!("?api_key={}", key));
+    }
+
+    debug!("fetch_patches GET {}", url);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| friendly_network_err(&e))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        log_api_error("constants/patch", status.as_u16());
+        return Err(friendly_status_err(status));
+    }
+
+    let entries: Vec<OpenDotaPatchEntry> = response
+        .json()
+        .await
+        .map_err(|_| "Failed to parse patch data from OpenDota".to_string())?;
+
+    let patches: Vec<PatchInfo> = entries
+        .into_iter()
+        .filter_map(|e| {
+            // Parse ISO 8601 date → Unix timestamp
+            chrono::DateTime::parse_from_rfc3339(&e.date)
+                .ok()
+                .map(|dt| PatchInfo {
+                    name: e.name,
+                    date_epoch: dt.timestamp(),
+                })
+        })
+        .collect();
+
+    debug!("fetch_patches returning {} patches", patches.len());
+    Ok(patches)
 }
