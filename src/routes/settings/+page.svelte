@@ -897,7 +897,7 @@
     </div>
   </div>
 
-  <div class="settings-section">
+  <div class="settings-section updates-section">
     <h2>{$_('settings.section_updates')}</h2>
     <div class="setting-item">
       <div class="setting-info">
@@ -1458,6 +1458,10 @@
 @media (max-width: 600px) {
   .update-actions {
     align-items: stretch;
+  }
+
+  .updates-section {
+    display: none;
   }
 }
 
