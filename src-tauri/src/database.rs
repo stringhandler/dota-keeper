@@ -43,6 +43,7 @@ pub fn get_db_dir() -> Option<&'static PathBuf> {
 pub enum GoalMetric {
     Networth,
     Kills,
+    Deaths,
     LastHits,
     Denies,
     Level,
@@ -55,6 +56,7 @@ impl GoalMetric {
         match self {
             GoalMetric::Networth => "networth",
             GoalMetric::Kills => "kills",
+            GoalMetric::Deaths => "deaths",
             GoalMetric::LastHits => "last_hits",
             GoalMetric::Denies => "denies",
             GoalMetric::Level => "level",
@@ -67,6 +69,7 @@ impl GoalMetric {
         match s {
             "networth" => Some(GoalMetric::Networth),
             "kills" => Some(GoalMetric::Kills),
+            "deaths" => Some(GoalMetric::Deaths),
             "last_hits" => Some(GoalMetric::LastHits),
             "denies" => Some(GoalMetric::Denies),
             "level" => Some(GoalMetric::Level),
@@ -1034,6 +1037,15 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
                 ((match_data.kills as f32 / duration_minutes as f32) * target_minutes as f32) as i32
             }
         }
+        GoalMetric::Deaths => {
+            // For deaths, assume linear progression (same as kills)
+            if duration_minutes <= target_minutes {
+                match_data.deaths
+            } else {
+                // Estimate deaths at target time
+                ((match_data.deaths as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+            }
+        }
         GoalMetric::LastHits => {
             // ONLY use exact per-minute CS data from OpenDota - never estimate
             // Linear estimation (total_cs / game_time * target_time) is completely inaccurate
@@ -1101,10 +1113,8 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
     };
 
     let achieved = match &goal.metric {
-        GoalMetric::ItemTiming => {
-            // For item timing, actual_value is purchase time in seconds
-            // target_value is target time in seconds
-            // Achieved if purchased before or at target time
+        GoalMetric::ItemTiming | GoalMetric::Deaths => {
+            // Lower is better: achieved if actual <= target
             actual_value <= goal.target_value
         }
         _ => {
@@ -1573,6 +1583,13 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
                     ((match_data.kills as f32 / duration_minutes as f32) * target_minutes as f32) as i32
                 }
             }
+            GoalMetric::Deaths => {
+                if duration_minutes <= target_minutes {
+                    match_data.deaths
+                } else {
+                    ((match_data.deaths as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+                }
+            }
             GoalMetric::LastHits => {
                 match cs_map.get(&match_data.match_id) {
                     Some(&(lh, _)) => lh,
@@ -1611,7 +1628,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
         };
 
         let achieved = match &goal.metric {
-            GoalMetric::ItemTiming => actual_value <= goal.target_value,
+            GoalMetric::ItemTiming | GoalMetric::Deaths => actual_value <= goal.target_value,
             _ => actual_value >= goal.target_value,
         };
 

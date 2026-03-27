@@ -254,6 +254,7 @@
     switch (metric) {
       case "Networth": return "Net Worth";
       case "Kills": return "Kills";
+      case "Deaths": return "Deaths";
       case "LastHits": return "Last Hits";
       case "Denies": return "Denies";
       case "Level": return "Level";
@@ -268,6 +269,7 @@
     switch (metric) {
       case "Networth": return "gold";
       case "Kills": return "kills";
+      case "Deaths": return "deaths";
       case "LastHits": return "CS";
       case "Denies": return "denies";
       case "PartnerNetworth": return "gold";
@@ -299,6 +301,8 @@
       const seconds = goal.target_value % 60;
       const timeStr = seconds > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${minutes}:00`;
       return `${heroName} — ${itemName} by ${timeStr}`;
+    } else if (goal.metric === "Deaths") {
+      return `${heroName} — at most ${goal.target_value} deaths by ${goal.target_time_minutes} min`;
     } else if (goal.metric === "PartnerNetworth") {
       return `${heroName} — Partner: ${goal.target_value}g by ${goal.target_time_minutes} min`;
     } else {
@@ -328,6 +332,7 @@
       case "Denies": return { tkey: 'goals.tag_deny', cls: 'tag-cs' };
       case "ItemTiming": return { tkey: 'goals.tag_item', cls: 'tag-item' };
       case "Kills": return { tkey: 'goals.tag_kill', cls: 'tag-kill' };
+      case "Deaths": return { tkey: 'goals.tag_death', cls: 'tag-kill' };
       case "Networth": return { tkey: 'goals.tag_nw', cls: 'tag-nw' };
       case "PartnerNetworth": return { tkey: 'goals.tag_support', cls: 'tag-nw' };
       default: return { tkey: null, cls: '' };
@@ -368,6 +373,7 @@
             <option value="PartnerNetworth">{$_('goals.metric_partner_nw')}</option>
             <option value="Networth">{$_('goals.metric_networth')}</option>
             <option value="Kills">{$_('goals.metric_kills')}</option>
+            <option value="Deaths">{$_('goals.metric_deaths')}</option>
             <option value="Level">{$_('goals.metric_level')}</option>
             <option value="ItemTiming">{$_('goals.metric_item_timing')}</option>
           </select>
@@ -395,7 +401,7 @@
           <div class="fg">
             <div class="form-label">{$_('goals.target', { values: { metric: getMetricLabel(formMetric) } })}</div>
             <input class="form-input" type="number" min="1"
-              placeholder={formMetric === "Level" ? "e.g. 6" : "e.g. 50"}
+              placeholder={formMetric === "Level" ? "e.g. 6" : formMetric === "Deaths" ? "e.g. <4" : "e.g. 50"}
               bind:value={formTargetValue} />
           </div>
           <div class="fg fg-narrow">
