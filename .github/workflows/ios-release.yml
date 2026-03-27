@@ -1,0 +1,141 @@
+name: iOS Release Build
+
+# Triggers:
+#   - Automatically on push to the release branch
+#   - Manually via workflow_dispatch
+#
+# Required GitHub secrets:
+#   APPLE_CERTIFICATE           — base64-encoded Apple Distribution certificate (.p12)
+#                                 Export from Keychain Access: right-click cert → Export → .p12
+#                                 Encode: base64 -i certificate.p12 | pbcopy
+#   APPLE_CERTIFICATE_PASSWORD  — password you set when exporting the .p12
+#   APPLE_PROVISIONING_PROFILE  — base64-encoded App Store provisioning profile (.mobileprovision)
+#                                 Download from developer.apple.com → Profiles
+#                                 Encode: base64 -i profile.mobileprovision | pbcopy
+#   APPLE_DEVELOPMENT_TEAM      — your 10-character Apple Team ID (e.g. "A1B2C3D4E5")
+#                                 Found at developer.apple.com → Account → Membership
+#   POSTHOG_API_KEY             — analytics key (same as other release workflows)
+#
+# Output:
+#   - IPA attached to the GitHub draft release
+#   - IPA also saved as a workflow artifact (30 day retention)
+#   - Upload to TestFlight must be done manually from the IPA, or automate separately
+#     using App Store Connect API keys.
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable + iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Update cargo tauri-cli
+        run: cargo install tauri-cli --version "^2.9" --locked
+
+      - name: Install CocoaPods
+        run: brew install cocoapods
+
+      - name: Install frontend dependencies
+        run: yarn install
+
+      - name: Get version from package.json
+        id: version
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Import Apple Distribution certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+      - name: Install App Store provisioning profile
+        env:
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          UUID=$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract UUID raw -)
+          cp "$RUNNER_TEMP/profile.mobileprovision" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+          echo "Installed provisioning profile: $UUID"
+
+      - name: Set ExportOptions to app-store
+        run: |
+          cat > src-tauri/gen/apple/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_DEVELOPMENT_TEAM }}</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Initialize iOS project
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: yarn tauri ios init
+
+      - name: Build iOS IPA
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: yarn tauri ios build
+
+      - name: Find and rename IPA
+        run: |
+          IPA=$(find src-tauri/gen/apple/build -name "*.ipa" | head -1)
+          echo "Found IPA: $IPA"
+          DEST="dota-keeper-${{ steps.version.outputs.VERSION }}-ios.ipa"
+          cp "$IPA" "$DEST"
+          echo "IPA_PATH=$DEST" >> $GITHUB_ENV
+
+      - name: Upload IPA as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dota-keeper-${{ steps.version.outputs.VERSION }}-ios
+          path: ${{ env.IPA_PATH }}
+          retention-days: 30
+
+      - name: Attach IPA to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ steps.version.outputs.VERSION }}" "${{ env.IPA_PATH }}" --clobber || \
+            echo "⚠️  Could not upload to release (may not exist yet). IPA is available as a workflow artifact."

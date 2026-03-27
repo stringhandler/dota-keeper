@@ -7,6 +7,7 @@ Thank you for your interest in contributing to Dota Keeper! This document provid
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Android Development](#android-development)
+- [iOS Development](#ios-development)
 - [Project Structure](#project-structure)
 - [Making Changes](#making-changes)
 - [Submitting Contributions](#submitting-contributions)
@@ -106,6 +107,59 @@ The CI workflow (`android-release.yml`) signs the APK automatically using GitHub
    | `ANDROID_KEY_PASSWORD` | Key password (can be the same as store password) |
 
 The `android-release.yml` workflow will then automatically build and sign a release APK whenever commits are pushed to the `release` branch. It can also be triggered manually via `workflow_dispatch`.
+
+## iOS Development
+
+### Prerequisites
+
+- macOS with [Xcode](https://developer.apple.com/xcode/) (full Xcode, not just Command Line Tools)
+- CocoaPods: `brew install cocoapods`
+- Rust iOS targets:
+  ```bash
+  rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+  ```
+- cargo tauri-cli v2.9+: `cargo install tauri-cli --version "^2.9" --locked`
+- An Apple ID signed into Xcode (Xcode → Settings → Accounts)
+
+### Running on Simulator
+
+```bash
+yarn tauri ios dev
+```
+
+### Building an IPA
+
+```bash
+yarn tauri ios build
+```
+
+### Setting Up iOS Release Signing
+
+The CI workflow (`ios-release.yml`) builds an App Store IPA automatically using GitHub secrets. To set this up:
+
+1. **Get an Apple Distribution certificate** from [developer.apple.com](https://developer.apple.com) → Certificates. Export it from Keychain Access as a `.p12` file and base64-encode it:
+   ```bash
+   base64 -i certificate.p12 | pbcopy
+   ```
+   > **Keep the `.p12` file safe and backed up.** Never commit it to the repository.
+
+2. **Create an App Store provisioning profile** at developer.apple.com → Profiles. Download the `.mobileprovision` file and base64-encode it:
+   ```bash
+   base64 -i profile.mobileprovision | pbcopy
+   ```
+
+3. **Find your Team ID** at developer.apple.com → Account → Membership (10-character string, e.g. `A1B2C3D4E5`).
+
+4. **Add the following secrets** to the GitHub repository (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   |---|---|
+   | `APPLE_CERTIFICATE` | Base64-encoded `.p12` certificate |
+   | `APPLE_CERTIFICATE_PASSWORD` | Password set when exporting the `.p12` |
+   | `APPLE_PROVISIONING_PROFILE` | Base64-encoded `.mobileprovision` file |
+   | `APPLE_DEVELOPMENT_TEAM` | Your 10-character Apple Team ID |
+
+The `ios-release.yml` workflow will then automatically build and sign a release IPA whenever commits are pushed to the `release` branch. The IPA is attached to the GitHub draft release and must be uploaded to TestFlight manually via Xcode Organizer or Transporter.
 
 ## Project Structure
 
