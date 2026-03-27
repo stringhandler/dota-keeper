@@ -1,7 +1,15 @@
 <script>
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { invoke } from '@tauri-apps/api/core';
+  import { onMount } from 'svelte';
 
   const appWindow = getCurrentWindow();
+
+  let isBeta = false;
+
+  onMount(async () => {
+    isBeta = await invoke('is_beta_build');
+  });
 
   async function minimize() {
     await appWindow.minimize();
@@ -17,7 +25,10 @@
 </script>
 
 <div class="titlebar" data-tauri-drag-region role="banner">
-  <span class="titlebar-title" data-tauri-drag-region>Dota Keeper</span>
+  <span class="titlebar-title" data-tauri-drag-region>
+    Dota Keeper
+    {#if isBeta}<span class="beta-badge">BETA</span>{/if}
+  </span>
   <div class="titlebar-buttons">
     <button class="tb-btn" onclick={minimize} title="Minimize" aria-label="Minimize">
       <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
@@ -55,6 +66,19 @@
     letter-spacing: 3px;
     text-transform: uppercase;
     color: var(--gold-dim);
+    pointer-events: none;
+  }
+
+  .beta-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #1a1a1a;
+    background: var(--gold-dim);
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-left: 8px;
+    vertical-align: middle;
     pointer-events: none;
   }
 

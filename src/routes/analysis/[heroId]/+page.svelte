@@ -5,6 +5,7 @@
   import { getHeroName } from "$lib/heroes.js";
   import Chart from "$lib/Chart.svelte";
   import HeroIcon from "$lib/HeroIcon.svelte";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -12,22 +13,22 @@
   // Filters
   let timeMinutes = $state(10);
   let windowSize = $state(30);
-  let selectedGameMode = $state(null);
+  let selectedGameMode = $state(/** @type {number | null} */ (null));
 
   // Hero ID from URL
-  let heroId = $derived(parseInt($page.params.heroId));
+  let heroId = $derived(parseInt($page.params.heroId ?? '0'));
   let heroName = $derived(getHeroName(heroId));
 
   // Analysis data
-  let analysis = $state(null);
+  let analysis = $state(/** @type {any} */ (null));
 
   // Game modes
-  const gameModes = [
-    { value: null, label: "All Modes" },
-    { value: 22, label: "Ranked" },
-    { value: 23, label: "Turbo" },
-    { value: 2, label: "All Pick" },
-  ];
+  let gameModes = $derived([
+    { value: null, label: $_('analysis.all_modes') },
+    { value: 22, label: $_('analysis.mode_ranked') },
+    { value: 23, label: $_('analysis.mode_turbo') },
+    { value: 2, label: $_('analysis.mode_all_pick') },
+  ]);
 
   onMount(async () => {
     await loadAnalysis();
@@ -66,7 +67,7 @@
     const n = points.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
-    points.forEach((point, index) => {
+    points.forEach((/** @type {any} */ point, /** @type {number} */ index) => {
       const x = index;
       const y = point.last_hits;
       sumX += x;
@@ -81,6 +82,7 @@
     return { slope, intercept };
   }
 
+  /** @param {number} index */
   function getTrendLineValue(index) {
     const trend = calculateTrendLine();
     if (!trend) return null;
@@ -105,6 +107,7 @@
     return "declining";
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     const date = new Date(timestamp * 1000);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -116,29 +119,18 @@
     const points = analysis.current_period.data_points;
     if (points.length === 0) return [];
 
-    const min = Math.min(...points.map(p => p.last_hits));
-    const max = Math.max(...points.map(p => p.last_hits));
-    const range = max - min;
-    const bucketSize = Math.max(5, Math.ceil(range / 10)); // At least 5 LH per bucket
-
-    // Create buckets
+    const bucketSize = 10;
     const buckets = [];
-    let currentMin = Math.floor(min / bucketSize) * bucketSize;
 
-    while (currentMin <= max) {
+    for (let currentMin = 0; currentMin < 100; currentMin += bucketSize) {
       const currentMax = currentMin + bucketSize;
-      const count = points.filter(p => p.last_hits >= currentMin && p.last_hits < currentMax).length;
-
-      if (count > 0 || buckets.length === 0) {
-        buckets.push({
-          min: currentMin,
-          max: currentMax,
-          count,
-          label: `${currentMin}-${currentMax - 1}`
-        });
-      }
-
-      currentMin = currentMax;
+      const count = points.filter((/** @type {any} */ p) => p.last_hits >= currentMin && p.last_hits < currentMax).length;
+      buckets.push({
+        min: currentMin,
+        max: currentMax,
+        count,
+        label: `${currentMin}-${currentMax - 1}`
+      });
     }
 
     return buckets;
@@ -157,22 +149,22 @@
     return {
       type: 'line',
       data: {
-        labels: buckets.map(b => b.label),
+        labels: buckets.map((/** @type {any} */ b) => b.label),
         datasets: [{
           label: 'Game Count',
-          data: buckets.map(b => b.count),
-          borderColor: 'rgba(212, 175, 55, 1)',
-          backgroundColor: 'rgba(212, 175, 55, 0.2)',
-          borderWidth: 3,
+          data: buckets.map((/** @type {any} */ b) => b.count),
+          borderColor: '#f0b429',
+          backgroundColor: 'rgba(240, 180, 41, 0.15)',
+          borderWidth: 2,
           fill: true,
           tension: 0.4,
-          pointRadius: 6,
-          pointHoverRadius: 8,
-          pointBackgroundColor: 'rgba(212, 175, 55, 1)',
-          pointBorderColor: 'rgba(255, 255, 255, 0.8)',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: '#f0b429',
+          pointBorderColor: 'rgba(255, 255, 255, 0.6)',
           pointBorderWidth: 2,
-          pointHoverBackgroundColor: 'rgba(212, 175, 55, 1)',
-          pointHoverBorderColor: 'rgba(255, 255, 255, 1)',
+          pointHoverBackgroundColor: '#f0b429',
+          pointHoverBorderColor: '#fff',
         }]
       },
       options: {
@@ -183,14 +175,15 @@
             display: false
           },
           tooltip: {
-            backgroundColor: 'rgba(30, 30, 40, 0.95)',
-            titleColor: '#d4af37',
-            bodyColor: '#e0e0e0',
-            borderColor: 'rgba(139, 92, 46, 0.8)',
-            borderWidth: 2,
-            padding: 12,
+            backgroundColor: '#101820',
+            titleColor: '#f0b429',
+            bodyColor: '#9a8e7c',
+            borderColor: 'rgba(255, 200, 80, 0.3)',
+            borderWidth: 1,
+            padding: 10,
             displayColors: false,
             callbacks: {
+              /** @param {import('chart.js').TooltipItem<'line'>} context */
               label: function(context) {
                 return `${context.parsed.y} games`;
               }
@@ -200,46 +193,34 @@
         scales: {
           x: {
             grid: {
-              color: 'rgba(139, 92, 46, 0.2)',
-              borderColor: 'rgba(139, 92, 46, 0.5)',
+              color: 'rgba(255, 200, 80, 0.08)',
             },
             ticks: {
-              color: '#a0a0a0',
-              font: {
-                size: 11
-              }
+              color: '#726558',
+              font: { size: 11 }
             },
             title: {
               display: true,
               text: 'Last Hits',
-              color: '#d4af37',
-              font: {
-                size: 12,
-                weight: 'bold'
-              }
+              color: '#9a8e7c',
+              font: { size: 11 }
             }
           },
           y: {
             beginAtZero: true,
             grid: {
-              color: 'rgba(139, 92, 46, 0.2)',
-              borderColor: 'rgba(139, 92, 46, 0.5)',
+              color: 'rgba(255, 200, 80, 0.08)',
             },
             ticks: {
-              color: '#a0a0a0',
-              font: {
-                size: 11
-              },
+              color: '#726558',
+              font: { size: 11 },
               stepSize: 1
             },
             title: {
               display: true,
               text: 'Number of Games',
-              color: '#d4af37',
-              font: {
-                size: 12,
-                weight: 'bold'
-              }
+              color: '#9a8e7c',
+              font: { size: 11 }
             }
           }
         }
@@ -256,28 +237,28 @@
     return {
       type: 'line',
       data: {
-        labels: points.map((p, i) => `Game ${i + 1}`),
+        labels: points.map((/** @type {any} */ p, /** @type {number} */ i) => `Game ${i + 1}`),
         datasets: [
           {
             label: 'Last Hits',
-            data: points.map(p => p.last_hits),
-            borderColor: 'rgba(212, 175, 55, 1)',
-            backgroundColor: 'rgba(212, 175, 55, 0.1)',
+            data: points.map((/** @type {any} */ p) => p.last_hits),
+            borderColor: '#f0b429',
+            backgroundColor: 'rgba(240, 180, 41, 0.08)',
             borderWidth: 2,
             fill: false,
             tension: 0,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: 'rgba(212, 175, 55, 1)',
-            pointBorderColor: 'rgba(255, 255, 255, 0.8)',
-            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#f0b429',
+            pointBorderColor: 'rgba(255, 255, 255, 0.6)',
+            pointBorderWidth: 1,
           },
           trendLine ? {
             label: 'Trend',
-            data: points.map((_, i) => getTrendLineValue(i)),
-            borderColor: 'rgba(96, 192, 64, 0.8)',
-            backgroundColor: 'rgba(96, 192, 64, 0.1)',
-            borderWidth: 2,
+            data: points.map((/** @type {any} */ _, /** @type {number} */ i) => getTrendLineValue(i)),
+            borderColor: 'rgba(74, 222, 128, 0.7)',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
             borderDash: [5, 5],
             fill: false,
             tension: 0,
@@ -298,31 +279,31 @@
             display: true,
             position: 'bottom',
             labels: {
-              color: '#a0a0a0',
-              font: {
-                size: 11
-              },
+              color: '#726558',
+              font: { size: 11 },
               usePointStyle: true,
               padding: 15
             }
           },
           tooltip: {
-            backgroundColor: 'rgba(30, 30, 40, 0.95)',
-            titleColor: '#d4af37',
-            bodyColor: '#e0e0e0',
-            borderColor: 'rgba(139, 92, 46, 0.8)',
-            borderWidth: 2,
-            padding: 12,
+            backgroundColor: '#101820',
+            titleColor: '#f0b429',
+            bodyColor: '#9a8e7c',
+            borderColor: 'rgba(255, 200, 80, 0.3)',
+            borderWidth: 1,
+            padding: 10,
             callbacks: {
+              /** @param {import('chart.js').TooltipItem<'line'>[]} context */
               title: function(context) {
                 const point = points[context[0].dataIndex];
                 return formatDate(point.start_time);
               },
+              /** @param {import('chart.js').TooltipItem<'line'>} context */
               label: function(context) {
                 if (context.datasetIndex === 0) {
                   return `Last Hits: ${context.parsed.y}`;
                 } else {
-                  return `Trend: ${context.parsed.y.toFixed(1)}`;
+                  return `Trend: ${(context.parsed.y ?? 0).toFixed(1)}`;
                 }
               }
             }
@@ -330,15 +311,10 @@
         },
         scales: {
           x: {
-            grid: {
-              color: 'rgba(139, 92, 46, 0.2)',
-              borderColor: 'rgba(139, 92, 46, 0.5)',
-            },
+            grid: { color: 'rgba(255, 200, 80, 0.08)' },
             ticks: {
-              color: '#a0a0a0',
-              font: {
-                size: 10
-              },
+              color: '#726558',
+              font: { size: 10 },
               maxRotation: 45,
               minRotation: 0,
               autoSkip: true,
@@ -347,32 +323,23 @@
             title: {
               display: true,
               text: 'Game Sequence',
-              color: '#d4af37',
-              font: {
-                size: 12,
-                weight: 'bold'
-              }
+              color: '#9a8e7c',
+              font: { size: 11 }
             }
           },
           y: {
-            grid: {
-              color: 'rgba(139, 92, 46, 0.2)',
-              borderColor: 'rgba(139, 92, 46, 0.5)',
-            },
+            min: 0,
+            max: 120,
+            grid: { color: 'rgba(255, 200, 80, 0.08)' },
             ticks: {
-              color: '#a0a0a0',
-              font: {
-                size: 11
-              }
+              color: '#726558',
+              font: { size: 11 }
             },
             title: {
               display: true,
               text: 'Last Hits',
-              color: '#d4af37',
-              font: {
-                size: 12,
-                weight: 'bold'
-              }
+              color: '#9a8e7c',
+              font: { size: 11 }
             }
           }
         }
@@ -382,123 +349,115 @@
 </script>
 
 <div class="hero-detail-content">
-  <div class="page-header">
-    <div class="header-content">
-      <a href="/analysis" class="back-link">← Back to Analysis</a>
-      <h1>
-        <HeroIcon heroId={heroId} size="large" showName={false} />
-        {heroName} - Last Hits Analysis
-      </h1>
-      <p class="subtitle">Detailed performance tracking and trends</p>
+  <!-- PAGE HEADER -->
+  <div class="detail-header">
+    <a href="/analysis" class="back-link">{$_('analysis.back_to_analysis')}</a>
+    <div class="detail-title">
+      <HeroIcon heroId={heroId} size="large" showName={false} />
+      <div>
+        <div class="hero-name">{heroName}</div>
+        <div class="section-title">{$_('analysis.last_hits_analysis')}</div>
+      </div>
     </div>
   </div>
 
-  <div class="filters-section">
-    <h2>Filters</h2>
-    <div class="filters-grid">
-      <div class="filter-group">
-        <label for="time-minutes">Time Marker</label>
-        <select id="time-minutes" bind:value={timeMinutes} on:change={handleFilterChange}>
-          <option value={10}>10 minutes</option>
-        </select>
-      </div>
+  <!-- FILTERS ROW -->
+  <div class="filters-row">
+    <div class="filter-group">
+      <div class="filter-label">{$_('analysis.filter_time')}</div>
+      <select class="form-select" id="time-minutes" bind:value={timeMinutes} onchange={handleFilterChange}>
+        <option value={10}>10 minutes</option>
+      </select>
+    </div>
 
-      <div class="filter-group">
-        <label for="window-size">Window Size</label>
-        <select id="window-size" bind:value={windowSize} on:change={handleFilterChange}>
-          <option value={30}>30 games</option>
-        </select>
-      </div>
+    <div class="filter-group">
+      <div class="filter-label">{$_('analysis.filter_sample')}</div>
+      <select class="form-select" id="window-size" bind:value={windowSize} onchange={handleFilterChange}>
+        <option value={30}>30 games</option>
+      </select>
+    </div>
 
-      <div class="filter-group">
-        <label for="mode-filter">Game Mode</label>
-        <select id="mode-filter" bind:value={selectedGameMode} on:change={handleFilterChange}>
-          {#each gameModes as mode}
-            <option value={mode.value}>{mode.label}</option>
-          {/each}
-        </select>
-      </div>
+    <div class="filter-group">
+      <div class="filter-label">{$_('analysis.filter_mode')}</div>
+      <select class="form-select" id="mode-filter" bind:value={selectedGameMode} onchange={handleFilterChange}>
+        {#each gameModes as mode}
+          <option value={mode.value}>{mode.label}</option>
+        {/each}
+      </select>
     </div>
   </div>
 
   {#if isLoading}
-    <div class="loading">
-      <p>Loading...</p>
-    </div>
+    <div class="loading-state">{$_('analysis.loading')}</div>
   {:else if error}
-    <p class="error">{error}</p>
+    <div class="error-banner">{error}</div>
   {:else if analysis}
     {#if analysis.current_period.count === 0}
       <div class="no-data">
-        <p>No data available for {heroName} with the selected filters.</p>
-        <p class="hint">Make sure you have parsed matches with this hero at {timeMinutes} minutes.</p>
+        <p>{$_('analysis.no_data')}</p>
+        <p class="hint">{$_('analysis.no_data_hint', { values: { minutes: timeMinutes } })}</p>
       </div>
     {:else}
-      <div class="stats-section">
-        <h2>Summary Statistics</h2>
+      <!-- SUMMARY STATS -->
+      <div class="analysis-card" style="margin-bottom:16px">
+        <div class="analysis-card-title">{$_('analysis.summary_stats')}</div>
         <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Average LH</div>
-            <div class="stat-value">{analysis.current_period.average.toFixed(1)}</div>
+          <div class="stat-item">
+            <div class="stat-item-label">{$_('analysis.avg_lh')}</div>
+            <div class="big-stat">{analysis.current_period.average.toFixed(1)}</div>
           </div>
-
-          <div class="stat-card">
-            <div class="stat-label">Min</div>
-            <div class="stat-value">{analysis.current_period.min}</div>
+          <div class="stat-item">
+            <div class="stat-item-label">{$_('analysis.min_val')}</div>
+            <div class="big-stat" style="color:var(--red)">{analysis.current_period.min}</div>
           </div>
-
-          <div class="stat-card">
-            <div class="stat-label">Max</div>
-            <div class="stat-value">{analysis.current_period.max}</div>
+          <div class="stat-item">
+            <div class="stat-item-label">{$_('analysis.max_val')}</div>
+            <div class="big-stat" style="color:var(--green)">{analysis.current_period.max}</div>
           </div>
-
-          <div class="stat-card">
-            <div class="stat-label">Games</div>
-            <div class="stat-value">{analysis.current_period.count}</div>
+          <div class="stat-item">
+            <div class="stat-item-label">Games</div>
+            <div class="big-stat" style="color:var(--teal)">{analysis.current_period.count}</div>
           </div>
         </div>
       </div>
 
-      <div class="trend-section">
-        <h2>Trend Analysis</h2>
-        <div class="trend-card {getTrendClass()}">
-          <div class="trend-indicator">
-            {#if getTrendClass() === 'improving'}
-              <span class="arrow">↗</span>
-            {:else if getTrendClass() === 'declining'}
-              <span class="arrow">↘</span>
-            {:else}
-              <span class="arrow">→</span>
-            {/if}
-          </div>
-          <div class="trend-info">
-            <div class="trend-label">Trend</div>
-            <div class="trend-value">{getTrendDescription()}</div>
+      <!-- TREND -->
+      <div class="analysis-card" style="margin-bottom:16px">
+        <div class="analysis-card-title">{$_('analysis.trend_analysis')}</div>
+        <div class="trend-row">
+          <span class="trend-arrow {getTrendClass()}">
+            {#if getTrendClass() === 'improving'}↗{:else if getTrendClass() === 'declining'}↘{:else}→{/if}
+          </span>
+          <div>
+            <div class="trend-label {getTrendClass()}">{getTrendDescription()}</div>
           </div>
         </div>
       </div>
 
-      <div class="distribution-section">
-        <h2>Distribution (Last {analysis.current_period.count} games)</h2>
+      <!-- DISTRIBUTION CHART -->
+      <div class="analysis-card" style="margin-bottom:16px">
+        <div class="analysis-card-title">{$_('analysis.distribution', { values: { count: analysis.current_period.count } })}</div>
         {#if getDistributionChartConfig()}
           <Chart config={getDistributionChartConfig()} height="300px" />
         {/if}
       </div>
 
-      <div class="timeline-section">
-        <h2>Recent Games</h2>
+      <!-- TIMELINE CHART -->
+      <div class="analysis-card" style="margin-bottom:16px">
+        <div class="analysis-card-title">{$_('analysis.recent_timeline')}</div>
         {#if getTimelineChartConfig()}
           <Chart config={getTimelineChartConfig()} height="350px" />
         {/if}
       </div>
 
-      <div class="games-list-section">
-        <h2>Game Details</h2>
+      <!-- GAME DETAILS TABLE -->
+      <div class="analysis-card">
+        <div class="analysis-card-title">{$_('analysis.game_details')}</div>
         <div class="games-table">
           <div class="table-header">
-            <div class="col-date">Date</div>
-            <div class="col-lh">Last Hits</div>
-            <div class="col-deviation">vs Average</div>
+            <div class="col-date">{$_('analysis.col_date')}</div>
+            <div class="col-lh">{$_('analysis.col_last_hits')}</div>
+            <div class="col-deviation">{$_('analysis.col_vs_avg')}</div>
           </div>
           {#each analysis.current_period.data_points as point}
             {@const deviation = point.last_hits - analysis.current_period.average}
@@ -522,300 +481,159 @@
     margin: 0 auto;
   }
 
-  .loading {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 3rem;
-    color: #d4af37;
-    font-size: 1rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .page-header {
-    margin-bottom: 2rem;
-    padding: 25px 30px;
-    background:
-      linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 46, 0.08) 2px, rgba(139, 92, 46, 0.08) 4px);
-    background-size: 100%, 4px 4px;
-    border: 2px solid rgba(139, 92, 46, 0.5);
-    border-radius: 8px;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-
-  .header-content {
+  /* ── HEADER ── */
+  .detail-header {
+    margin-bottom: 20px;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 10px;
   }
 
   .back-link {
-    color: #a0a0a0;
-    text-decoration: none;
-    font-size: 0.9rem;
-    transition: color 0.3s ease;
-  }
-
-  .back-link:hover {
-    color: #d4af37;
-  }
-
-  .page-header h1 {
-    margin: 0;
-    font-size: 2em;
-    color: #d4af37;
-    text-shadow:
-      0 0 20px rgba(212, 175, 55, 0.5),
-      2px 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 3px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    color: var(--text-muted);
+    transition: color 0.2s;
   }
 
-  .subtitle {
-    color: #a0a0a0;
-    margin: 0;
-    font-size: 0.9rem;
+  .back-link:hover { color: var(--gold); }
+
+  .detail-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hero-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
     letter-spacing: 1px;
+    color: var(--text-primary);
   }
 
-  .error {
-    color: #ff6b6b;
-    background-color: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.4);
-    border-radius: 3px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-  }
-
-  .no-data {
-    padding: 3rem;
-    text-align: center;
-    color: #a0a0a0;
-    background: rgba(30, 30, 40, 0.5);
-    border: 2px solid rgba(139, 92, 46, 0.3);
-    border-radius: 8px;
-  }
-
-  .no-data p {
-    margin: 0.5rem 0;
-  }
-
-  .hint {
-    font-size: 0.9rem;
-    color: #808080;
-  }
-
-  .filters-section,
-  .stats-section,
-  .trend-section,
-  .distribution-section,
-  .timeline-section,
-  .games-list-section {
-    padding: 30px;
-    background:
-      linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%),
-      repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 6px);
-    background-size: 100%, 6px 6px;
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 8px;
-    margin-bottom: 2rem;
-    box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  }
-
-  h2 {
-    margin: 0 0 1.5rem 0;
-    font-size: 1.2em;
-    color: #d4af37;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    border-bottom: 2px solid rgba(139, 92, 46, 0.5);
-    padding-bottom: 15px;
-  }
-
-  .filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
+  /* ── FILTERS ROW ── */
+  .filters-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: flex-end;
   }
 
   .filter-group {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 5px;
   }
 
-  .filter-group label {
-    font-weight: 600;
-    color: #d4af37;
+  .filter-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.9em;
   }
 
-  select {
-    padding: 12px;
-    background-color: rgba(30, 30, 40, 0.8);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 3px;
-    color: #e0e0e0;
-    font-size: 1em;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  select:focus {
-    border-color: rgba(139, 92, 46, 0.8);
-    outline: none;
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-  }
-
+  /* ── STATS GRID ── */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
   }
 
-  .stat-card {
-    padding: 25px;
-    background: rgba(30, 30, 40, 0.6);
-    border: 2px solid rgba(139, 92, 46, 0.4);
-    border-radius: 5px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
-  .stat-label {
-    font-size: 0.9rem;
-    color: #a0a0a0;
+  .stat-item-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 0.5rem;
   }
 
-  .stat-value {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #d4af37;
-    text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-  }
-
-  .trend-card {
+  /* ── TREND ROW ── */
+  .trend-row {
     display: flex;
     align-items: center;
-    gap: 2rem;
-    padding: 30px;
-    background: rgba(30, 30, 40, 0.6);
-    border: 3px solid rgba(139, 92, 46, 0.4);
+    gap: 16px;
+  }
+
+  .trend-arrow {
+    font-size: 2.5rem;
+    line-height: 1;
+  }
+
+  .trend-arrow.improving { color: var(--green); }
+  .trend-arrow.declining { color: var(--red); }
+  .trend-arrow.stable { color: var(--teal); }
+
+  /* ── NO DATA ── */
+  .no-data {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 8px;
+    padding: 48px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
   }
 
-  .trend-card.improving {
-    border-color: rgba(96, 192, 64, 0.6);
-    background: rgba(96, 192, 64, 0.1);
-  }
+  .no-data p { margin-bottom: 8px; }
+  .hint { font-size: 12px; color: var(--text-muted); }
 
-  .trend-card.declining {
-    border-color: rgba(255, 107, 107, 0.6);
-    background: rgba(255, 107, 107, 0.1);
-  }
-
-  .trend-card.stable {
-    border-color: rgba(240, 184, 64, 0.6);
-    background: rgba(240, 184, 64, 0.1);
-  }
-
-  .trend-indicator {
-    font-size: 3rem;
-  }
-
-  .trend-card.improving .arrow {
-    color: #60c040;
-  }
-
-  .trend-card.declining .arrow {
-    color: #ff6b6b;
-  }
-
-  .trend-card.stable .arrow {
-    color: #f0b840;
-  }
-
-  .trend-info {
-    flex: 1;
-  }
-
-  .trend-label {
-    font-size: 0.9rem;
-    color: #a0a0a0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 0.5rem;
-  }
-
-  .trend-value {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #e0e0e0;
-  }
-
-
+  /* ── GAMES TABLE ── */
   .games-table {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 4px;
   }
 
   .table-header {
     display: grid;
     grid-template-columns: 150px 1fr 1fr;
     gap: 1rem;
-    padding: 15px 20px;
-    background: rgba(40, 40, 50, 0.6);
-    border-radius: 3px;
+    padding: 10px 16px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
     font-weight: 600;
-    color: #d4af37;
+    letter-spacing: 2px;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 0.9rem;
   }
 
   .table-row {
     display: grid;
     grid-template-columns: 150px 1fr 1fr;
     gap: 1rem;
-    padding: 15px 20px;
-    background: rgba(30, 30, 40, 0.4);
-    border-left: 3px solid rgba(139, 92, 46, 0.5);
-    border-radius: 3px;
-    color: #e0e0e0;
+    padding: 10px 16px;
+    background: var(--bg-surface);
+    border-left: 2px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: background 0.15s;
   }
 
-  .col-date {
-    color: #a0a0a0;
-  }
+  .table-row:hover { background: var(--bg-elevated); }
+
+  .col-date { color: var(--text-muted); }
 
   .col-lh {
-    font-weight: bold;
-    color: #d4af37;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    color: var(--gold);
   }
 
-  .col-deviation {
-    font-weight: bold;
-  }
-
-  .col-deviation.positive {
-    color: #60c040;
-  }
-
-  .col-deviation.negative {
-    color: #ff6b6b;
-  }
+  .col-deviation { font-weight: 600; }
+  .col-deviation.positive { color: var(--green); }
+  .col-deviation.negative { color: var(--red); }
 </style>

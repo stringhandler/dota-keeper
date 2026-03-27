@@ -2,6 +2,9 @@
 
 A desktop application for tracking your Dota 2 match history and analyzing performance against personal goals.
 
+[![Discord](https://img.shields.io/discord/1479878504572129544?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/pgNrDSXV)
+[![Twitter](https://img.shields.io/badge/Twitter-@dotakeeperapp-1DA1F2?logo=twitter&logoColor=white)](https://twitter.com/dotakeeperapp)
+
 ## Overview
 
 Dota Keeper helps you improve your Dota 2 gameplay by automatically fetching your match data and analyzing it against custom goals you define. Whether you want to maintain a specific win rate, reduce deaths, or improve your farm, Dota Keeper provides the insights you need.
@@ -13,6 +16,14 @@ Dota Keeper helps you improve your Dota 2 gameplay by automatically fetching you
 - **Performance Analysis**: Track your progress against goals with detailed statistics
 - **Local Data Storage**: All your data is stored locally in a SQLite database
 - **Cross-Platform**: Built with Tauri for native performance on Windows, macOS, and Linux
+
+## Join the Community
+
+Downloaded the app? Come hang out.
+
+**[Join the Discord](https://discord.gg/pgNrDSXV)** — Share your stats, get goal suggestions from other players, report bugs, and vote on what gets built next. It's the fastest way to get help and have a say in the direction of the app.
+
+**[Follow on Twitter/X](https://twitter.com/dotakeeperapp)** — Updates, release notes, and the occasional hot take on Dota meta.
 
 ## Tech Stack
 
@@ -160,7 +171,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-For bugs, feature requests, or questions, please open an issue on GitHub.
+- **[Discord](https://discord.gg/pgNrDSXV)** — Fastest way to get help. Ask questions, share replays, chat with other players.
+- **[GitHub Issues](https://github.com/stringhandler/dota-keeper/issues)** — Bug reports and feature requests.
+- **[Twitter/X](https://twitter.com/dotakeeperapp)** — Follow for updates and releases.
 
 ---
 

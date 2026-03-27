@@ -6,19 +6,26 @@ name: Android Release Build
 #
 # Required GitHub secrets:
 #   ANDROID_KEYSTORE        — base64-encoded .jks keystore file
-#                             Generate: keytool -genkey -v -keystore release.jks -alias key0 \
-#                                         -keyalg RSA -keysize 2048 -validity 10000
-#                             Encode:   base64 -w 0 release.jks
-#   ANDROID_KEY_ALIAS       — key alias used above (e.g. "key0")
+#   ANDROID_KEY_ALIAS       — key alias (e.g. "key0")
 #   ANDROID_STORE_PASSWORD  — keystore password
 #   ANDROID_KEY_PASSWORD    — key password (can be same as store password)
 #   POSTHOG_API_KEY         — analytics key (same as desktop release)
+#
+# Optional — only needed for automated Google Play uploads:
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON — contents of the service account JSON file
+#                                      (see CONTRIBUTING.md for setup instructions)
 
 on:
   push:
     branches:
       - release
+      - beta
   workflow_dispatch:
+    inputs:
+      upload_to_play_store:
+        description: 'Upload AAB to Google Play (internal track)'
+        type: boolean
+        default: false
 
 jobs:
   android:
@@ -53,6 +60,11 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install
 
+      - name: Create cargo-tauri wrapper
+        run: |
+          printf '#!/bin/sh\nshift\nexec yarn tauri "$@"\n' > ~/.cargo/bin/cargo-tauri
+          chmod +x ~/.cargo/bin/cargo-tauri
+
       - name: Get version from package.json
         id: version
         run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
@@ -60,46 +72,86 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > "$RUNNER_TEMP/release.keystore"
 
-      - name: Build release APK (arm64)
+      - name: Set build variant (beta vs release)
+        id: variant
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/beta" ]; then
+            echo "IS_BETA=true" >> $GITHUB_ENV
+            echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}-beta" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.volthawk.dota_keeper_beta" >> $GITHUB_ENV
+          else
+            echo "IS_BETA=false" >> $GITHUB_ENV
+            echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.volthawk.dota_keeper" >> $GITHUB_ENV
+          fi
+
+      # ── AAB (for Google Play Store) ────────────────────────────────────────
+
+      - name: Re-init Android project for beta identifier
+        if: env.IS_BETA == 'true'
+        env:
+          NDK_HOME: ${{ env.NDK_HOME }}
+        run: |
+          rm -rf src-tauri/gen/android
+          yarn tauri android init --config src-tauri/tauri.beta.conf.json
+
+      - name: Build release AAB (all ABIs)
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        # Builds arm64-only — covers 95%+ of modern Android phones.
-        # Remove --target aarch64 to build a universal APK for all ABIs (slower).
-        run: yarn tauri android build --apk --target aarch64
-
-      - name: Sign APK
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
         run: |
-          UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "Found unsigned APK: $UNSIGNED"
+          if [ "$IS_BETA" = "true" ]; then
+            yarn tauri android build --aab true --config src-tauri/tauri.beta.conf.json
+          else
+            yarn tauri android build --aab true
+          fi
 
-          BUILD_TOOLS=$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
-          SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-android.apk"
+      - name: Sign AAB
+        run: |
+          UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/bundle -name "*.aab" | head -1)
+          echo "Found unsigned AAB: $UNSIGNED"
 
-          "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner" sign \
-            --ks "$RUNNER_TEMP/release.keystore" \
-            --ks-key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            --ks-pass "pass:${{ secrets.ANDROID_STORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.ANDROID_KEY_PASSWORD }}" \
-            --out "$SIGNED" \
-            "$UNSIGNED"
+          if [ "$IS_BETA" = "true" ]; then
+            SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-beta-android.aab"
+          else
+            SIGNED="dota-keeper-${{ steps.version.outputs.VERSION }}-android.aab"
+          fi
 
-          echo "SIGNED_APK=$SIGNED" >> $GITHUB_ENV
-          echo "Signed APK: $SIGNED"
+          jarsigner -verbose \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass "${{ secrets.ANDROID_STORE_PASSWORD }}" \
+            -keypass "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            -signedjar "$SIGNED" \
+            "$UNSIGNED" \
+            "${{ secrets.ANDROID_KEY_ALIAS }}"
 
-      - name: Upload APK as workflow artifact
+          echo "SIGNED_AAB=$SIGNED" >> $GITHUB_ENV
+
+      - name: Upload AAB as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: dota-keeper-${{ steps.version.outputs.VERSION }}-android
-          path: ${{ env.SIGNED_APK }}
+          path: ${{ env.SIGNED_AAB }}
           retention-days: 30
 
-      - name: Attach APK to GitHub release
+      - name: Attach AAB to GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Uploads to the draft release created by the desktop release job.
-        # Uses || true so the workflow doesn't fail if the release doesn't exist yet
-        # (run workflow_dispatch manually once the release is published).
         run: |
-          gh release upload "v${{ steps.version.outputs.VERSION }}" "${{ env.SIGNED_APK }}" --clobber || \
-            echo "⚠️  Could not upload to release (may not exist yet). APK is available as a workflow artifact."
+          gh release upload "$RELEASE_TAG" "$SIGNED_AAB" --clobber || \
+            echo "⚠️  Could not upload to release (may not exist yet). AAB is available as a workflow artifact."
+
+      - name: Upload AAB to Google Play (internal track)
+        if: ${{ inputs.upload_to_play_store == true }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.ANDROID_APP_ID }}
+          releaseFiles: ${{ env.SIGNED_AAB }}
+          track: internal
+          status: completed

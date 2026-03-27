@@ -1,0 +1,1 @@
+📋 New Feedback  Category: bug Priority: annoying Platform: windows  Feedback: matches dont parsed and i dont see info  Page: /matches Version: 0.3.0

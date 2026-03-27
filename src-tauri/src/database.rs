@@ -1,12 +1,32 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use rand::Rng;
 
 /// Global app data directory, set once during Tauri setup.
 /// Used instead of `dirs::data_local_dir()` so mobile platforms work correctly.
 static DB_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Single shared database connection, protected by a Mutex to prevent concurrent-write races.
+static DB_CONN: OnceLock<Mutex<Connection>> = OnceLock::new();
+
+/// Called once from `run()` setup after `init_db()` succeeds.
+/// Stores the connection in the global slot so every command can acquire it via `get_db_conn()`.
+pub fn init_shared_db(conn: Connection) {
+    let _ = DB_CONN.set(Mutex::new(conn));
+}
+
+/// Acquire the shared database connection.
+/// Returns an error if `init_shared_db` has not been called yet or the Mutex is poisoned.
+pub fn get_db_conn() -> Result<std::sync::MutexGuard<'static, Connection>, String> {
+    DB_CONN
+        .get()
+        .ok_or_else(|| "Database not initialized".to_string())?
+        .lock()
+        .map_err(|e| format!("Database lock poisoned: {}", e))
+}
 
 /// Called from `run()` setup before any commands execute.
 pub fn set_db_dir(dir: PathBuf) {
@@ -57,11 +77,44 @@ impl GoalMetric {
     }
 }
 
-/// Game mode for goals (Ranked or Turbo)
+/// Frequency / consistency type for goals
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum FrequencyType {
+    JustOnce,
+    OnAverage,
+    Pct50,
+    Pct75,
+    Pct90,
+}
+
+impl FrequencyType {
+    fn to_string(&self) -> &'static str {
+        match self {
+            FrequencyType::JustOnce   => "just_once",
+            FrequencyType::OnAverage  => "on_average",
+            FrequencyType::Pct50      => "pct_50",
+            FrequencyType::Pct75      => "pct_75",
+            FrequencyType::Pct90      => "pct_90",
+        }
+    }
+
+    fn from_string(s: &str) -> Self {
+        match s {
+            "just_once"  => FrequencyType::JustOnce,
+            "on_average" => FrequencyType::OnAverage,
+            "pct_50"     => FrequencyType::Pct50,
+            "pct_90"     => FrequencyType::Pct90,
+            _            => FrequencyType::Pct75,
+        }
+    }
+}
+
+/// Game mode for goals (Ranked, Turbo, or All)
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum GoalGameMode {
     Ranked,
     Turbo,
+    All,
 }
 
 impl GoalGameMode {
@@ -69,6 +122,7 @@ impl GoalGameMode {
         match self {
             GoalGameMode::Ranked => "ranked",
             GoalGameMode::Turbo => "turbo",
+            GoalGameMode::All => "all",
         }
     }
 
@@ -76,9 +130,17 @@ impl GoalGameMode {
         match s {
             "ranked" => Some(GoalGameMode::Ranked),
             "turbo" => Some(GoalGameMode::Turbo),
+            "all" => Some(GoalGameMode::All),
             _ => None,
         }
     }
+}
+
+/// Patch version info cached from OpenDota constants
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PatchInfo {
+    pub name: String,       // e.g., "7.40e"
+    pub date_epoch: i64,    // Unix timestamp of patch release
 }
 
 /// Represents a performance goal
@@ -92,6 +154,7 @@ pub struct Goal {
     pub target_time_minutes: i32,  // Not used for ItemTiming goals
     pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
+    pub frequency_type: FrequencyType,
     pub created_at: i64,
 }
 
@@ -105,6 +168,7 @@ pub struct NewGoal {
     pub target_time_minutes: i32,
     pub item_id: Option<i32>,  // Only used for ItemTiming goals
     pub game_mode: GoalGameMode,
+    pub frequency_type: FrequencyType,
 }
 
 /// Hero goal suggestion (weekly personalized goal)
@@ -186,6 +250,8 @@ pub struct Match {
     pub hero_healing: i32,
     pub parse_state: MatchState,
     pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
+    pub rank_tier: Option<i32>,  // OpenDota rank_tier: 11-15=Herald, 21-25=Guardian, ..., 80=Immortal
+    pub patch: Option<String>,   // e.g., "7.40e" — determined from start_time via patches table
 }
 
 impl Match {
@@ -200,7 +266,8 @@ impl Match {
 /// Prefers the globally initialised app-data dir (set during Tauri setup, works on all
 /// platforms including mobile). Falls back to `dirs::data_local_dir()` for situations
 /// where setup hasn't run yet (e.g. unit tests).
-/// Dev builds use `dota_keeper_dev.db`; release builds use `dota_keeper.db`.
+/// Dev builds use `dota_keeper_dev.db`; beta builds use `dota_keeper_beta.db`;
+/// release builds use `dota_keeper.db`.
 fn get_db_path() -> Option<PathBuf> {
     let mut base = match DB_DIR.get() {
         Some(dir) => dir.clone(),
@@ -214,7 +281,10 @@ fn get_db_path() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     base.push("dota_keeper_dev.db");
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), feature = "beta"))]
+    base.push("dota_keeper_beta.db");
+
+    #[cfg(all(not(debug_assertions), not(feature = "beta")))]
     base.push("dota_keeper.db");
 
     Some(base)
@@ -232,6 +302,11 @@ pub fn init_db() -> Result<Connection, String> {
 
     let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    // Enable WAL mode for better concurrency and set a busy timeout so that
+    // any stray second connection waits instead of immediately returning SQLITE_BUSY.
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+        .map_err(|e| format!("Failed to set database pragmas: {}", e))?;
 
     // Create the matches table
     conn.execute(
@@ -275,6 +350,12 @@ pub fn init_db() -> Result<Connection, String> {
     // Add role column if it doesn't exist (for existing databases)
     let _ = conn.execute(
         "ALTER TABLE matches ADD COLUMN role INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+
+    // Add rank_tier column if it doesn't exist (for existing databases)
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN rank_tier INTEGER",
         [],
     );
 
@@ -331,6 +412,27 @@ pub fn init_db() -> Result<Connection, String> {
         "ALTER TABLE goals ADD COLUMN hero_scope TEXT",
         [],
     );
+
+    // Add frequency_type column if it doesn't exist
+    let _ = conn.execute(
+        "ALTER TABLE goals ADD COLUMN frequency_type TEXT DEFAULT 'pct_75'",
+        [],
+    );
+
+    // Add patch column to matches if it doesn't exist
+    let _ = conn.execute(
+        "ALTER TABLE matches ADD COLUMN patch TEXT",
+        [],
+    );
+
+    // Create the patches cache table (stores Dota 2 patch versions with release dates)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS patches (
+            name TEXT PRIMARY KEY,
+            date_epoch INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create patches table: {}", e))?;
 
     // Create the hero_favorites table
     conn.execute(
@@ -436,6 +538,21 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create challenge_options table: {}", e))?;
 
+    // Create the mood check-ins table (mental health tracking)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mood_checkins (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id    INTEGER UNIQUE REFERENCES matches(match_id),
+            checked_at  INTEGER NOT NULL,
+            energy      INTEGER,
+            calm        INTEGER,
+            attribution TEXT,
+            skipped     INTEGER NOT NULL DEFAULT 0,
+            hidden      INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create mood_checkins table: {}", e))?;
+
     // Create the accepted weekly challenges table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS weekly_challenges (
@@ -477,8 +594,8 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
         "INSERT OR IGNORE INTO matches (
             match_id, hero_id, start_time, duration, game_mode, lobby_type,
             radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             m.match_id,
             m.hero_id,
@@ -500,6 +617,8 @@ pub fn insert_match(conn: &Connection, m: &Match) -> Result<(), String> {
             m.hero_healing,
             m.parse_state.to_string(),
             m.role,
+            m.rank_tier,
+            m.patch,
         ],
     ).map_err(|e| format!("Failed to insert match: {}", e))?;
 
@@ -527,7 +646,7 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches
              WHERE parse_state = 'unparsed' OR parse_state = 'failed'
              ORDER BY start_time DESC",
@@ -558,6 +677,8 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
+                rank_tier: row.get(20).ok(),
+                patch: row.get(21).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -572,14 +693,46 @@ pub fn get_unparsed_matches(conn: &Connection) -> Result<Vec<Match>, String> {
 
 /// Clear all matches and related data from the database
 pub fn clear_all_matches(conn: &Connection) -> Result<(), String> {
-    // Delete all match CS data first (foreign key constraint)
+    // Clear all child tables before matches to avoid FK constraint issues
     conn.execute("DELETE FROM match_cs", [])
         .map_err(|e| format!("Failed to delete match CS data: {}", e))?;
-
-    // Delete all matches
+    conn.execute("DELETE FROM goal_progress", [])
+        .map_err(|e| format!("Failed to delete goal progress: {}", e))?;
+    conn.execute("DELETE FROM player_networth", [])
+        .map_err(|e| format!("Failed to delete player networth: {}", e))?;
+    conn.execute("DELETE FROM item_timings", [])
+        .map_err(|e| format!("Failed to delete item timings: {}", e))?;
+    conn.execute("DELETE FROM mood_checkins", [])
+        .map_err(|e| format!("Failed to delete mood check-ins: {}", e))?;
     conn.execute("DELETE FROM matches", [])
         .map_err(|e| format!("Failed to delete matches: {}", e))?;
 
+    Ok(())
+}
+
+/// Delete all data from every table (factory reset).
+/// Settings are managed separately; this only clears the SQLite database.
+pub fn factory_reset_db(conn: &Connection) -> Result<(), String> {
+    // Order matters: child tables (FK → matches) must be cleared before matches itself.
+    let tables = [
+        "match_cs",
+        "goal_progress",
+        "item_timings",
+        "player_networth",
+        "mood_checkins",
+        "matches",
+        "goals",
+        "hero_favorites",
+        "hero_goal_suggestions",
+        "daily_challenges",
+        "challenge_history",
+        "challenge_options",
+        "weekly_challenges",
+    ];
+    for table in &tables {
+        conn.execute(&format!("DELETE FROM {}", table), [])
+            .map_err(|e| format!("Failed to clear table {}: {}", table, e))?;
+    }
     Ok(())
 }
 
@@ -589,7 +742,7 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -618,6 +771,8 @@ pub fn get_all_matches(conn: &Connection) -> Result<Vec<Match>, String> {
                 hero_healing: row.get(17)?,
                 parse_state: MatchState::from_string(&parse_state_str),
                 role: row.get(19).unwrap_or(0),
+                rank_tier: row.get(20).ok(),
+                patch: row.get(21).ok(),
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -638,8 +793,8 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         .as_secs() as i64;
 
     conn.execute(
-        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, item_id, created_at, hero_scope)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO goals (hero_id, metric, target_value, target_time_minutes, game_mode, item_id, created_at, hero_scope, frequency_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             goal.hero_id,
             goal.metric.to_string(),
@@ -649,6 +804,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
             goal.item_id,
             now,
             goal.hero_scope,
+            goal.frequency_type.to_string(),
         ],
     ).map_err(|e| format!("Failed to insert goal: {}", e))?;
 
@@ -663,6 +819,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
         target_time_minutes: goal.target_time_minutes,
         item_id: goal.item_id,
         game_mode: goal.game_mode.clone(),
+        frequency_type: goal.frequency_type.clone(),
         created_at: now,
     })
 }
@@ -671,7 +828,7 @@ pub fn insert_goal(conn: &Connection, goal: &NewGoal) -> Result<Goal, String> {
 pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope
+            "SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope, frequency_type
              FROM goals ORDER BY created_at DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -680,16 +837,18 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
         .query_map([], |row| {
             let metric_str: String = row.get(2)?;
             let game_mode_str: String = row.get(5)?;
+            let freq_str: String = row.get(9).unwrap_or_else(|_| "pct_75".to_string());
             Ok(Goal {
                 id: row.get(0)?,
                 hero_id: row.get(1)?,
                 metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
                 target_value: row.get(3)?,
                 target_time_minutes: row.get(4)?,
-                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
+                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::All),
                 created_at: row.get(6)?,
                 item_id: row.get(7)?,
                 hero_scope: row.get(8).unwrap_or(None),
+                frequency_type: FrequencyType::from_string(&freq_str),
             })
         })
         .map_err(|e| format!("Failed to query goals: {}", e))?;
@@ -706,7 +865,7 @@ pub fn get_all_goals(conn: &Connection) -> Result<Vec<Goal>, String> {
 pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
     conn.execute(
         "UPDATE goals SET hero_id = ?1, metric = ?2, target_value = ?3,
-         target_time_minutes = ?4, game_mode = ?5, item_id = ?6, hero_scope = ?7 WHERE id = ?8",
+         target_time_minutes = ?4, game_mode = ?5, item_id = ?6, hero_scope = ?7, frequency_type = ?8 WHERE id = ?9",
         params![
             goal.hero_id,
             goal.metric.to_string(),
@@ -715,6 +874,7 @@ pub fn update_goal(conn: &Connection, goal: &Goal) -> Result<(), String> {
             goal.game_mode.to_string(),
             goal.item_id,
             goal.hero_scope,
+            goal.frequency_type.to_string(),
             goal.id,
         ],
     ).map_err(|e| format!("Failed to update goal: {}", e))?;
@@ -730,6 +890,80 @@ pub fn delete_goal(conn: &Connection, goal_id: i64) -> Result<(), String> {
     ).map_err(|e| format!("Failed to delete goal: {}", e))?;
 
     Ok(())
+}
+
+/// Insert or replace patch data in the patches cache table
+pub fn upsert_patches(conn: &Connection, patches: &[PatchInfo]) -> Result<(), String> {
+    for p in patches {
+        conn.execute(
+            "INSERT OR REPLACE INTO patches (name, date_epoch) VALUES (?1, ?2)",
+            params![p.name, p.date_epoch],
+        ).map_err(|e| format!("Failed to upsert patch {}: {}", p.name, e))?;
+    }
+    Ok(())
+}
+
+/// Get all cached patches ordered oldest first
+pub fn get_all_patches(conn: &Connection) -> Result<Vec<PatchInfo>, String> {
+    let mut stmt = conn
+        .prepare("SELECT name, date_epoch FROM patches ORDER BY date_epoch ASC")
+        .map_err(|e| format!("Failed to prepare patches query: {}", e))?;
+
+    let patches = stmt
+        .query_map([], |row| {
+            Ok(PatchInfo {
+                name: row.get(0)?,
+                date_epoch: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query patches: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read patch: {}", e))?;
+
+    Ok(patches)
+}
+
+/// Determine the patch name for a given Unix timestamp.
+/// Returns the most recent patch whose release date is <= the timestamp.
+pub fn get_patch_for_timestamp(conn: &Connection, timestamp: i64) -> Option<String> {
+    conn.query_row(
+        "SELECT name FROM patches WHERE date_epoch <= ?1 ORDER BY date_epoch DESC LIMIT 1",
+        params![timestamp],
+        |row| row.get(0),
+    ).optional().unwrap_or(None)
+}
+
+/// Set the patch field on a match
+pub fn update_match_patch(conn: &Connection, match_id: i64, patch: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET patch = ?1 WHERE match_id = ?2",
+        params![patch, match_id],
+    ).map_err(|e| format!("Failed to update match patch: {}", e))?;
+    Ok(())
+}
+
+/// Back-fill patch data for all matches that have NULL patch.
+/// Returns the number of matches updated.
+pub fn backfill_match_patches(conn: &Connection) -> Result<usize, String> {
+    let match_ids: Vec<(i64, i64)> = {
+        let mut stmt = conn
+            .prepare("SELECT match_id, start_time FROM matches WHERE patch IS NULL")
+            .map_err(|e| format!("Failed to prepare backfill query: {}", e))?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| format!("Failed to query matches for backfill: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read match for backfill: {}", e))?;
+        rows
+    };
+
+    let mut updated = 0;
+    for (match_id, start_time) in match_ids {
+        if let Some(patch) = get_patch_for_timestamp(conn, start_time) {
+            update_match_patch(conn, match_id, &patch)?;
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 /// Result of evaluating a goal against a match
@@ -779,6 +1013,7 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
     let mode_matches = match goal.game_mode {
         GoalGameMode::Ranked => is_ranked,
         GoalGameMode::Turbo => is_turbo,
+        GoalGameMode::All => true,
     };
 
     if !mode_matches {
@@ -851,10 +1086,16 @@ pub fn evaluate_goal(conn: &Connection, goal: &Goal, match_data: &Match) -> Opti
                 }
             }
         }
-        GoalMetric::Networth | GoalMetric::Level => {
-            // These require per-minute data which we don't have in the current schema
-            // For now, we'll need to skip these or mark them as not evaluable
-            // Return None to indicate we can't evaluate this goal with current data
+        GoalMetric::Networth => {
+            // Query the player's own per-minute networth from player_networth table
+            // (gold_t is stored for all players including ourselves, keyed by player_slot)
+            match get_partner_networth_at_minute(conn, match_data.match_id, match_data.player_slot, target_minutes) {
+                Ok(Some(nw)) => nw,
+                _ => return None,
+            }
+        }
+        GoalMetric::Level => {
+            // Level requires per-minute data which is not currently stored
             return None;
         }
     };
@@ -1214,49 +1455,174 @@ pub struct MatchDataPoint {
     pub start_time: i64,
     pub value: i32,
     pub achieved: bool,
+    pub won: bool,
 }
 
 /// Get match data for a specific goal (for histogram visualization)
 pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchDataPoint>, String> {
-    // Get the goal
-    let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope FROM goals WHERE id = ?1")
-        .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-    let goal = stmt
-        .query_row(params![goal_id], |row| {
-            let metric_str: String = row.get(2)?;
-            let game_mode_str: String = row.get(5)?;
-            Ok(Goal {
-                id: row.get(0)?,
-                hero_id: row.get(1)?,
-                metric: GoalMetric::from_string(&metric_str).unwrap_or(GoalMetric::Networth),
-                target_value: row.get(3)?,
-                target_time_minutes: row.get(4)?,
-                game_mode: GoalGameMode::from_string(&game_mode_str).unwrap_or(GoalGameMode::Ranked),
-                created_at: row.get(6)?,
-                item_id: row.get(7)?,
-                hero_scope: row.get(8).unwrap_or(None),
-            })
-        })
-        .map_err(|e| format!("Failed to get goal: {}", e))?;
-
-    // Get all matches
+    let goal = get_goal_by_id(conn, goal_id)?;
     let matches = get_all_matches(conn)?;
+    let target_minutes = goal.target_time_minutes;
 
-    // Evaluate goal against each match and collect data points
-    let mut data_points = Vec::new();
+    // Batch-load all metric data up front to avoid N+1 per-match queries.
 
-    for match_data in matches {
-        if let Some(evaluation) = evaluate_goal(conn, &goal, &match_data) {
-            data_points.push(MatchDataPoint {
-                match_id: match_data.match_id,
-                hero_id: match_data.hero_id,
-                start_time: match_data.start_time,
-                value: evaluation.actual_value,
-                achieved: evaluation.achieved,
-            });
+    // Batch load CS data (collect Vec first to satisfy borrow checker before stmt drops)
+    let cs_map: HashMap<i64, (i32, i32)> = match &goal.metric {
+        GoalMetric::LastHits | GoalMetric::Denies => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, last_hits, denies FROM match_cs WHERE minute = ?1")
+                .map_err(|e| format!("Failed to prepare CS query: {}", e))?;
+            let rows: Vec<(i64, i32, i32)> = stmt
+                .query_map(params![target_minutes], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                })
+                .map_err(|e| format!("Failed to query CS data: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().map(|(mid, lh, dn)| (mid, (lh, dn))).collect()
         }
+        _ => HashMap::new(),
+    };
+
+    let nw_map: HashMap<(i64, i32), i32> = match &goal.metric {
+        GoalMetric::Networth | GoalMetric::PartnerNetworth => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, player_slot, networth FROM player_networth WHERE minute = ?1")
+                .map_err(|e| format!("Failed to prepare NW query: {}", e))?;
+            let rows: Vec<(i64, i32, i32)> = stmt
+                .query_map(params![target_minutes], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                })
+                .map_err(|e| format!("Failed to query NW data: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().map(|(mid, slot, nw)| ((mid, slot), nw)).collect()
+        }
+        _ => HashMap::new(),
+    };
+
+    let partner_slot_map: HashMap<i64, i32> = match &goal.metric {
+        GoalMetric::PartnerNetworth => {
+            let mut stmt = conn
+                .prepare("SELECT match_id, partner_slot FROM matches WHERE partner_slot IS NOT NULL")
+                .map_err(|e| format!("Failed to prepare partner slot query: {}", e))?;
+            let rows: Vec<(i64, i32)> = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?))
+                })
+                .map_err(|e| format!("Failed to query partner slots: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows.into_iter().collect()
+        }
+        _ => HashMap::new(),
+    };
+
+    let item_timing_map: HashMap<i64, i32> = match &goal.metric {
+        GoalMetric::ItemTiming => {
+            if let Some(item_id) = goal.item_id {
+                let mut stmt = conn
+                    .prepare("SELECT match_id, timing_seconds FROM item_timings WHERE item_id = ?1")
+                    .map_err(|e| format!("Failed to prepare item timing query: {}", e))?;
+                let rows: Vec<(i64, i32)> = stmt
+                    .query_map(params![item_id], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, i32>(1)?))
+                    })
+                    .map_err(|e| format!("Failed to query item timings: {}", e))?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                rows.into_iter().collect()
+            } else {
+                HashMap::new()
+            }
+        }
+        _ => HashMap::new(),
+    };
+
+    // Evaluate each match using pre-loaded data (no per-match DB queries).
+    let mut data_points = Vec::new();
+    for match_data in &matches {
+        if match_data.parse_state == MatchState::Unparsed {
+            continue;
+        }
+
+        let hero_matches = match goal.hero_scope.as_deref() {
+            Some("any_carry")   => match_data.role == 1,
+            Some("any_core")    => matches!(match_data.role, 1 | 2 | 3),
+            Some("any_support") => matches!(match_data.role, 4 | 5),
+            _ => match goal.hero_id {
+                Some(id) => id == match_data.hero_id,
+                None => true,
+            },
+        };
+        if !hero_matches { continue; }
+
+        let mode_matches = match goal.game_mode {
+            GoalGameMode::Ranked => match_data.game_mode == 22,
+            GoalGameMode::Turbo  => match_data.game_mode == 23,
+            GoalGameMode::All    => true,
+        };
+        if !mode_matches { continue; }
+
+        let duration_minutes = match_data.duration / 60;
+        let actual_value = match &goal.metric {
+            GoalMetric::Kills => {
+                if duration_minutes <= target_minutes {
+                    match_data.kills
+                } else {
+                    ((match_data.kills as f32 / duration_minutes as f32) * target_minutes as f32) as i32
+                }
+            }
+            GoalMetric::LastHits => {
+                match cs_map.get(&match_data.match_id) {
+                    Some(&(lh, _)) => lh,
+                    None => continue,
+                }
+            }
+            GoalMetric::Denies => {
+                match cs_map.get(&match_data.match_id) {
+                    Some(&(_, dn)) => dn,
+                    None => continue,
+                }
+            }
+            GoalMetric::Networth => {
+                match nw_map.get(&(match_data.match_id, match_data.player_slot)) {
+                    Some(&nw) => nw,
+                    None => continue,
+                }
+            }
+            GoalMetric::PartnerNetworth => {
+                let partner_slot = match partner_slot_map.get(&match_data.match_id) {
+                    Some(&s) => s,
+                    None => continue,
+                };
+                match nw_map.get(&(match_data.match_id, partner_slot)) {
+                    Some(&nw) => nw,
+                    None => continue,
+                }
+            }
+            GoalMetric::ItemTiming => {
+                match item_timing_map.get(&match_data.match_id) {
+                    Some(&timing) => timing,
+                    None => continue,
+                }
+            }
+            GoalMetric::Level => continue,
+        };
+
+        let achieved = match &goal.metric {
+            GoalMetric::ItemTiming => actual_value <= goal.target_value,
+            _ => actual_value >= goal.target_value,
+        };
+
+        data_points.push(MatchDataPoint {
+            match_id: match_data.match_id,
+            hero_id: match_data.hero_id,
+            start_time: match_data.start_time,
+            value: actual_value,
+            achieved,
+            won: match_data.is_win(),
+        });
     }
 
     Ok(data_points)
@@ -1265,12 +1631,13 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
 /// Get a single goal by ID
 pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
     let mut stmt = conn
-        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope FROM goals WHERE id = ?1")
+        .prepare("SELECT id, hero_id, metric, target_value, target_time_minutes, game_mode, created_at, item_id, hero_scope, frequency_type FROM goals WHERE id = ?1")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     stmt.query_row(params![goal_id], |row| {
         let metric_str: String = row.get(2)?;
         let game_mode_str: String = row.get(5)?;
+        let freq_str: String = row.get(9).unwrap_or_else(|_| "pct_75".to_string());
         Ok(Goal {
             id: row.get(0)?,
             hero_id: row.get(1)?,
@@ -1281,6 +1648,7 @@ pub fn get_goal_by_id(conn: &Connection, goal_id: i64) -> Result<Goal, String> {
             created_at: row.get(6)?,
             item_id: row.get(7)?,
             hero_scope: row.get(8).unwrap_or(None),
+            frequency_type: FrequencyType::from_string(&freq_str),
         })
     })
     .map_err(|e| format!("Failed to get goal: {}", e))
@@ -1919,6 +2287,8 @@ fn row_to_match(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         hero_healing: row.get(17)?,
         parse_state: MatchState::from_string(&row.get::<_, String>(18)?),
         role: row.get(19).unwrap_or(0),
+        rank_tier: row.get(20).ok(),
+        patch: row.get(21).ok(),
     })
 }
 
@@ -1928,7 +2298,7 @@ fn get_matches_since(conn: &Connection, since_timestamp: i64) -> Result<Vec<Matc
         .prepare(
             "SELECT match_id, hero_id, start_time, duration, game_mode, lobby_type,
                     radiant_win, player_slot, kills, deaths, assists, xp_per_min,
-                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role
+                    gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, parse_state, role, rank_tier, patch
              FROM matches WHERE start_time >= ?1 ORDER BY start_time DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -3115,4 +3485,75 @@ pub fn get_challenge_history(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to collect history: {}", e));
     result
+}
+
+// ── Medal history ────────────────────────────────────────────────────────────
+
+/// A single data point in the medal history timeline
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MedalEntry {
+    pub match_id: i64,
+    pub start_time: i64,
+    pub rank_tier: i32,
+}
+
+/// Summary of current and peak medal
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MedalStats {
+    pub current_rank_tier: Option<i32>,
+    pub peak_rank_tier: Option<i32>,
+}
+
+/// Get all matches that have rank_tier data, ordered chronologically
+pub fn get_medal_history(conn: &Connection) -> Result<Vec<MedalEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT match_id, start_time, rank_tier
+             FROM matches
+             WHERE rank_tier IS NOT NULL
+             ORDER BY start_time ASC",
+        )
+        .map_err(|e| format!("Failed to prepare medal history query: {}", e))?;
+
+    let entries = stmt
+        .query_map([], |row| {
+            Ok(MedalEntry {
+                match_id: row.get(0)?,
+                start_time: row.get(1)?,
+                rank_tier: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query medal history: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read medal entry: {}", e))?;
+
+    Ok(entries)
+}
+
+/// Get current and peak medal stats
+pub fn get_medal_stats(conn: &Connection) -> Result<MedalStats, String> {
+    let current_rank_tier: Option<i32> = conn
+        .query_row(
+            "SELECT rank_tier FROM matches WHERE rank_tier IS NOT NULL ORDER BY start_time DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to query current medal: {}", e))?
+        .flatten();
+
+    let peak_rank_tier: Option<i32> = conn
+        .query_row(
+            "SELECT MAX(rank_tier) FROM matches WHERE rank_tier IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to query peak medal: {}", e))?
+        .flatten();
+
+    Ok(MedalStats {
+        current_rank_tier,
+        peak_rank_tier,
+    })
 }

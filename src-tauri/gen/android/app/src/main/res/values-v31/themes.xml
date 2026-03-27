@@ -1,0 +1,11 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android 12+ (API 31) splash screen overrides -->
+    <style name="Theme.dota_keeper" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Legacy window background (still needed until WebView loads) -->
+        <item name="android:windowBackground">@drawable/splash_screen</item>
+        <!-- Native SplashScreen API attributes -->
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_background</item>
+    </style>
+</resources>

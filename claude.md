@@ -43,6 +43,13 @@ This creates a "stretch goal" mentality while maintaining motivation through reg
 Tasks are stored in `meta/tasks/`. It has `upnext`, `backlog` and `done`. When asked to create a new task, create it either in `backlog` or `upnext` as a `.md` file.
 When a task is completed by you and requires manual verification, move to `meta/tasks/to_test`. You should also create a small .md doc with steps for me to test, in the same directory.Bugs go direct to the `bugs` folder, because we will fix those first.
 
+## Use Case Specifications
+
+Use case specs for all implemented features are stored in `meta/spec/`, organised by feature area (auth, matches, goals, dashboard, analysis, challenges, settings). They use Gherkin syntax and are the source of truth for future automated tests.
+
+- When implementing a new feature, write or update the corresponding spec in `meta/spec/` using the same numbering convention (UC-00x auth, UC-01x matches, UC-02x goals, UC-03x dashboard, UC-04x analysis, UC-05x challenges, UC-06x settings).
+- The long-term goal is to convert these into Cucumber-based automated tests (see task `meta/tasks/backlog/automated-cucumber-tests.md`).
+
 ## Releases
 
 Where creating a release, you need to update package.json, src-tauri/Cargo.toml, tauri.conf.json. Also, populate the CHANGELOG.md with the changes

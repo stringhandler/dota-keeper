@@ -1,6 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.dota_keeper" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Splash screen: shown while Tauri/WebView loads -->
+        <item name="android:windowBackground">@drawable/splash_screen</item>
     </style>
 </resources>

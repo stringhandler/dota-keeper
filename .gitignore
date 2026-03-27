@@ -15,3 +15,6 @@ vite.config.ts.timestamp-*
 .claude
 .vscode
 meta/social
+meta/screenshots/
+scripts/mock-data.json
+.env.screenshots

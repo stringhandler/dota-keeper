@@ -1,10 +1,12 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { updateAnalyticsConsent, identifyUser } from "$lib/analytics.js";
+  import { _ } from "svelte-i18n";
 
   let { onClose = () => {} } = $props();
   let isSaving = $state(false);
 
+  /** @param {string} consent */
   async function handleConsent(consent) {
     isSaving = true;
     try {
@@ -25,38 +27,38 @@
   }
 </script>
 
-<div class="modal-backdrop" onclick={()  => {}}>
-  <div class="modal-card" onclick={(e) => e.stopPropagation()}>
+<div class="modal-backdrop" onclick={()  => {}} role="presentation">
+  <div class="modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Analytics consent">
     <div class="modal-header">
-      <h2>Help Improve Dota Keeper</h2>
+      <h2>{$_('analytics_consent.title')}</h2>
     </div>
 
     <div class="modal-body">
       <p class="intro">
-        Would you like to help improve Dota Keeper by sending anonymous usage data?
+        {$_('analytics_consent.intro')}
       </p>
 
       <div class="info-section">
-        <h3>✅ What we collect:</h3>
+        <h3>{$_('analytics_consent.collect_title')}</h3>
         <ul>
-          <li>App version and platform (Windows/macOS/Linux)</li>
-          <li>Page views (e.g. "opened Goals page")</li>
-          <li>Feature usage (e.g. "goal created", "challenge accepted")</li>
-          <li>Error events (type only, no personal details)</li>
+          <li>{$_('analytics_consent.collect_1')}</li>
+          <li>{$_('analytics_consent.collect_2')}</li>
+          <li>{$_('analytics_consent.collect_3')}</li>
+          <li>{$_('analytics_consent.collect_4')}</li>
         </ul>
       </div>
 
       <div class="info-section">
-        <h3>🚫 What we DON'T collect:</h3>
+        <h3>{$_('analytics_consent.not_collect_title')}</h3>
         <ul>
-          <li>Steam ID or any personally identifiable information</li>
-          <li>Match IDs, hero choices, or game data</li>
-          <li>Goal descriptions, targets, or any content you enter</li>
+          <li>{$_('analytics_consent.not_collect_1')}</li>
+          <li>{$_('analytics_consent.not_collect_2')}</li>
+          <li>{$_('analytics_consent.not_collect_3')}</li>
         </ul>
       </div>
 
       <p class="note">
-        You can change this preference anytime in Settings → Privacy.
+        {$_('analytics_consent.note')}
       </p>
     </div>
 
@@ -66,14 +68,14 @@
         onclick={() => handleConsent("Accepted")}
         disabled={isSaving}
       >
-        {isSaving ? 'Saving...' : 'Accept'}
+        {isSaving ? $_('analytics_consent.saving') : $_('analytics_consent.accept')}
       </button>
       <button
         class="btn btn-ghost"
         onclick={() => handleConsent("Declined")}
         disabled={isSaving}
       >
-        Decline
+        {$_('analytics_consent.decline')}
       </button>
     </div>
   </div>

@@ -18,11 +18,19 @@ android {
     namespace = "com.volthawk.dota_keeper"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.volthawk.dota_keeper"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    flavorDimensions += "channel"
+    productFlavors {
+        create("production") {
+            applicationId = "com.dotakeeper.dotakeeper"
+        }
+        create("beta") {
+            applicationId = "com.dotakeeper.dotakeeper_beta"
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -38,6 +46,9 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = true
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))

@@ -6,22 +6,29 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import ItemIcon from "$lib/ItemIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import MoodCheckin from "$lib/MoodCheckin.svelte";
+  import { pendingCheckinStore } from "$lib/checkin-store.js";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
-  let goalCalendar = $state([]);
-  let heroSuggestion = $state(null);
-  let goals = $state([]);
-  let items = $state([]);
-  let dailyProgress = $state(null);
+  let goalCalendar = $state(/** @type {any[]} */ ([]));
+  let heroSuggestion = $state(/** @type {any} */ (null));
+  let goals = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
+  let dailyProgress = $state(/** @type {any} */ (null));
   let dailyStreak = $state(0);
   let timeUntilMidnight = $state("");
+  /** @type {ReturnType<typeof setInterval> | null} */
   let midnightTimer = null;
-  let weeklyProgress = $state(null);
+  let weeklyProgress = $state(/** @type {any} */ (null));
 
   // Quick stats
-  let recentMatches = $state([]);
-  let analysisData = $state(null);
+  let recentMatches = $state(/** @type {any[]} */ ([]));
+  let analysisData = $state(/** @type {any} */ (null));
+
+  // Mental health check-in (set by matches page after finding new matches)
+  let pendingCheckin = $derived($pendingCheckinStore);
 
   const DAYS_TO_SHOW = 7;
 
@@ -88,7 +95,7 @@
     const now = new Date();
     const midnight = new Date(now);
     midnight.setHours(24, 0, 0, 0);
-    const diffMs = midnight - now;
+    const diffMs = midnight.getTime() - now.getTime();
     const hours = Math.floor(diffMs / 3600000);
     const mins = Math.floor((diffMs % 3600000) / 60000);
     timeUntilMidnight = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -110,6 +117,10 @@
     }
   }
 
+  function onCheckinComplete() {
+    pendingCheckinStore.set(null);
+  }
+
   async function loadDailyChallenge() {
     try {
       [dailyProgress, dailyStreak] = await Promise.all([
@@ -129,16 +140,19 @@
     }
   }
 
+  /** @param {any} p */
   function weeklyProgressPct(p) {
     if (!p || p.target <= 0) return 0;
     return Math.min(100, Math.round((p.current_value / p.target) * 100));
   }
 
+  /** @param {any} progress */
   function getDailyProgressPct(progress) {
     if (!progress) return 0;
     return Math.min(100, Math.round((progress.current_value / progress.target) * 100));
   }
 
+  /** @param {any} progress */
   function formatDailyDescription(progress) {
     if (!progress) return "";
     const c = progress.challenge;
@@ -177,6 +191,7 @@
     }
   }
 
+  /** @param {any} suggestion */
   async function acceptSuggestion(suggestion) {
     try {
       await invoke("create_goal", {
@@ -202,6 +217,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -212,6 +228,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -222,11 +239,13 @@
     }
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {any} goal */
   function formatGoalDescription(goal) {
     const heroName = goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
     if (goal.metric === "ItemTiming") {
@@ -243,108 +262,138 @@
     }
   }
 
+  /** @param {any} day */
   function getDotClass(day) {
     if (day.total === 0) return 'empty';
     return day.achieved > 0 ? 'hit' : 'miss';
   }
 
+  /** @param {any} day */
   function getDotContent(day) {
     if (day.total === 0) return '';
     return day.achieved > 0 ? '✓' : '✗';
   }
 
+  /** @param {any} goalData */
   function getHitRate(goalData) {
-    const total = goalData.daily_progress.reduce((s, d) => s + d.total, 0);
-    const hit = goalData.daily_progress.reduce((s, d) => s + d.achieved, 0);
+    const total = goalData.daily_progress.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
+    const hit = goalData.daily_progress.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0);
     if (total === 0) return 0;
     return (hit / total) * 100;
   }
 
+  /** @param {any} goalData */
   function getTrendLabel(goalData) {
     const days = goalData.daily_progress;
     const recent = days.slice(-3);
     const earlier = days.slice(0, 4);
-    const recentTotal = recent.reduce((s, d) => s + d.total, 0);
-    const earlierTotal = earlier.reduce((s, d) => s + d.total, 0);
+    const recentTotal = recent.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
+    const earlierTotal = earlier.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.total, 0);
     if (recentTotal === 0 && earlierTotal === 0) return null;
     const recentRate = recentTotal > 0
-      ? recent.reduce((s, d) => s + d.achieved, 0) / recentTotal
+      ? recent.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0) / recentTotal
       : 0;
     const earlierRate = earlierTotal > 0
-      ? earlier.reduce((s, d) => s + d.achieved, 0) / earlierTotal
+      ? earlier.reduce((/** @type {number} */ s, /** @type {any} */ d) => s + d.achieved, 0) / earlierTotal
       : 0;
-    if (recentRate > earlierRate + 0.15) return { label: 'Improving', cls: 'improving' };
-    if (recentRate < earlierRate - 0.15) return { label: 'Declining', cls: 'declining' };
-    return { label: 'Stable', cls: 'stable' };
+    if (recentRate > earlierRate + 0.15) return { label: $_('dashboard.improving'), cls: 'improving' };
+    if (recentRate < earlierRate - 0.15) return { label: $_('dashboard.declining'), cls: 'declining' };
+    return { label: $_('dashboard.stable'), cls: 'stable' };
   }
 
+  /** @param {any} goalData */
+  function getSparklineData(goalData) {
+    const days = goalData.daily_progress;
+    const n = days.length;
+    if (n === 0) return null;
+
+    const rates = days.map((/** @type {any} */ d) => d.total > 0 ? d.achieved / d.total : null);
+
+    // 3-day trailing moving average
+    const ma = rates.map((/** @type {number | null} */ _, /** @type {number} */ i) => {
+      const win = rates.slice(Math.max(0, i - 2), i + 1).filter((/** @type {number | null} */ r) => r !== null);
+      return win.length > 0 ? win.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) / win.length : null;
+    });
+
+    const W = 110, H = 40, px = 8, py = 6;
+    const iW = W - px * 2, iH = H - py * 2;
+
+    const pts = /** @type {{x: number, y: number}[]} */ (ma
+      .map((/** @type {number | null} */ v, /** @type {number} */ i) => v !== null
+        ? { x: px + (n > 1 ? (i / (n - 1)) * iW : iW / 2), y: py + (1 - v) * iH }
+        : null)
+      .filter(Boolean));
+
+    if (pts.length === 0) return null;
+
+    /** @param {{x: number, y: number}} p */
+    const fmt = p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    const bottom = H - py;
+    const linePoints = pts.map(fmt).join(' ');
+    const fillPath =
+      `M${fmt(pts[0])} ` +
+      pts.slice(1).map((/** @type {{x: number, y: number}} */ p) => `L${fmt(p)}`).join(' ') +
+      ` L${pts[pts.length - 1].x.toFixed(1)},${bottom} L${pts[0].x.toFixed(1)},${bottom} Z`;
+
+    return { linePoints, fillPath, lastPt: pts[pts.length - 1] };
+  }
+
+  /** @param {string} dateString */
   function formatDayLabel(dateString) {
     const date = new Date(dateString + "T00:00:00Z");
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffTime = date.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return "Today";
-    if (diffDays === -1) return "Yesterday";
+    if (diffDays === 0) return $_('dashboard.today');
+    if (diffDays === -1) return $_('dashboard.yesterday');
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
 </script>
 
 <div class="dashboard">
   {#if isLoading}
-    <div class="loading-state">Loading...</div>
+    <div class="loading-state">{$_('dashboard.loading')}</div>
   {:else}
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
 
+    <!-- MOOD CHECK-IN CARD (shown when a qualifying match needs a check-in) -->
+    {#if pendingCheckin}
+      <MoodCheckin matchId={pendingCheckin.match_id} onComplete={onCheckinComplete} />
+    {/if}
+
     <!-- QUICK STATS STRIP -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Win Rate (7d)</div>
+        <div class="stat-label">{$_('dashboard.win_rate')}</div>
         {#if winRate7d}
           <div class="stat-value">{winRate7d.rate}<span class="stat-unit">%</span></div>
-          <div class="stat-sub">{winRate7d.count} games</div>
+          <div class="stat-sub">{$_('dashboard.games', { values: { count: winRate7d.count } })}</div>
         {:else}
           <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">No recent games</div>
+          <div class="stat-sub">{$_('dashboard.no_recent_games')}</div>
         {/if}
       </div>
 
       <div class="stat-card">
-        <div class="stat-label">Avg CS @ 10min</div>
+        <div class="stat-label">{$_('dashboard.avg_cs')}</div>
         {#if avgCS !== null}
           <div class="stat-value">{avgCS.toFixed(1)}</div>
-          <div class="stat-sub">last {analysisData?.current_period?.count || 0} games</div>
+          <div class="stat-sub">{$_('dashboard.last_games', { values: { count: analysisData?.current_period?.count || 0 } })}</div>
         {:else}
           <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">Parse matches to track</div>
+          <div class="stat-sub">{$_('dashboard.parse_to_track')}</div>
         {/if}
       </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Goals Hit (7d)</div>
-        {#if goalsHit7d.total > 0}
-          <div class="stat-value">{goalsHit7d.hit}<span class="stat-unit">/{goalsHit7d.total}</span></div>
-          <div class="stat-sub">{Math.round((goalsHit7d.hit / goalsHit7d.total) * 100)}% success rate</div>
-        {:else}
-          <div class="stat-value stat-na">—</div>
-          <div class="stat-sub">No goal attempts yet</div>
-        {/if}
-      </div>
 
-      <div class="stat-card">
-        <div class="stat-label">Active Goals</div>
-        <div class="stat-value">{goals.length}</div>
-        <div class="stat-sub">
-          {#if goals.length === 0}No goals set{:else}being tracked{/if}
-        </div>
-      </div>
     </div>
 
     <!-- WEEKLY CHALLENGE -->
     <div class="section-header">
-      <div class="section-title">🏆 Weekly Challenge</div>
+      <div class="section-title">{$_('dashboard.weekly_challenge')}</div>
     </div>
     {#if weeklyProgress}
       <a href="/challenges" class="weekly-card {weeklyProgress.completed ? 'completed' : ''}">
@@ -363,25 +412,26 @@
         </div>
         <div class="weekly-meta">
           {#if weeklyProgress.completed}
-            <span class="complete-tag">✓ Complete!</span>
+            <span class="complete-tag">{$_('dashboard.complete_tag')}</span>
+            <span class="reset-text">{$_('dashboard.resets_in', { values: { days: weeklyProgress.days_remaining } })}</span>
           {:else}
-            <span class="reset-text">{weeklyProgress.days_remaining} days left</span>
+            <span class="reset-text">{$_('dashboard.days_left', { values: { days: weeklyProgress.days_remaining } })}</span>
           {/if}
         </div>
       </a>
     {:else}
       <a href="/challenges" class="weekly-card empty">
-        <span class="weekly-empty-text">Choose this week's challenge →</span>
+        <span class="weekly-empty-text">{$_('dashboard.choose_challenge')}</span>
       </a>
     {/if}
 
-    <!-- TODAY'S CHALLENGE -->
+    <!-- TODAY'S CHALLENGE (hidden on mobile) -->
     {#if dailyProgress}
-      <div class="section-header" style="margin-top: 28px;">
-        <div class="section-title">⚡ Today's Challenge</div>
-        <div class="reset-text">Resets in {timeUntilMidnight}</div>
+      <div class="section-header hide-mobile" style="margin-top: 28px;">
+        <div class="section-title">{$_('dashboard.todays_challenge')}</div>
+        <div class="reset-text">{$_('dashboard.resets_in_time', { values: { time: timeUntilMidnight } })}</div>
       </div>
-      <div class="challenge-card" class:completed={dailyProgress.completed}>
+      <div class="challenge-card hide-mobile" class:completed={dailyProgress.completed}>
         <div class="challenge-icon">
           {#if dailyProgress.challenge.hero_id !== null}
             <HeroIcon heroId={dailyProgress.challenge.hero_id} size="small" showName={false} />
@@ -395,35 +445,38 @@
             <div class="challenge-bar-fill" style="width: {getDailyProgressPct(dailyProgress)}%"></div>
           </div>
           <div class="challenge-meta">
-            <span>{dailyProgress.current_value} / {dailyProgress.target} completed</span>
+            <span>{$_('dashboard.completed', { values: { current: dailyProgress.current_value, target: dailyProgress.target } })}</span>
             {#if dailyProgress.completed}
-              <span class="complete-tag">✓ Complete!</span>
+              <span class="complete-tag">{$_('dashboard.complete_tag')}</span>
             {:else if dailyStreak > 0}
-              <span class="streak-tag">🔥 {dailyStreak} day streak</span>
+              <span class="streak-tag">{$_('dashboard.streak', { values: { count: dailyStreak } })}</span>
             {/if}
           </div>
         </div>
-        <a href="/challenges" class="btn btn-ghost">View Stats</a>
+        <a href="/challenges" class="btn btn-ghost">{$_('dashboard.view_stats')}</a>
       </div>
     {/if}
 
     <!-- GOAL PROGRESS -->
     <div class="section-header" style="margin-top: 28px;">
-      <div class="section-title">Goal Progress — Last 7 Days</div>
-      <a href="/goals" class="btn btn-ghost">Manage Goals</a>
+      <div class="section-title">{$_('dashboard.goal_progress')}</div>
+      <a href="/goals" class="btn btn-ghost">{$_('dashboard.manage_goals')}</a>
     </div>
 
     {#if goalCalendar.length === 0}
       <div class="empty-goals">
-        <p>No goals yet.</p>
-        <a href="/goals" class="btn btn-primary" style="margin-top:12px">Create your first goal →</a>
+        <p>{$_('dashboard.no_goals')}</p>
+        <a href="/goals" class="btn btn-primary" style="margin-top:12px">{$_('dashboard.create_first_goal')}</a>
       </div>
     {:else}
       <div class="goals-grid">
         {#each goalCalendar as goalData}
           {@const trend = getTrendLabel(goalData)}
           {@const hitRate = getHitRate(goalData)}
-          <div class="goal-row" onclick={() => goto(`/goals/${goalData.goal.id}`)}>
+          {@const spark = getSparklineData(goalData)}
+          {@const sparkColor = hitRate >= 70 ? '#4ade80' : '#f0b429'}
+          {@const gradId = `sg${goalData.goal.id}`}
+          <div class="goal-row" role="button" tabindex="0" onclick={() => goto(`/goals/${goalData.goal.id}`)} onkeydown={(e) => e.key === 'Enter' && goto(`/goals/${goalData.goal.id}`)}>
             <div class="hero-avatar">
               {#if goalData.goal.hero_id !== null}
                 <HeroIcon heroId={goalData.goal.hero_id} size="small" showName={false} />
@@ -450,9 +503,6 @@
                   {formatGoalDescription(goalData.goal)}
                 {/if}
               </div>
-              <div class="goal-progress-bar">
-                <div class="goal-fill {hitRate >= 70 ? 'success' : ''}" style="width:{hitRate}%"></div>
-              </div>
               <div class="goal-meta">
                 {#if trend}
                   <span class="trend-{trend.cls}">{trend.label}</span>
@@ -460,6 +510,30 @@
                 <span>{goalData.goal.metric === 'ItemTiming' ? 'Item Goal' : getMetricLabel(goalData.goal.metric) + ' Goal'}</span>
                 <span>{goalData.goal.game_mode}</span>
               </div>
+            </div>
+            <div class="goal-spark-col">
+              <svg class="goal-sparkline" viewBox="0 0 110 40" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color={sparkColor} stop-opacity="0.22" />
+                    <stop offset="100%" stop-color={sparkColor} stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                <!-- 75% target reference line at y=13 -->
+                <line x1="8" y1="13" x2="102" y2="13" stroke="rgba(255,255,255,0.07)" stroke-width="0.5" stroke-dasharray="2,2" />
+                {#if spark}
+                  <path d={spark.fillPath} fill="url(#{gradId})" />
+                  <polyline
+                    points={spark.linePoints}
+                    fill="none"
+                    stroke={sparkColor}
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle cx={spark.lastPt.x} cy={spark.lastPt.y} r="2.5" fill={sparkColor} />
+                {/if}
+              </svg>
             </div>
             <div class="goal-dots">
               {#each goalData.daily_progress as day}
@@ -473,10 +547,15 @@
       </div>
     {/if}
 
+    <!-- NEW GOAL BUTTON (mobile only) -->
+    <div class="mobile-new-goal">
+      <a href="/goals" class="btn btn-primary" style="width:100%;justify-content:center;padding:14px;">{$_('layout.new_goal')}</a>
+    </div>
+
     <!-- HERO SUGGESTION -->
     {#if heroSuggestion && !isSuggestionAdopted}
       <div class="section-header" style="margin-top: 28px;">
-        <div class="section-title">🎯 Suggested Goal</div>
+        <div class="section-title">{$_('dashboard.suggested_goal')}</div>
       </div>
       <div class="suggestion-card">
         <div class="suggestion-hero">
@@ -486,23 +565,23 @@
           <div class="suggestion-hero-name">{getHeroName(heroSuggestion.hero_id)}</div>
           <div class="suggestion-stats">
             <div class="sug-stat">
-              <div class="sug-label">Current Avg</div>
+              <div class="sug-label">{$_('dashboard.current_avg')}</div>
               <div class="sug-value">{Math.round(heroSuggestion.current_average)} CS</div>
             </div>
             <div class="sug-stat">
-              <div class="sug-label">Suggested</div>
+              <div class="sug-label">{$_('dashboard.suggested')}</div>
               <div class="sug-value gold">{heroSuggestion.suggested_last_hits} CS</div>
             </div>
             <div class="sug-stat">
-              <div class="sug-label">Improvement</div>
+              <div class="sug-label">{$_('dashboard.improvement')}</div>
               <div class="sug-value green">+{heroSuggestion.suggested_last_hits - Math.round(heroSuggestion.current_average)} CS</div>
             </div>
           </div>
-          <div class="sug-games">Based on {heroSuggestion.games_analyzed} games</div>
+          <div class="sug-games">{$_('dashboard.based_on', { values: { count: heroSuggestion.games_analyzed } })}</div>
         </div>
         <div class="suggestion-actions">
-          <button class="btn btn-ghost" onclick={() => refreshSuggestion()}>🔄 Refresh</button>
-          <button class="btn btn-primary" onclick={() => acceptSuggestion(heroSuggestion)}>Create Goal</button>
+          <button class="btn btn-ghost" onclick={() => refreshSuggestion()}>🔄 {$_('dashboard.refresh')}</button>
+          <button class="btn btn-primary" onclick={() => acceptSuggestion(heroSuggestion)}>{$_('dashboard.create_goal')}</button>
         </div>
       </div>
     {/if}
@@ -518,7 +597,7 @@
   /* ── QUICK STATS ── */
   .stats-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 16px;
     margin-bottom: 28px;
   }
@@ -541,6 +620,10 @@
     .stat-label {
       font-size: 9px;
       letter-spacing: 1px;
+    }
+
+    .hide-mobile {
+      display: none !important;
     }
   }
 
@@ -792,7 +875,7 @@
     font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .weekly-meta { font-size: 11px; }
+  .weekly-meta { font-size: 11px; display: flex; align-items: center; gap: 8px; }
 
   /* ── HERO SUGGESTION ── */
   .suggestion-card {
@@ -856,5 +939,32 @@
     flex-direction: column;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  @media (max-width: 640px) {
+    .suggestion-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .suggestion-actions {
+      flex-direction: row;
+      width: 100%;
+    }
+
+    .suggestion-actions .btn {
+      flex: 1;
+      justify-content: center;
+    }
+  }
+
+  /* ── MOBILE NEW GOAL ── */
+  .mobile-new-goal {
+    display: none;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 640px) {
+    .mobile-new-goal { display: block; }
   }
 </style>

@@ -6,15 +6,19 @@
   import ItemIcon from "$lib/ItemIcon.svelte";
   import HeroSelect from "$lib/HeroSelect.svelte";
   import { trackPageView, trackEvent } from "$lib/analytics.js";
+  import { showToast } from "$lib/toast.js";
+  import { _ } from "svelte-i18n";
 
-  let goals = $state([]);
+  let pendingDeleteId = $state(/** @type {number | null} */ (null));
+  let goals = $state(/** @type {any[]} */ ([]));
   let isLoading = $state(true);
   let error = $state("");
   let isSaving = $state(false);
-  let items = $state([]);
+  let items = $state(/** @type {any[]} */ ([]));
+  let showFormMobile = $state(false);
 
   // Form state
-  let editingGoal = $state(null);
+  let editingGoal = $state(/** @type {any} */ (null));
   let formHeroId = $state("");
   let formMetric = $state("LastHits");
   let formTargetValue = $state("");
@@ -22,10 +26,11 @@
   let formItemId = $state("");
   let formItemMinutes = $state("");
   let formItemSeconds = $state("");
-  let formGameMode = $state("Ranked");
+  let formGameMode = $state("All");
+  let formFrequencyType = $state("Pct75");
 
   // Analysis data for contextual warnings
-  let analysisData = $state(null);
+  let analysisData = $state(/** @type {any} */ (null));
 
   const allHeroesSorted = Object.entries(heroes)
     .map(([id, name]) => ({ id: parseInt(id), name }))
@@ -60,6 +65,7 @@
     }
   }
 
+
   async function loadAnalysisForWarnings() {
     try {
       analysisData = await invoke("get_last_hits_analysis_data", {
@@ -73,12 +79,14 @@
     }
   }
 
+  /** @param {number} heroId */
   function getHeroAverage(heroId) {
     if (!analysisData?.per_hero_stats) return null;
-    const stat = analysisData.per_hero_stats.find(s => s.hero_id === heroId);
+    const stat = analysisData.per_hero_stats.find((/** @type {any} */ s) => s.hero_id === heroId);
     return stat ? stat.average : null;
   }
 
+  /** @param {any} goal */
   function getContextualWarning(goal) {
     if (goal.metric !== 'LastHits' || goal.hero_id === null || goal.hero_scope !== null) return null;
     const avg = getHeroAverage(goal.hero_id);
@@ -96,6 +104,7 @@
     { value: "any_support", label: "Any Support (pos 4/5)" },
   ];
 
+  /** @param {string} val */
   function parseHeroValue(val) {
     if (!val) return { hero_id: null, hero_scope: null };
     if (HERO_SCOPES.includes(val)) return { hero_id: null, hero_scope: val };
@@ -112,8 +121,11 @@
     formItemMinutes = "";
     formItemSeconds = "";
     formGameMode = "Ranked";
+    formFrequencyType = "Pct75";
+    showFormMobile = false;
   }
 
+  /** @param {any} goal */
   function editGoal(goal) {
     editingGoal = goal;
     formHeroId = goal.hero_scope ?? (goal.hero_id !== null ? goal.hero_id.toString() : "");
@@ -126,10 +138,12 @@
       formItemSeconds = (goal.target_value % 60).toString();
     }
     formGameMode = goal.game_mode;
+    formFrequencyType = goal.frequency_type ?? "Pct75";
     // Scroll to form
     document.querySelector('.create-form')?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  /** @param {SubmitEvent} event */
   async function handleSubmit(event) {
     event.preventDefault();
     error = "";
@@ -168,10 +182,19 @@
             target_time_minutes: targetTime,
             item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
+            frequency_type: formFrequencyType,
             created_at: editingGoal.created_at,
           },
         });
-        trackEvent("goal_updated", { metric: formMetric, game_mode: formGameMode });
+        trackEvent("goal_updated", {
+          metric: formMetric,
+          game_mode: formGameMode,
+          hero_scope,
+          target_value: targetValue,
+          target_time_minutes: targetTime,
+          has_item: !!formItemId,
+        });
+        showToast($_('goals.toast_updated'));
       } else {
         await invoke("create_goal", {
           goal: {
@@ -182,9 +205,18 @@
             target_time_minutes: targetTime,
             item_id: formItemId ? parseInt(formItemId) : null,
             game_mode: formGameMode,
+            frequency_type: formFrequencyType,
           },
         });
-        trackEvent("goal_created", { metric: formMetric, game_mode: formGameMode });
+        trackEvent("goal_created", {
+          metric: formMetric,
+          game_mode: formGameMode,
+          hero_scope,
+          target_value: targetValue,
+          target_time_minutes: targetTime,
+          has_item: !!formItemId,
+        });
+        showToast($_('goals.toast_created'));
       }
       resetForm();
       await loadGoals();
@@ -195,16 +227,29 @@
     }
   }
 
+  /** @param {number} goalId */
+  async function confirmDelete(goalId) {
+    pendingDeleteId = goalId;
+  }
+
+  async function cancelDelete() {
+    pendingDeleteId = null;
+  }
+
+  /** @param {number} goalId */
   async function deleteGoal(goalId) {
-    if (!confirm("Delete this goal?")) return;
+    pendingDeleteId = null;
     try {
       await invoke("remove_goal", { goalId });
       await loadGoals();
+      showToast($_('goals.toast_deleted'));
     } catch (e) {
       error = `Failed to delete goal: ${e}`;
+      showToast(`Failed to delete goal: ${e}`, 'error');
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -218,6 +263,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -229,11 +275,13 @@
     }
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {any} goal */
   function getHeroLabel(goal) {
     if (goal.hero_scope) {
       const g = HERO_GROUP_OPTIONS.find(o => o.value === goal.hero_scope);
@@ -242,6 +290,7 @@
     return goal.hero_id !== null ? getHeroName(goal.hero_id) : "Any Hero";
   }
 
+  /** @param {any} goal */
   function formatGoalDescription(goal) {
     const heroName = getHeroLabel(goal);
     if (goal.metric === "ItemTiming") {
@@ -260,15 +309,28 @@
     }
   }
 
+  /** @param {string} freq */
+  function getFrequencyLabel(freq) {
+    switch (freq) {
+      case "JustOnce":   return "Just once";
+      case "OnAverage":  return "On average";
+      case "Pct50":      return "50% of games";
+      case "Pct75":      return "75% of games";
+      case "Pct90":      return "90% of games";
+      default:           return "75% of games";
+    }
+  }
+
+  /** @param {string} metric */
   function getGoalTypeTag(metric) {
     switch (metric) {
-      case "LastHits": return { label: 'CS Goal', cls: 'tag-cs' };
-      case "Denies": return { label: 'Deny Goal', cls: 'tag-cs' };
-      case "ItemTiming": return { label: 'Item Goal', cls: 'tag-item' };
-      case "Kills": return { label: 'Kill Goal', cls: 'tag-kill' };
-      case "Networth": return { label: 'NW Goal', cls: 'tag-nw' };
-      case "PartnerNetworth": return { label: 'Support Goal', cls: 'tag-nw' };
-      default: return { label: `${metric} Goal`, cls: '' };
+      case "LastHits": return { tkey: 'goals.tag_cs', cls: 'tag-cs' };
+      case "Denies": return { tkey: 'goals.tag_deny', cls: 'tag-cs' };
+      case "ItemTiming": return { tkey: 'goals.tag_item', cls: 'tag-item' };
+      case "Kills": return { tkey: 'goals.tag_kill', cls: 'tag-kill' };
+      case "Networth": return { tkey: 'goals.tag_nw', cls: 'tag-nw' };
+      case "PartnerNetworth": return { tkey: 'goals.tag_support', cls: 'tag-nw' };
+      default: return { tkey: null, cls: '' };
     }
   }
 </script>
@@ -278,78 +340,97 @@
     <div class="error-banner">{error}</div>
   {/if}
 
+  <!-- NEW GOAL TOGGLE (mobile only) -->
+  <div class="mobile-new-goal-row">
+    <button class="btn btn-primary" onclick={() => { showFormMobile = !showFormMobile; editingGoal = null; }}>
+      {showFormMobile ? $_('goals.cancel_new') : $_('goals.new_goal')}
+    </button>
+  </div>
+
   <!-- INLINE CREATE FORM -->
-  <div class="create-form">
+  <div class="create-form" class:form-hidden-mobile={!showFormMobile && !editingGoal}>
     <div class="create-form-title">
-      {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+      {editingGoal ? $_('goals.edit_title') : $_('goals.create_title')}
     </div>
 
     <form onsubmit={handleSubmit}>
       <div class="form-row">
         <div class="fg">
-          <div class="form-label">Hero</div>
-          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel="Any Hero" groupOptions={HERO_GROUP_OPTIONS} />
+          <div class="form-label">{$_('goals.hero')}</div>
+          <HeroSelect bind:value={formHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals.any_hero')} groupOptions={HERO_GROUP_OPTIONS} />
         </div>
 
         <div class="fg">
-          <div class="form-label">Metric</div>
+          <div class="form-label">{$_('goals.metric')}</div>
           <select class="form-select" bind:value={formMetric}>
-            <option value="LastHits">Last Hits</option>
-            <option value="Denies">Denies</option>
-            <option value="PartnerNetworth">Partner Networth</option>
-            <option value="Networth">Net Worth</option>
-            <option value="Kills">Kills</option>
-            <option value="Level">Level</option>
-            <option value="ItemTiming">Item Timing</option>
+            <option value="LastHits">{$_('goals.metric_last_hits')}</option>
+            <option value="Denies">{$_('goals.metric_denies')}</option>
+            <option value="PartnerNetworth">{$_('goals.metric_partner_nw')}</option>
+            <option value="Networth">{$_('goals.metric_networth')}</option>
+            <option value="Kills">{$_('goals.metric_kills')}</option>
+            <option value="Level">{$_('goals.metric_level')}</option>
+            <option value="ItemTiming">{$_('goals.metric_item_timing')}</option>
           </select>
         </div>
 
         {#if formMetric === "ItemTiming"}
           <div class="fg">
-            <div class="form-label">Item <span class="req">*</span></div>
+            <div class="form-label">{$_('goals.item')} <span class="req">*</span></div>
             <select class="form-select" bind:value={formItemId} required>
-              <option value="">Select item...</option>
+              <option value="">{$_('goals.item_select')}</option>
               {#each items as item}
                 <option value={item.id}>{item.display_name}</option>
               {/each}
             </select>
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">Minutes <span class="req">*</span></div>
+            <div class="form-label">{$_('goals.minutes')} <span class="req">*</span></div>
             <input class="form-input" type="number" min="0" max="60" placeholder="9" bind:value={formItemMinutes} />
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">Seconds</div>
+            <div class="form-label">{$_('goals.seconds')}</div>
             <input class="form-input" type="number" min="0" max="59" placeholder="30" bind:value={formItemSeconds} />
           </div>
         {:else}
           <div class="fg">
-            <div class="form-label">Target {getMetricLabel(formMetric)}</div>
+            <div class="form-label">{$_('goals.target', { values: { metric: getMetricLabel(formMetric) } })}</div>
             <input class="form-input" type="number" min="1"
               placeholder={formMetric === "Level" ? "e.g. 6" : "e.g. 50"}
               bind:value={formTargetValue} />
           </div>
           <div class="fg fg-narrow">
-            <div class="form-label">By (min)</div>
+            <div class="form-label">{$_('goals.by_min')}</div>
             <input class="form-input" type="number" min="1" max="120" placeholder="10" bind:value={formTargetTime} />
           </div>
         {/if}
 
         <div class="fg fg-narrow">
-          <div class="form-label">Mode</div>
+          <div class="form-label">{$_('goals.mode')}</div>
           <select class="form-select" bind:value={formGameMode}>
-            <option value="Ranked">Ranked</option>
-            <option value="Turbo">Turbo</option>
+            <option value="All">{$_('goals.mode_any')}</option>
+            <option value="Ranked">{$_('goals.mode_ranked')}</option>
+            <option value="Turbo">{$_('goals.mode_turbo')}</option>
+          </select>
+        </div>
+
+        <div class="fg">
+          <div class="form-label">How often?</div>
+          <select class="form-select" bind:value={formFrequencyType}>
+            <option value="JustOnce">Just once</option>
+            <option value="OnAverage">On average</option>
+            <option value="Pct50">50% of games</option>
+            <option value="Pct75">75% of games</option>
+            <option value="Pct90">90% of games</option>
           </select>
         </div>
 
         <div class="fg fg-action">
           <div class="form-label">&nbsp;</div>
           <button type="submit" class="btn btn-primary" disabled={isSaving}>
-            {isSaving ? 'Saving...' : editingGoal ? 'Update' : 'Add Goal'}
+            {isSaving ? $_('goals.saving') : editingGoal ? $_('goals.update') : $_('goals.add_goal')}
           </button>
           {#if editingGoal}
-            <button type="button" class="btn btn-ghost" onclick={resetForm}>Cancel</button>
+            <button type="button" class="btn btn-ghost" onclick={resetForm}>{$_('goals.cancel')}</button>
           {/if}
         </div>
       </div>
@@ -358,16 +439,16 @@
 
   <!-- GOALS LIST -->
   <div class="section-header">
-    <div class="section-title">Active Goals ({goals.length})</div>
+    <div class="section-title">{$_('goals.active_goals', { values: { count: goals.length } })}</div>
     <!-- Archive All: future feature placeholder -->
-    <button class="btn btn-ghost" title="Archive all goals (coming soon)" disabled>Archive All</button>
+    <button class="btn btn-ghost" title="Archive all goals (coming soon)" disabled>{$_('goals.archive_all')}</button>
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading goals...</div>
+    <div class="loading-state">{$_('goals.loading')}</div>
   {:else if goals.length === 0}
     <div class="no-goals">
-      No goals yet. Use the form above to create your first goal.
+      {$_('goals.empty')}
     </div>
   {:else}
     <div class="goals-grid">
@@ -411,26 +492,36 @@
               <div class="goal-fill" style="width:0%"></div>
             </div>
             <div class="goal-meta">
-              <span class="goal-tag {tag.cls}">{tag.label}</span>
-              <span>{goal.game_mode}</span>
+              <span class="goal-tag {tag.cls}">{tag.tkey ? $_(tag.tkey) : goal.metric}</span>
+              <span>{goal.game_mode === 'All' ? $_('goals.mode_any') : goal.game_mode}</span>
+              <span class="goal-tag tag-freq">{getFrequencyLabel(goal.frequency_type)}</span>
               {#if warning}
                 <span class="warning-tag">⚠ {warning}</span>
               {/if}
             </div>
           </div>
           <div class="goal-actions" onclick={(e) => e.stopPropagation()}>
-            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
-              Edit
-            </button>
-            <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
-              onclick={() => deleteGoal(goal.id)}>
-              Delete
-            </button>
+            {#if pendingDeleteId === goal.id}
+              <span class="delete-confirm-label">{$_('goals.delete_confirm')}</span>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.4)"
+                onclick={() => deleteGoal(goal.id)}>{$_('goals.delete_yes')}</button>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px"
+                onclick={cancelDelete}>{$_('goals.delete_no')}</button>
+            {:else}
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick={() => editGoal(goal)}>
+                {$_('goals.edit')}
+              </button>
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px;color:var(--red);border-color:rgba(248,113,113,0.25)"
+                onclick={() => confirmDelete(goal.id)}>
+                {$_('goals.delete')}
+              </button>
+            {/if}
           </div>
         </div>
       {/each}
     </div>
   {/if}
+
 </div>
 
 <style>
@@ -528,6 +619,13 @@
     flex-shrink: 0;
   }
 
+  .delete-confirm-label {
+    font-size: 10px;
+    color: var(--red);
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.5px;
+  }
+
   /* Goal type tags */
   .goal-tag {
     font-family: 'Barlow Condensed', sans-serif;
@@ -564,6 +662,12 @@
     background: rgba(74, 222, 128, 0.08);
   }
 
+  .tag-freq {
+    color: var(--text-secondary);
+    border-color: rgba(154, 142, 124, 0.3);
+    background: rgba(154, 142, 124, 0.08);
+  }
+
   /* Contextual warning */
   .warning-tag {
     color: var(--gold);
@@ -577,5 +681,23 @@
     align-items: center;
     gap: 5px;
     flex-wrap: wrap;
+  }
+
+  /* ── MOBILE NEW GOAL TOGGLE ── */
+  .mobile-new-goal-row {
+    display: none;
+    margin-bottom: 16px;
+  }
+
+  .mobile-new-goal-row .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .mobile-new-goal-row { display: block; }
+
+    .form-hidden-mobile { display: none; }
   }
 </style>

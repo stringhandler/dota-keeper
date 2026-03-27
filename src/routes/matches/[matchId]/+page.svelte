@@ -6,12 +6,14 @@
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import Chart from "$lib/Chart.svelte";
+  import { _ } from "svelte-i18n";
 
-  let matchId = $derived(parseInt($page.params.matchId));
+  let matchId = $derived(parseInt($page.params.matchId ?? '0'));
+  /** @type {any} */
   let match = $state(null);
-  let csData = $state([]);
-  let goalDetails = $state([]);
-  let items = $state([]);
+  let csData = $state(/** @type {any[]} */ ([]));
+  let goalDetails = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
   let isLoading = $state(true);
   let error = $state("");
 
@@ -28,7 +30,7 @@
         invoke("get_all_items"),
       ]);
 
-      match = allMatches.find((m) => m.match_id === matchId) ?? null;
+      match = allMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
       csData = cs;
       goalDetails = goals;
       items = allItems;
@@ -43,21 +45,25 @@
     }
   }
 
+  /** @param {number} seconds */
   function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     return new Date(timestamp * 1000).toLocaleString();
   }
 
+  /** @param {any} m */
   function isWin(m) {
     const isRadiant = m.player_slot < 128;
     return (isRadiant && m.radiant_win) || (!isRadiant && !m.radiant_win);
   }
 
+  /** @param {number} gameMode */
   function getGameModeName(gameMode) {
     switch (gameMode) {
       case 0: return "Unknown";
@@ -79,6 +85,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -90,6 +97,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -99,17 +107,20 @@
     }
   }
 
+  /** @param {number} totalSeconds */
   function formatSeconds(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {number} mid */
   async function openInOpenDota(mid) {
     try {
       await openUrl(`https://www.opendota.com/matches/${mid}`);
@@ -230,7 +241,7 @@
 
 <div class="match-detail-content">
   <div class="page-header">
-    <a href="/matches" class="back-btn">← Matches</a>
+    <a href="/matches" class="back-btn">← {$_('nav.matches')}</a>
     <div class="header-title">
       <h1>Match Details</h1>
       {#if match}
@@ -238,16 +249,21 @@
       {/if}
     </div>
     {#if match}
-      <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
-        View on OpenDota
-      </button>
+      <div class="external-links">
+        <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
+          View on OpenDota
+        </button>
+        <button class="stratz-btn" onclick={() => openUrl(`https://stratz.com/matches/${match.match_id}`)}>
+          View on Stratz
+        </button>
+      </div>
     {/if}
   </div>
 
   {#if error}
     <p class="error">{error}</p>
   {:else if isLoading}
-    <div class="loading"><p>Loading match details...</p></div>
+    <div class="loading"><p>{$_('matches.loading')}</p></div>
   {:else if match}
     <!-- Match Overview Card -->
     <div class="overview-grid">
@@ -256,14 +272,14 @@
         <div class="hero-info">
           <div class="hero-name">{getHeroName(match.hero_id)}</div>
           <div class="result-badge {isWin(match) ? 'win' : 'loss'}">
-            {isWin(match) ? "VICTORY" : "DEFEAT"}
+            {isWin(match) ? $_('matches.won') : $_('matches.lost')}
           </div>
         </div>
       </div>
 
       <div class="overview-card meta-card">
         <div class="meta-row">
-          <span class="meta-label">Date</span>
+          <span class="meta-label">{$_('matches.col_date')}</span>
           <span class="meta-value">{formatDate(match.start_time)}</span>
         </div>
         <div class="meta-row">
@@ -289,15 +305,15 @@
           <div class="stat-value kda">
             <span class="kills">{match.kills}</span>/<span class="deaths">{match.deaths}</span>/<span class="assists">{match.assists}</span>
           </div>
-          <div class="stat-label">K / D / A</div>
+          <div class="stat-label">{$_('matches.col_kda')}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{match.gold_per_min}</div>
-          <div class="stat-label">GPM</div>
+          <div class="stat-label">{$_('matches.col_gpm')}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{match.xp_per_min}</div>
-          <div class="stat-label">XPM</div>
+          <div class="stat-label">{$_('matches.col_xpm')}</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{match.last_hits}</div>
@@ -356,10 +372,10 @@
                     <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
                     {getHeroName(evaluation.goal.hero_id)} —
                   {:else}
-                    Any Hero —
+                    {$_('matches.any_hero')} —
                   {/if}
                   {#if evaluation.goal.metric === "ItemTiming"}
-                    {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} (Item Timing)
+                    {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} ({$_('matches.item_timing')})
                   {:else}
                     {getMetricLabel(evaluation.goal.metric)}
                   {/if}
@@ -381,7 +397,7 @@
     {:else if match.parse_state === "Parsed"}
       <div class="goals-section">
         <h2 class="section-title">Goals</h2>
-        <p class="no-goals-text">No applicable goals for this match.</p>
+        <p class="no-goals-text">{$_('matches.no_applicable_goals')}</p>
       </div>
     {/if}
   {/if}
@@ -450,14 +466,19 @@
     margin: 0;
   }
 
-  .opendota-btn {
+  .external-links {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .opendota-btn,
+  .stratz-btn {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     font-size: 11px;
-    background: var(--gold);
-    color: #080c10;
     border: none;
     padding: 10px 16px;
     border-radius: 4px;
@@ -466,8 +487,25 @@
     white-space: nowrap;
   }
 
+  .opendota-btn {
+    background: var(--gold);
+    color: #080c10;
+  }
+
   .opendota-btn:hover {
     background: var(--gold-bright);
+    transform: translateY(-1px);
+  }
+
+  .stratz-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .stratz-btn:hover {
+    border-color: var(--border-active);
+    color: var(--text-primary);
     transform: translateY(-1px);
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "dota-keeper",
-  "version": "0.2.6",
+  "version": "0.5.1",
   "description": "",
   "type": "module",
   "scripts": {
@@ -9,21 +9,29 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "screenshots:fetch": "node scripts/fetch-mock-data.js",
+    "screenshots": "node scripts/screenshots.js",
+    "screenshots:all": "npm run screenshots:fetch && npm run screenshots"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
+    "@sentry/browser": "^10.42.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-updater": "^2",
-    "chart.js": "^4.5.1"
+    "chart.js": "^4.5.1",
+    "svelte-i18n": "^4.0.1"
   },
   "devDependencies": {
+    "@playwright/browser-chromium": "^1.58.2",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2",
+    "@types/node": "^25.5.0",
+    "playwright": "^1.58.2",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "~5.6.2",

@@ -35,6 +35,33 @@ pub struct Settings {
     /// Unique installation ID for analytics tracking (generated once, persisted forever)
     #[serde(default = "Settings::generate_installation_id")]
     pub installation_id: String,
+    /// Whether mood check-in tracking is enabled (opt-in, default off)
+    #[serde(default)]
+    pub mental_health_tracking_enabled: bool,
+    /// Whether the first-enable explanation modal has been shown
+    #[serde(default)]
+    pub mental_health_intro_shown: bool,
+    /// How often to show the post-game mood check-in prompt
+    #[serde(default = "Settings::default_checkin_frequency")]
+    pub checkin_frequency: String,
+    /// Whether the background match parser should run automatically on startup
+    #[serde(default = "Settings::default_background_parse_enabled")]
+    pub background_parse_enabled: bool,
+    /// Whether the first-run onboarding flow has been completed
+    #[serde(default)]
+    pub onboarding_completed: bool,
+    /// Which data provider to use for match fetching: "opendota" or "stratz"
+    #[serde(default = "Settings::default_data_provider")]
+    pub data_provider: String,
+    /// Stratz API key (required when data_provider = "stratz")
+    #[serde(default)]
+    pub stratz_api_key: Option<String>,
+    /// OpenDota API key (optional — raises the rate limit when provided)
+    #[serde(default)]
+    pub opendota_api_key: Option<String>,
+    /// Whether privacy mode is enabled (masks Steam ID in the UI for screenshots)
+    #[serde(default)]
+    pub privacy_mode: bool,
 }
 
 impl Default for Settings {
@@ -45,6 +72,15 @@ impl Default for Settings {
             suggestion_custom_percentage: None,
             analytics_consent: AnalyticsConsent::default(),
             installation_id: Self::generate_installation_id(),
+            mental_health_tracking_enabled: false,
+            mental_health_intro_shown: false,
+            checkin_frequency: Self::default_checkin_frequency(),
+            background_parse_enabled: Self::default_background_parse_enabled(),
+            onboarding_completed: false,
+            data_provider: Self::default_data_provider(),
+            stratz_api_key: None,
+            opendota_api_key: None,
+            privacy_mode: false,
         }
     }
 }
@@ -52,6 +88,18 @@ impl Default for Settings {
 impl Settings {
     fn default_difficulty() -> String {
         "Medium".to_string()
+    }
+
+    fn default_checkin_frequency() -> String {
+        "every_game".to_string()
+    }
+
+    fn default_background_parse_enabled() -> bool {
+        true
+    }
+
+    fn default_data_provider() -> String {
+        "opendota".to_string()
     }
 
     /// Generate a unique installation ID (UUID v4)
@@ -140,5 +188,17 @@ impl Settings {
     /// Check if this is the first run (no steam_id set)
     pub fn is_first_run(&self) -> bool {
         self.steam_id.is_none()
+    }
+
+    /// Delete the settings file from disk (factory reset).
+    pub fn delete_settings_file() -> Result<(), String> {
+        let Some(path) = Self::get_settings_path() else {
+            return Ok(()); // nothing to delete
+        };
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete settings file: {}", e))?;
+        }
+        Ok(())
     }
 }

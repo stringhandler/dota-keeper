@@ -89,6 +89,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
         with:
           tagName: v${{ steps.version.outputs.VERSION }}
           releaseName: 'Dota Keeper v${{ steps.version.outputs.VERSION }}'
@@ -194,19 +197,19 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "${WIN_SIG}",
-                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_x64_en-US.msi"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/Dota.Keeper_${VERSION}_x64_en-US.msi"
               },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
-                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_${VERSION}_amd64.AppImage.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/Dota.Keeper_${VERSION}_amd64.AppImage.tar.gz"
               },
               "darwin-x86_64": {
                 "signature": "${MACOS_X64_SIG}",
-                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_x64.app.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/Dota.Keeper_x64.app.tar.gz"
               },
               "darwin-aarch64": {
                 "signature": "${MACOS_ARM_SIG}",
-                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/dota-keeper_aarch64.app.tar.gz"
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/v${VERSION}/Dota.Keeper_aarch64.app.tar.gz"
               }
             }
           }

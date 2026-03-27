@@ -6,19 +6,64 @@
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import { trackPageView } from "$lib/analytics.js";
+  import { showToast } from "$lib/toast.js";
+  import { pendingCheckinStore } from "$lib/checkin-store.js";
+  import { _ } from "svelte-i18n";
+  import { pqs, initQueue, enqueueParse, isPendingError } from "$lib/parse-queue.svelte.js";
 
   let isLoading = $state(true);
   let error = $state("");
-  let matches = $state([]);
-  let items = $state([]);
+  let matches = $state(/** @type {any[]} */ ([]));
+  let items = $state(/** @type {any[]} */ ([]));
+  let patches = $state(/** @type {any[]} */ ([]));
   let isRefreshing = $state(false);
-  let selectedMatch = $state(null);
-  let goalDetails = $state([]);
-  let copiedMatchId = $state(null);
-  let parsingMatches = $state(new Set());
+  let selectedMatch = $state(/** @type {any} */ (null));
+  let goalDetails = $state(/** @type {any[]} */ ([]));
+  let copiedMatchId = $state(/** @type {number | null} */ (null));
   let currentSteamId = $state("");
+  /** @type {(() => void) | null} */
   let unlistenMatchStateChanged = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
   let autoRefreshTimer = null;
+
+  // Pull-to-refresh
+  let pullStartY = $state(0);
+  let pullDistance = $state(0);
+  let isPulling = $state(false);
+  const PULL_THRESHOLD = 80;
+
+  /** @param {TouchEvent} e */
+  function onTouchStart(e) {
+    const el = /** @type {HTMLElement} */ (e.currentTarget);
+    if (el.scrollTop === 0) {
+      pullStartY = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }
+
+  /** @param {TouchEvent} e */
+  function onTouchMove(e) {
+    if (!isPulling) return;
+    const delta = e.touches[0].clientY - pullStartY;
+    if (delta > 0) {
+      pullDistance = Math.min(delta, PULL_THRESHOLD * 1.5);
+    } else {
+      isPulling = false;
+      pullDistance = 0;
+    }
+  }
+
+  /** @param {TouchEvent} _e */
+  async function onTouchEnd(_e) {
+    if (isPulling && pullDistance >= PULL_THRESHOLD && !isRefreshing) {
+      pullDistance = 0;
+      isPulling = false;
+      await handleRefresh();
+    } else {
+      pullDistance = 0;
+      isPulling = false;
+    }
+  }
 
   // Filter
   let activeFilter = $state('all');
@@ -48,6 +93,9 @@
         matches[matchIndex].parse_state = state;
         matches = [...matches];
       }
+      if (selectedMatch?.match_id === match_id) {
+        selectedMatch = { ...selectedMatch, parse_state: state };
+      }
     });
 
     autoRefreshTimer = setInterval(async () => {
@@ -65,15 +113,16 @@
 
   async function autoRefreshAndParse() {
     try {
-      const newMatches = await invoke("refresh_matches");
-      matches = newMatches;
+      const result = await invoke("refresh_matches");
+      matches = result.matches;
+      if (result.new_count > 0) {
+        const checkin = await invoke("get_pending_checkin").catch(() => null);
+        if (checkin) pendingCheckinStore.set(checkin);
+      }
       const recentMatches = matches.slice(0, 10);
       for (const match of recentMatches) {
-        if ((match.parse_state === "Unparsed" || match.parse_state === "Failed") &&
-            !parsingMatches.has(match.match_id)) {
-          parseMatch(match.match_id).catch(err => {
-            console.error(`Auto-parse failed for match ${match.match_id}:`, err);
-          });
+        if (match.parse_state === "Unparsed" || match.parse_state === "Failed") {
+          enqueueParse(match.match_id);
         }
       }
     } catch (e) {
@@ -83,13 +132,16 @@
 
   async function loadData() {
     try {
-      const [settings, allItems] = await Promise.all([
+      const [settings, allItems, allPatches] = await Promise.all([
         invoke("get_settings"),
         invoke("get_all_items"),
+        invoke("get_patches").catch(() => []),
       ]);
       currentSteamId = settings.steam_id || "";
       items = allItems;
+      patches = allPatches;
       await loadMatches();
+      initQueue(currentSteamId, loadMatches);
     } catch (e) {
       error = `Failed to load data: ${e}`;
     } finally {
@@ -109,52 +161,61 @@
     error = "";
     isRefreshing = true;
     try {
-      matches = await invoke("refresh_matches");
-    } catch (e) {
-      const msg = String(e);
-      if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("429")) {
-        error = "OpenDota is temporarily unavailable — your cached matches are shown below.";
-      } else if (msg.includes("Failed to fetch") || msg.includes("connection") || msg.includes("network")) {
-        error = "Could not reach OpenDota. Check your internet connection.";
+      const result = await invoke("refresh_matches");
+      matches = result.matches;
+      if (result.new_count > 0) {
+        const checkin = await invoke("get_pending_checkin").catch(() => null);
+        if (checkin) pendingCheckinStore.set(checkin);
+        showToast(`${result.new_count} new match${result.new_count > 1 ? 'es' : ''} found`);
       } else {
-        error = `Refresh failed: ${e}`;
+        showToast("Matches up to date");
       }
+    } catch (e) {
+      error = String(e);
+      showToast(String(e), 'error', 5000);
       await loadMatches();
     } finally {
       isRefreshing = false;
     }
   }
 
+  /** @param {number} seconds */
   function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} timestamp */
   function formatDate(timestamp) {
     const d = new Date(timestamp * 1000);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
+  /** @param {any} match */
   function isWin(match) {
     const isRadiant = match.player_slot < 128;
     return (isRadiant && match.radiant_win) || (!isRadiant && !match.radiant_win);
   }
 
+  /** @param {number} gameMode */
   function isTurbo(gameMode) {
     return gameMode === 21 || gameMode === 23;
   }
 
+  /** @param {number} gameMode */
   function isRanked(gameMode) {
     return gameMode === 20 || gameMode === 22;
   }
 
+  /** @param {number} gameMode */
   function getModeTag(gameMode) {
     if (isTurbo(gameMode)) return { cls: 'mode-turbo', label: 'Turbo' };
     if (isRanked(gameMode)) return { cls: 'mode-ranked', label: 'Ranked' };
     return { cls: 'mode-other', label: getGameModeName(gameMode) };
   }
 
+  /** @param {any} match */
   async function showGoalDetails(match) {
     selectedMatch = match;
     try {
@@ -170,6 +231,7 @@
     goalDetails = [];
   }
 
+  /** @param {string} metric */
   function getMetricLabel(metric) {
     switch (metric) {
       case "Networth": return "Net Worth";
@@ -181,6 +243,7 @@
     }
   }
 
+  /** @param {string} metric */
   function getMetricUnit(metric) {
     switch (metric) {
       case "Networth": return "gold";
@@ -191,17 +254,20 @@
     }
   }
 
+  /** @param {number} totalSeconds */
   function formatSeconds(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} itemId */
   function getItemName(itemId) {
     const item = items.find(i => i.id === itemId);
     return item ? item.display_name : `Item ${itemId}`;
   }
 
+  /** @param {number} matchId */
   async function copyMatchId(matchId) {
     try {
       await navigator.clipboard.writeText(matchId.toString());
@@ -212,6 +278,7 @@
     }
   }
 
+  /** @param {number} matchId */
   async function openInOpenDota(matchId) {
     try {
       await openUrl(`https://www.opendota.com/matches/${matchId}`);
@@ -220,20 +287,32 @@
     }
   }
 
-  async function parseMatch(matchId) {
-    parsingMatches = new Set([...parsingMatches, matchId]);
-    try {
-      await invoke("parse_match", { matchId, steamId: currentSteamId });
-      await loadMatches();
-    } catch (e) {
-      error = `Failed to parse match: ${e}`;
-    } finally {
-      const newSet = new Set(parsingMatches);
-      newSet.delete(matchId);
-      parsingMatches = newSet;
+  function handleParseAll() {
+    // matches are already sorted most-recent-first from the backend
+    const toParse = matches.filter(m =>
+      (m.parse_state === "Unparsed" || m.parse_state === "Failed") &&
+      !pqs.active.has(m.match_id) &&
+      !pqs.queue.includes(m.match_id) &&
+      !pqs.countdowns.has(m.match_id)
+    );
+    for (const match of toParse) {
+      enqueueParse(match.match_id);
     }
   }
 
+  /** @param {number} role */
+  function getRoleTKey(role) {
+    switch (role) {
+      case 1: return "matches.role_carry";
+      case 2: return "matches.role_mid";
+      case 3: return "matches.role_offlane";
+      case 4: return "matches.role_soft_sup";
+      case 5: return "matches.role_hard_sup";
+      default: return null;
+    }
+  }
+
+  /** @param {number} gameMode */
   function getGameModeName(gameMode) {
     switch (gameMode) {
       case 0: return "Unknown";
@@ -249,10 +328,48 @@
     }
   }
 
+  // Derived: unique major patch versions (e.g. "7.40") from matches with patches, most recent first
+  let trackedMajorPatches = $derived.by(() => {
+    const seen = new Set();
+    const result = [];
+    for (const m of matches) {
+      if (m.patch) {
+        // Major = numeric prefix, e.g. "7.40" from "7.40e"
+        const major = m.patch.replace(/[a-z]+$/, '');
+        if (!seen.has(major)) {
+          seen.add(major);
+          result.push(major);
+        }
+      }
+    }
+    return result.slice(0, 4); // show up to 4 recent major patches
+  });
+
+  /** Returns all specific patches for a given major patch, sorted newest first */
+  /** @param {string} major */
+  function getMinorPatches(major) {
+    return patches
+      .filter(p => p.name === major || (p.name.startsWith(major) && p.name.length === major.length + 1 && /[a-z]/.test(p.name.slice(-1))))
+      .sort((a, b) => b.date_epoch - a.date_epoch);
+  }
+
   // Filter logic
+  /** @param {string} filter */
   function setFilter(filter) {
     activeFilter = filter;
     currentPage = 1;
+  }
+
+  /** @param {any} match @param {string} patchFilter */
+  function matchesPatch(match, patchFilter) {
+    if (!match.patch) return false;
+    if (match.patch === patchFilter) return true;
+    // Major filter: patchFilter ends with digit → match sub-versions too
+    if (/\d$/.test(patchFilter) && match.patch.startsWith(patchFilter)) {
+      const suffix = match.patch.slice(patchFilter.length);
+      return suffix.length === 1 && /[a-z]/.test(suffix);
+    }
+    return false;
   }
 
   function getFilteredMatches() {
@@ -269,6 +386,10 @@
         if (activeFilter.startsWith('hero-')) {
           const heroId = parseInt(activeFilter.split('-')[1]);
           return matches.filter(m => m.hero_id === heroId);
+        }
+        if (activeFilter.startsWith('patch-')) {
+          const patchFilter = activeFilter.slice(6);
+          return matches.filter(m => matchesPatch(m, patchFilter));
         }
         return matches;
     }
@@ -292,13 +413,26 @@
     return Math.ceil(getFilteredMatches().length / pageSize);
   }
 
+  /** @param {number} page */
   function goToPage(page) {
     const totalPages = getTotalPages();
     if (page >= 1 && page <= totalPages) currentPage = page;
   }
 </script>
 
-<div class="matches-content">
+<div class="matches-content"
+  ontouchstart={onTouchStart}
+  ontouchmove={onTouchMove}
+  ontouchend={onTouchEnd}
+>
+  <!-- Pull-to-refresh indicator -->
+  {#if pullDistance > 0 || isRefreshing}
+    <div class="pull-indicator" style="height: {Math.min(pullDistance, PULL_THRESHOLD)}px; opacity: {Math.min(pullDistance / PULL_THRESHOLD, 1)}">
+      <span class="pull-arrow" class:spinning={isRefreshing} style="transform: rotate({Math.min(pullDistance / PULL_THRESHOLD, 1) * 180}deg)">↻</span>
+      <span class="pull-label">{pullDistance >= PULL_THRESHOLD || isRefreshing ? (isRefreshing ? $_('matches.refreshing') : 'Release to refresh') : 'Pull to refresh'}</span>
+    </div>
+  {/if}
+
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -306,39 +440,53 @@
   <!-- FILTER BAR -->
   <div class="match-filters-wrap">
     <div class="match-filters">
-      <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>All</button>
-      <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>Wins</button>
-      <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>Losses</button>
-      <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>Ranked</button>
-      <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>Turbo</button>
+      <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>{$_('matches.filter_all')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>{$_('matches.filter_wins')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'losses'} onclick={() => setFilter('losses')}>{$_('matches.filter_losses')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'ranked'} onclick={() => setFilter('ranked')}>{$_('matches.filter_ranked')}</button>
+      <button class="filter-chip" class:active={activeFilter === 'turbo'} onclick={() => setFilter('turbo')}>{$_('matches.filter_turbo')}</button>
       {#each trackedHeroes as hero}
         <button class="filter-chip" class:active={activeFilter === `hero-${hero.id}`} onclick={() => setFilter(`hero-${hero.id}`)}>
           {hero.name}
         </button>
       {/each}
+      {#if trackedMajorPatches.length > 0}
+        <span class="filter-divider">|</span>
+        {#each trackedMajorPatches as major}
+          <button class="filter-chip filter-chip-patch" class:active={activeFilter === `patch-${major}`} onclick={() => setFilter(`patch-${major}`)}>
+            {major}
+          </button>
+        {/each}
+      {/if}
     </div>
+    {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !pqs.active.has(m.match_id) && !pqs.queue.includes(m.match_id) && !pqs.countdowns.has(m.match_id))}
+      <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
+        {$_('matches.parse_all')}
+      </button>
+    {/if}
     <button class="btn btn-primary refresh-btn" onclick={handleRefresh} disabled={isRefreshing}>
-      ↻ {isRefreshing ? 'Refreshing...' : 'Refresh Matches'}
+      ↻ {isRefreshing ? $_('matches.refreshing') : $_('matches.refresh')}
     </button>
   </div>
 
   {#if isLoading}
-    <div class="loading-state">Loading matches...</div>
+    <div class="loading-state">{$_('matches.loading')}</div>
   {:else if matches.length === 0}
-    <div class="empty-state">No matches found. Click "Refresh Matches" to fetch your recent games.</div>
+    <div class="empty-state">{$_('matches.empty')}</div>
   {:else}
     {@const filteredCount = getFilteredMatches().length}
     <div class="matches-table">
       <div class="table-head">
-        <div class="th">Match ID</div>
-        <div class="th">Date</div>
-        <div class="th">Hero</div>
-        <div class="th">Mode</div>
-        <div class="th">Result</div>
-        <div class="th">K/D/A</div>
-        <div class="th">GPM</div>
-        <div class="th">XPM</div>
-        <div class="th">Goals</div>
+        <div class="th">{$_('matches.col_match_id')}</div>
+        <div class="th">{$_('matches.col_date')}</div>
+        <div class="th">{$_('matches.col_hero')}</div>
+        <div class="th">{$_('matches.col_mode')}</div>
+        <div class="th">{$_('matches.col_role')}</div>
+        <div class="th">{$_('matches.col_result')}</div>
+        <div class="th">{$_('matches.col_kda')}</div>
+        <div class="th">{$_('matches.col_gpm')}</div>
+        <div class="th">{$_('matches.col_xpm')}</div>
+        <div class="th">{$_('matches.col_goals')}</div>
       </div>
 
       {#each getPaginatedMatches() as match}
@@ -350,15 +498,15 @@
               <a
                 class="icon-btn"
                 href="/matches/{match.match_id}"
-                aria-label="View details"
-                title="View details"
+                aria-label={$_('matches.view_details')}
+                title={$_('matches.view_details')}
                 onclick={(e) => e.stopPropagation()}
               >🔍</a>
               <button
                 class="icon-btn"
                 onclick={(e) => { e.stopPropagation(); copyMatchId(match.match_id); }}
-                aria-label="Copy ID"
-                title="Copy ID"
+                aria-label={$_('matches.copy_id')}
+                title={$_('matches.copy_id')}
               >{copiedMatchId === match.match_id ? '✓' : '📋'}</button>
               <button
                 class="icon-btn"
@@ -366,11 +514,22 @@
                 aria-label="OpenDota"
                 title="Open in OpenDota"
               >🔗</button>
+              <button
+                class="icon-btn"
+                onclick={(e) => { e.stopPropagation(); openUrl(`https://stratz.com/matches/${match.match_id}`); }}
+                aria-label="Stratz"
+                title="Open in Stratz"
+              >⚔</button>
             </div>
           </div>
 
-          <!-- Date -->
-          <div class="td-text td-date">{formatDate(match.start_time)}</div>
+          <!-- Date + patch -->
+          <div class="td-text td-date">
+            {formatDate(match.start_time)}
+            {#if match.patch}
+              <span class="patch-badge">{match.patch}</span>
+            {/if}
+          </div>
 
           <!-- Hero -->
           <div class="match-hero">
@@ -383,9 +542,12 @@
             <span class="mode-tag {getModeTag(match.game_mode).cls}">{getModeTag(match.game_mode).label}</span>
           </div>
 
+          <!-- Role -->
+          <div class="td-role td-text">{getRoleTKey(match.role) ? $_(/** @type {string} */ (getRoleTKey(match.role))) : '—'}</div>
+
           <!-- Result -->
           <div class="td-result {isWin(match) ? 'result-win' : 'result-loss'}">
-            {isWin(match) ? 'WON' : 'LOST'}
+            {isWin(match) ? $_('matches.won') : $_('matches.lost')}
           </div>
 
           <!-- K/D/A -->
@@ -399,14 +561,32 @@
 
           <!-- Goals chip -->
           <div class="td-goals">
-            {#if match.parse_state === "Parsing" || parsingMatches.has(match.match_id)}
-              <span class="parsing-spinner">⏳</span>
-            {:else if match.parse_state === "Unparsed"}
+            {#if match.parse_state === "Parsing" || pqs.active.has(match.match_id)}
+              <span class="parsing-badge">Parsing…</span>
+            {:else if pqs.errors.has(match.match_id)}
+              {@const errMsg = pqs.errors.get(match.match_id) ?? ''}
+              {@const pending = isPendingError(errMsg)}
+              {@const countdown = pqs.countdowns.get(match.match_id)}
+              {#if pending}
+                <span
+                  class="not-ready-text"
+                  title={countdown ? `will retry in ${countdown}s` : errMsg}
+                >{$_('matches.not_ready')}</span>
+              {:else}
+                <span
+                  class="parse-status-icon parse-warn"
+                  title={errMsg}
+                  role="img"
+                  aria-label={errMsg}
+                >⚠</span>
+              {/if}
+            {:else if pqs.queue.includes(match.match_id)}
+              <span class="queued-badge">Queued</span>
+            {:else if match.parse_state === "Unparsed" || match.parse_state === "Failed"}
               <button
                 class="parse-btn"
-                onclick={(e) => { e.stopPropagation(); parseMatch(match.match_id); }}
-                disabled={parsingMatches.has(match.match_id)}
-              >Parse</button>
+                onclick={(e) => { e.stopPropagation(); enqueueParse(match.match_id); }}
+              >{match.parse_state === "Failed" ? $_('matches.retry') : $_('matches.parse')}</button>
             {:else if match.goals_applicable > 0}
               <span class="goals-chip" class:has-goals={match.goals_achieved > 0}>
                 {match.goals_achieved}/{match.goals_applicable}{match.goals_achieved > 0 ? ' ⚡' : ''}
@@ -422,12 +602,12 @@
     <!-- PAGINATION -->
     <div class="pagination">
       <div class="pagination-info">
-        Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, filteredCount)} of {filteredCount}
-        {#if activeFilter !== 'all'}<span class="filter-note">(filtered from {matches.length})</span>{/if}
+        {$_('matches.showing', { values: { from: ((currentPage - 1) * pageSize) + 1, to: Math.min(currentPage * pageSize, filteredCount), total: filteredCount } })}
+        {#if activeFilter !== 'all'}<span class="filter-note">{$_('matches.filtered_from', { values: { total: matches.length } })}</span>{/if}
       </div>
 
       <div class="pagination-controls">
-        <button class="pagination-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>← Prev</button>
+        <button class="pagination-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>{$_('matches.prev')}</button>
 
         <div class="page-numbers">
           {#each Array.from({ length: getTotalPages() }, (_, i) => i + 1) as p}
@@ -439,11 +619,11 @@
           {/each}
         </div>
 
-        <button class="pagination-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === getTotalPages()}>Next →</button>
+        <button class="pagination-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === getTotalPages()}>{$_('matches.next')}</button>
       </div>
 
       <div class="page-size-selector">
-        <label for="page-size">Per page:</label>
+        <label for="page-size">{$_('matches.per_page')}</label>
         <select id="page-size" class="form-select" bind:value={pageSize} onchange={() => { currentPage = 1; }}>
           <option value={10}>10</option>
           <option value={25}>25</option>
@@ -457,24 +637,25 @@
 
 <!-- GOAL DETAILS MODAL -->
 {#if selectedMatch}
+  {@const mid = selectedMatch.match_id}
   <div class="modal-overlay" onclick={closeGoalDetails}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
         <div class="modal-title">
           <HeroIcon heroId={selectedMatch.hero_id} size="small" showName={false} />
-          Goal Details — Match {selectedMatch.match_id}
+          {$_('matches.goal_details_title', { values: { id: selectedMatch.match_id } })}
         </div>
         <button class="modal-close" onclick={closeGoalDetails}>✕</button>
       </div>
       <div class="modal-body">
         <div class="match-summary">
-          <span class="{isWin(selectedMatch) ? 'result-win' : 'result-loss'}">{isWin(selectedMatch) ? 'WON' : 'LOST'}</span>
-          <span class="td-text">Duration: {formatDuration(selectedMatch.duration)}</span>
-          <span class="td-text">KDA: {selectedMatch.kills}/{selectedMatch.deaths}/{selectedMatch.assists}</span>
+          <span class="{isWin(selectedMatch) ? 'result-win' : 'result-loss'}">{isWin(selectedMatch) ? $_('matches.won') : $_('matches.lost')}</span>
+          <span class="td-text">{$_('matches.duration', { values: { time: formatDuration(selectedMatch.duration) } })}</span>
+          <span class="td-text">{$_('matches.kda', { values: { k: selectedMatch.kills, d: selectedMatch.deaths, a: selectedMatch.assists } })}</span>
         </div>
 
         {#if goalDetails.length === 0}
-          <p class="no-applicable-goals">No applicable goals for this match.</p>
+          <p class="no-applicable-goals">{$_('matches.no_applicable_goals')}</p>
         {:else}
           <div class="goals-list">
             {#each goalDetails as evaluation}
@@ -486,7 +667,7 @@
                       <HeroIcon heroId={evaluation.goal.hero_id} size="small" showName={false} />
                       {getHeroName(evaluation.goal.hero_id)}
                     {:else}
-                      Any Hero
+                      {$_('matches.any_hero')}
                     {/if}
                     {#if evaluation.goal.metric === "ItemTiming"}
                       — {evaluation.goal.item_id !== null ? getItemName(evaluation.goal.item_id) : "Item"} (Item Timing)
@@ -508,6 +689,34 @@
             {/each}
           </div>
         {/if}
+
+        <div class="modal-footer-actions">
+          <a class="modal-action-btn" href="/matches/{mid}" onclick={closeGoalDetails}>
+            <span class="btn-icon">🔍</span><span class="btn-label">{$_('matches.view_details')}</span>
+          </a>
+          <button class="modal-action-btn" onclick={() => copyMatchId(mid)}>
+            <span class="btn-icon">{copiedMatchId === mid ? '✓' : '📋'}</span><span class="btn-label">{$_('matches.copy_id')}</span>
+          </button>
+          <button class="modal-action-btn" onclick={() => openInOpenDota(mid)}>
+            <span class="btn-icon">🔗</span><span class="btn-label">OpenDota</span>
+          </button>
+          <button class="modal-action-btn" onclick={() => openUrl(`https://stratz.com/matches/${mid}`)}>
+            <span class="btn-icon">⚔</span><span class="btn-label">Stratz</span>
+          </button>
+          {#if pqs.active.has(mid)}
+            <span class="modal-parse-status parsing">Parsing…</span>
+          {:else if pqs.queue.includes(mid)}
+            <span class="modal-parse-status queued">Queued</span>
+          {:else if selectedMatch.parse_state === 'Unparsed' || selectedMatch.parse_state === 'Failed'}
+            <button class="modal-action-btn parse-btn" onclick={() => enqueueParse(mid)}>
+              <span class="btn-icon">▶</span><span class="btn-label">Parse</span>
+            </button>
+          {:else if selectedMatch.parse_state === 'Parsed'}
+            <button class="modal-action-btn reparse-btn" onclick={() => enqueueParse(mid)}>
+              <span class="btn-icon">↺</span><span class="btn-label">Reparse</span>
+            </button>
+          {/if}
+        </div>
       </div>
     </div>
   </div>
@@ -515,6 +724,30 @@
 
 <style>
   .matches-content { max-width: 1400px; margin: 0 auto; }
+
+  /* Pull-to-refresh */
+  .pull-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    overflow: hidden;
+    transition: height 0.1s ease;
+    color: var(--color-text-muted, #888);
+    font-size: 0.85rem;
+  }
+  .pull-arrow {
+    font-size: 1.4rem;
+    display: inline-block;
+    transition: transform 0.2s ease;
+    line-height: 1;
+  }
+  .pull-arrow.spinning {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   /* Filter bar */
   .match-filters-wrap {
@@ -551,70 +784,97 @@
     }
     .match-filters::-webkit-scrollbar { display: none; }
 
-    .refresh-btn { width: 100%; justify-content: center; }
+    .refresh-btn, .parse-all-btn { width: 100%; justify-content: center; }
 
     /* Hide table header on mobile */
-    .table-head { display: none; }
+    .table-head { display: none !important; }
 
-    /* Card layout using flexbox + order */
+    /* Card layout — two-row mobile card */
     .match-row {
       display: flex !important;
       flex-wrap: wrap !important;
-      padding: 12px 14px !important;
+      padding: 14px 16px !important;
       gap: 0 !important;
       align-items: center;
     }
 
-    /* Row 1: hero (fills left) + result (right) */
+    /* Row 1: hero name spans full width */
     .match-hero {
       order: 1;
-      flex: 1;
+      flex: 1 1 100%;
       min-width: 0;
       font-size: 14px;
       font-weight: 600;
+      align-items: center;
     }
+
+    /* Row 2: result tag + mode tag + date flow left, kda pushes right */
     .td-result {
       order: 2;
       flex: none;
-      font-size: 12px;
+      margin-top: 8px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 3px;
+      display: inline-block;
     }
-
-    /* Row 2: mode + date flow left, kda pushes right */
+    .td-result.result-win {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(74, 222, 128, 0.15);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      color: var(--green);
+    }
+    .td-result.result-loss {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      color: var(--red);
+    }
     .td-mode {
       order: 3;
       flex: none;
-      margin-top: 6px;
-      margin-right: 8px;
+      margin-top: 8px;
+      margin-left: 6px;
     }
     .td-date {
       order: 4;
       flex: none;
-      margin-top: 6px;
+      margin-top: 8px;
+      margin-left: auto;
       color: var(--text-muted);
       font-size: 11px;
-      margin-right: 8px;
+      align-self: center;
     }
     .td-kda {
       order: 5;
       flex: none;
-      margin-top: 6px;
-      margin-left: auto;
+      margin-top: 8px;
+      margin-left: 12px;
       font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
-    /* Row 3: goals right-aligned */
+    /* Inline with date + kda on row 2 */
     .td-goals {
       order: 6;
-      width: 100%;
-      margin-top: 6px;
+      flex: none;
+      margin-top: 8px;
+      margin-left: 8px;
       display: flex !important;
-      justify-content: flex-end;
     }
 
     /* Hide on mobile */
     .match-id-cell { display: none !important; }
     .td-xpm { display: none !important; }
     .td-gpm { display: none !important; }
+    .td-role { display: none !important; }
 
     /* Pagination: simpler on mobile */
     .pagination {
@@ -623,6 +883,30 @@
       padding: 12px 14px;
     }
     .page-size-selector { display: none; }
+
+    /* Modal footer: 2-col grid, icon above text */
+    .modal-footer-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .modal-action-btn {
+      flex-direction: column;
+      gap: 4px;
+      min-height: 56px;
+      padding: 8px 4px;
+    }
+
+    .btn-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .btn-label {
+      font-size: 10px;
+      text-align: center;
+      line-height: 1.2;
+    }
   }
 
   .empty-state {
@@ -647,7 +931,7 @@
   .table-head,
   .match-row {
     display: grid;
-    grid-template-columns: 160px 80px 160px 80px 70px 90px 60px 60px 90px;
+    grid-template-columns: 160px 80px 160px 80px 65px 70px 90px 60px 60px 90px;
     padding: 12px 20px;
     align-items: center;
     gap: 8px;
@@ -770,15 +1054,62 @@
     font-size: 13px;
   }
 
-  .parsing-spinner {
-    display: inline-block;
-    animation: spin 2s linear infinite;
-    font-size: 14px;
+  .queued-badge {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
   }
 
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  .parsing-badge {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.8;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  .parse-status-icon {
+    font-size: 14px;
+    cursor: help;
+    line-height: 1;
+  }
+
+  .parse-warn { color: var(--red); }
+  .parse-pending { color: var(--text-muted); }
+
+  .not-ready-text {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    cursor: help;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .parse-all-btn {
+    flex-shrink: 0;
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--gold);
+    background: rgba(240, 180, 41, 0.06);
+  }
+
+  .parse-all-btn:hover {
+    border-color: var(--gold);
+    background: rgba(240, 180, 41, 0.12);
+    color: var(--gold-bright, var(--gold));
   }
 
   .parse-btn {
@@ -963,6 +1294,97 @@
     background: var(--bg-elevated);
     border-radius: 6px;
     font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .modal-footer-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-action-btn:hover {
+    border-color: var(--border-active);
+    color: var(--gold);
+  }
+
+  .parse-btn {
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--gold);
+  }
+
+  .parse-btn:hover {
+    background: rgba(240, 180, 41, 0.1);
+    border-color: var(--gold);
+    color: var(--gold-bright);
+  }
+
+  .reparse-btn {
+    border-color: rgba(94, 234, 212, 0.3);
+    color: var(--teal);
+  }
+
+  .reparse-btn:hover {
+    background: rgba(94, 234, 212, 0.08);
+    border-color: var(--teal);
+  }
+
+  .modal-parse-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 48px;
+    padding: 0 12px;
+    border-radius: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .modal-parse-status.parsing {
+    background: rgba(240, 180, 41, 0.08);
+    border: 1px solid rgba(240, 180, 41, 0.3);
+    color: var(--gold);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .modal-parse-status.queued {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
   }
 
   .no-applicable-goals {

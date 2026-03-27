@@ -1,10 +1,11 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { _ } from "svelte-i18n";
 
   let isLoading = $state(true);
   let error = $state("");
-  let history = $state([]);
+  let history = $state(/** @type {any[]} */ ([]));
   let activeFilter = $state("all"); // "all", "weekly", "daily"
 
   onMount(async () => {
@@ -27,11 +28,13 @@
     }
   }
 
+  /** @param {string} f */
   async function setFilter(f) {
     activeFilter = f;
     await loadHistory();
   }
 
+  /** @param {string} dateStr */
   function formatDate(dateStr) {
     // dateStr is "YYYY-MM-DD" (week start date)
     return new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, {
@@ -41,6 +44,7 @@
     });
   }
 
+  /** @param {number | null | undefined} ts */
   function formatTimestamp(ts) {
     if (!ts) return "—";
     return new Date(ts * 1000).toLocaleDateString(undefined, {
@@ -51,23 +55,22 @@
 
   // Group history items by week (using period_start_date)
   let grouped = $derived(() => {
+    /** @type {Record<string, {dateStr: string, isWeekly: boolean, items: any[]}>} */
     const groups = {};
     for (const item of history) {
-      const key = item.challenge_type === "weekly"
-        ? `Week of ${formatDate(item.period_start_date)}`
-        : formatDate(item.period_start_date);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
+      const key = item.period_start_date;
+      if (!groups[key]) groups[key] = { dateStr: formatDate(item.period_start_date), isWeekly: item.challenge_type === "weekly", items: [] };
+      groups[key].items.push(item);
     }
-    return Object.entries(groups).map(([label, items]) => ({ label, items }));
+    return Object.values(groups);
   });
 </script>
 
 <div class="history-content">
   <div class="page-header">
-    <a href="/challenges" class="back-link">← Back to Challenges</a>
-    <h1>Challenge History</h1>
-    <p class="subtitle">Your completed and failed challenges</p>
+    <a href="/challenges" class="back-link">{$_('challenges.back')}</a>
+    <h1>{$_('challenges.history_title')}</h1>
+    <p class="subtitle">{$_('challenges.history_subtitle')}</p>
   </div>
 
   {#if error}
@@ -75,19 +78,19 @@
   {/if}
 
   <div class="filter-tabs">
-    <button class="tab" class:active={activeFilter === "all"} onclick={() => setFilter("all")}>All</button>
-    <button class="tab" class:active={activeFilter === "weekly"} onclick={() => setFilter("weekly")}>Weekly</button>
-    <button class="tab" class:active={activeFilter === "daily"} onclick={() => setFilter("daily")}>Daily</button>
+    <button class="tab" class:active={activeFilter === "all"} onclick={() => setFilter("all")}>{$_('challenges.filter_all')}</button>
+    <button class="tab" class:active={activeFilter === "weekly"} onclick={() => setFilter("weekly")}>{$_('challenges.filter_weekly')}</button>
+    <button class="tab" class:active={activeFilter === "daily"} onclick={() => setFilter("daily")}>{$_('challenges.filter_daily')}</button>
   </div>
 
   {#if isLoading}
-    <p class="loading">Loading history...</p>
+    <p class="loading">{$_('challenges.history_loading')}</p>
   {:else if history.length === 0}
-    <p class="empty">No challenge history yet. Complete some challenges to see them here!</p>
+    <p class="empty">{$_('challenges.history_empty')}</p>
   {:else}
     {#each grouped() as group}
       <div class="group">
-        <h2 class="group-label">{group.label}</h2>
+        <h2 class="group-label">{group.isWeekly ? $_('challenges.week_of', { values: { date: group.dateStr } }) : group.dateStr}</h2>
         {#each group.items as item}
           <div class="history-item" class:completed={item.status === "completed"} class:failed={item.status === "failed"}>
             <div class="item-left">

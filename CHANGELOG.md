@@ -5,6 +5,125 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-03-26
+
+### Added
+- **Patch Version Tracking**: Dota 2 patch version (e.g., "7.40e") is now stored on each match and shown as a badge in the match list. Use **Settings → Sync Patches** to fetch patch data from OpenDota and back-fill existing matches.
+- **Patch Filter on Matches Page**: Filter chips for recent major patches (e.g., "7.40") appear in the match filter bar. Selecting a major patch shows all sub-versions (7.40, 7.40b … 7.40e).
+
+## [0.5.0] - 2026-03-24
+
+### Added
+- **Goal Frequency Type**: Goals now have a "How often?" field — choose from Just once, On average, 50% / 75% / 90% of games. The goal detail page adapts its achievement status display accordingly. Default remains 75%.
+- **What's New Dialog**: A "What's New" modal is shown once after each app upgrade, displaying the release notes for the installed version.
+- **App Version Display**: App version is now shown in the top-left brand area of the sidebar.
+
+### Changed
+- **Performance Range Card**: Stat order changed to Worst → Avg → Best (left to right).
+
+### Fixed
+- **Clear All Matches**: Now correctly clears all match-related tables (`goal_progress`, `player_networth`, `item_timings`, `mood_checkins`) before deleting matches. Previously, orphaned records in these tables caused re-sync and re-parsing issues.
+
+## [0.4.5] - 2026-03-23
+
+### Added
+- **Pull to Refresh**: Pull-to-refresh gesture support on mobile.
+- **Tasks**: Task tracking feature added.
+
+### Fixed
+- **Android UI**: Fixed buttons being overlaid by Android system UI elements.
+- **Canonical Names**: Added canonical names for improved data consistency.
+
+## [0.4.3] - 2026-03-16
+
+### Changed
+- **Android Bundle ID**: Changed Android application ID to `com.dotakeeper.dotakeeper` (production) and `com.dotakeeper.dotakeeper_beta` (beta) for Google Play Store listing. Added Android product flavors — build with `bundleProductionRelease` or `bundleBetaRelease` accordingly.
+
+## [0.4.2] - 2026-03-15
+
+### Fixed
+- **macOS / Linux builds**: Bundle targets were set to `["msi"]` (Windows-only), causing macOS and Linux CI builds to compile successfully but produce no artifacts. Changed to `"all"` so each platform builds its native bundle formats (DMG/app on macOS, AppImage/deb on Linux, MSI on Windows).
+
+## [0.4.0] - 2026-03-15
+
+### Added
+- **Stratz API**: Alternative data source to OpenDota. If OpenDota is unavailable or rate-limited, Dota Keeper can now fetch match data via the Stratz API.
+- **Screenshots**: In-app screenshots added to support onboarding and store listings.
+
+### Changed
+- **Rate Limit Handling**: Improved rate limit tracking and backoff logic to avoid hitting API limits during match syncs.
+- **Mobile Cosmetics**: Numerous visual polish improvements across the mobile layout — spacing, typography, and component alignment.
+- **Locales**: Expanded and corrected translations; Steam ID is no longer exposed in visible UI text.
+- **Installer**: Removed `setup.exe` artifact — Windows installer is now exclusively the `.msi`.
+
+### Fixed
+- **Sentry**: Fixed error reporting integration that was silently failing in production builds. `PUBLIC_SENTRY_DSN` is now correctly forwarded to the Vite build in all CI workflows.
+- **Android Beta CI**: Beta Android builds no longer fail with a missing package directory — the Android project is now re-initialised with the correct beta identifier before building.
+- **Translations**: Corrected several mistranslated or missing strings in non-English locales.
+- **Privacy Policy**: Updated privacy policy content.
+- **A11y**: Fixed accessibility warnings in `FeedbackModal` — section headings for button/radio groups changed from `<label>` to `<p>` to correctly reflect their role.
+
+## [0.3.2] - 2026-03-10
+
+### Fixed
+- **Landing Page HTML Entities**: `&amp;` was rendering literally in the "Free & Open Source" badge and Linux platform description due to HTML entities being used inside JavaScript translation strings assigned via `textContent`.
+- **Duplicate Refresh Icons**: The refresh button on the Matches page showed two `↻` arrows, and the dashboard refresh button showed two `🔄` icons. The icon was present in both the template and the translation string.
+
+### Added
+- **Russian Language Support**: Full Russian translation of the landing page and app UI.
+- **FAQ Section**: Added a Frequently Asked Questions section to the landing page.
+- **Google Analytics**: Added analytics to the landing page.
+
+## [0.3.0] - 2026-03-07
+
+### Fixed
+- **Net Worth Goals**: Net Worth goals now correctly evaluate and display match history. The backend was returning no data for this metric despite per-minute gold data being available in the database. The player's own networth at the target minute is now correctly queried from the `player_networth` table using their match `player_slot`.
+
+## [0.2.16] - 2026-03-06
+
+### Added
+- **Feedback Button**: Send feedback directly from within the app without leaving. Tap the chat icon above the bottom navigation bar to report a bug, request a missing feature, or share what you like. Feedback is submitted instantly and includes the current screen, app version, and platform automatically — no extra steps needed.
+
+### Changed
+- **Android build format**: Switched from APK to AAB (Android App Bundle) for smaller installs and better Play Store compatibility.
+- **Separate beta app**: The beta build now installs as a distinct app (`Dota Keeper Beta`) alongside the production app, so you can run both without conflict.
+
+## [0.2.12] - 2026-03-06
+
+### Added
+- **Feedback Button**: New persistent feedback button in the sidebar (desktop) and as a floating icon above the bottom nav (mobile). Opens a compact modal to report bugs, request features, or share what's working well. Feedback is submitted to Supabase and includes auto-captured context (current page, app version, platform).
+
+### Fixed
+- **Android CI Build**: Fixed Android build workflow — restored required `--apk true` value and added a `cargo-tauri` wrapper script so the Tauri CLI resolves correctly in CI.
+
+## [0.2.11] - 2026-03-04
+
+### Added
+- **Background Parse**: Match data is now parsed in the background, so the app remains responsive while fetching and processing new matches.
+- **First Run Experience**: New users are guided through an onboarding flow on first launch to set up their Steam ID and initial preferences.
+- **Factory Reset**: New option in Settings to completely reset the app — clears all data and returns to the first-run state.
+- **Hero Pick on Startup**: Hero pool data is refreshed automatically on startup so the hero list is always up to date.
+
+### Fixed
+- **Database Locking**: Eliminated intermittent "database is locked" errors on startup by replacing per-command `Connection` creation with a single shared `Mutex<Connection>` for the app lifetime. Also enabled WAL journal mode and a 5-second busy timeout as additional hardening.
+- **Android CI Build**: Fixed `tauri android build --apk` argument syntax for the updated Tauri CLI. Android builds now also trigger on the `beta` branch.
+- **Bug Fixes**: Various stability and correctness improvements.
+
+## [0.2.7] - 2026-03-02
+
+### Added
+- **Mental Health / Mind Tab**: New "Mind" section for tracking tilt and emotional state after games
+  - Post-game mood check-in prompt appears after matches with a mood slider and optional notes
+  - Tilt assessment based on recent check-in history (calm / watch yourself / tilted / on tilt)
+  - Full check-in history with mood trend visualisation and personalised suggestions
+  - Check-in frequency setting (after every game, every 3 games, or every 5 games)
+- **Steam Login**: Authenticate via Steam OpenID directly in the app as an alternative login path
+- **Toast Notifications**: Global toast notification system for in-app feedback messages
+
+### Fixed
+- **OpenDota Parsing**: Resolved parsing edge cases that could cause match data to be incorrectly marked as parsed
+- **Goal Sparklines**: Fixed sparkline charts on the dashboard not rendering correctly for goals
+
 ## [0.2.6] - 2026-02-26
 
 ### Added

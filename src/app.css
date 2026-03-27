@@ -55,13 +55,15 @@ body {
   flex-direction: column;
 }
 
-/* ── MOBILE: safe-area insets for notch / home-indicator ── */
-@supports (padding: env(safe-area-inset-top)) {
-  @media (max-width: 640px) {
-    body {
-      padding-top: env(safe-area-inset-top);
-    }
-  }
+/* ── SAFE AREA: notch / status bar / home indicator ──
+   viewport-fit=cover (app.html) enables env() to return real device values.
+   Exposed as CSS custom properties so all layout elements can consume them.
+   On desktop all four values are 0px — safe to apply unconditionally. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
 /* Scrollbars */
@@ -120,6 +122,17 @@ input, select, textarea { font-family: inherit; }
 .btn-primary:hover {
   background: var(--gold-bright);
   transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--border-active);
+  color: var(--text-primary);
 }
 
 .btn-ghost {
@@ -187,7 +200,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: 8px;
   padding: 16px 20px;
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 40px 1fr 110px auto;
   align-items: center;
   gap: 16px;
   cursor: pointer;
@@ -229,23 +242,18 @@ input, select, textarea { font-family: inherit; }
   text-overflow: ellipsis;
 }
 
-.goal-progress-bar {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 2px;
+.goal-spark-col {
+  width: 110px;
+  height: 40px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
   overflow: hidden;
-  margin-bottom: 4px;
 }
 
-.goal-fill {
+.goal-sparkline {
+  display: block;
+  width: 100%;
   height: 100%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
-  transition: width 0.4s ease;
-}
-
-.goal-fill.success {
-  background: linear-gradient(90deg, #16a34a, var(--green));
 }
 
 .goal-meta {
@@ -297,6 +305,49 @@ input, select, textarea { font-family: inherit; }
 .dot.empty {
   opacity: 0.4;
   border-style: dashed;
+}
+
+@media (max-width: 640px) {
+  .goal-row {
+    grid-template-columns: 36px 1fr;
+    grid-template-rows: auto auto;
+    padding: 14px 16px;
+    gap: 10px 12px;
+  }
+
+  /* Row 1: avatar (col 1) + info (col 2) */
+  .hero-avatar {
+    grid-column: 1;
+    grid-row: 1;
+    width: 36px;
+    height: 36px;
+  }
+
+  .goal-info {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* Row 2: sparkline + dots span both columns */
+  .goal-spark-col {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    height: 36px;
+  }
+
+  .goal-dots {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+
+  .dot {
+    flex: 1;
+    max-width: 36px;
+    height: 28px;
+  }
 }
 
 /* Mode tags */
@@ -374,6 +425,35 @@ input, select, textarea { font-family: inherit; }
 .filter-chip:hover:not(.active) {
   border-color: rgba(255, 255, 255, 0.2);
   color: var(--text-primary);
+}
+
+.filter-chip-patch.active {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+}
+
+.filter-divider {
+  color: var(--border);
+  font-size: 14px;
+  padding: 0 2px;
+  user-select: none;
+}
+
+/* Patch version badge shown on match rows */
+.patch-badge {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+  margin-left: 5px;
+  vertical-align: middle;
 }
 
 /* Analysis cards */

@@ -1,0 +1,191 @@
+name: Beta Release Build
+
+on:
+  push:
+    branches:
+      - beta
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin --features beta'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin --features beta'
+          - platform: 'ubuntu-22.04'
+            args: '--features beta'
+          - platform: 'windows-latest'
+            args: '--features beta'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: yarn install
+
+      - name: Get version from package.json
+        id: version
+        shell: bash
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Check signing configuration
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "✓ TAURI_SIGNING_PRIVATE_KEY is set (length: ${#TAURI_SIGNING_PRIVATE_KEY})"
+          else
+            echo "✗ TAURI_SIGNING_PRIVATE_KEY is NOT set"
+          fi
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
+            echo "✓ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is set"
+          else
+            echo "✗ TAURI_SIGNING_PRIVATE_KEY_PASSWORD is NOT set"
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
+        with:
+          tagName: v${{ steps.version.outputs.VERSION }}-beta
+          releaseName: 'Dota Keeper Beta v${{ steps.version.outputs.VERSION }}'
+          releaseBody: 'Beta pre-release v${{ steps.version.outputs.VERSION }}'
+          releaseDraft: false
+          prerelease: true
+          configPath: src-tauri/tauri.beta.conf.json
+          args: ${{ matrix.args }}
+
+  update-beta-json:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Get version from package.json
+        id: version
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Download and inspect release signatures
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          TAG="v${VERSION}-beta"
+          echo "=== Release assets for ${TAG} ==="
+          gh release view "${TAG}" --json assets --jq '.assets[].name' || echo "Could not list assets"
+
+          mkdir -p ./signatures
+
+          echo ""
+          echo "=== Downloading .sig files ==="
+          gh release download "${TAG}" --pattern "*.sig" --dir ./signatures 2>&1 || \
+            echo "Warning: gh release download failed or no .sig files found"
+
+          echo ""
+          echo "=== Downloaded signature files ==="
+          ls -la ./signatures/ 2>/dev/null || echo "No files downloaded"
+
+      - name: Update latest-beta.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          TAG="v${VERSION}-beta"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          WIN_SIG=""
+          LINUX_SIG=""
+          MACOS_X64_SIG=""
+          MACOS_ARM_SIG=""
+
+          for f in ./signatures/*.sig; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            echo "Classifying: $name"
+            case "$name" in
+              *aarch64*)            MACOS_ARM_SIG=$(cat "$f");  echo "  → macOS ARM" ;;
+              *amd64*)              LINUX_SIG=$(cat "$f");       echo "  → Linux x64" ;;
+              *x64.app.tar.gz.sig)  MACOS_X64_SIG=$(cat "$f");  echo "  → macOS x64" ;;
+              *x64*)                WIN_SIG=$(cat "$f");         echo "  → Windows x64" ;;
+              *)                    echo "  → unrecognised, skipping" ;;
+            esac
+          done
+
+          echo ""
+          echo "Windows sig present:    $([ -n "$WIN_SIG" ] && echo yes || echo NO)"
+          echo "Linux sig present:      $([ -n "$LINUX_SIG" ] && echo yes || echo NO)"
+          echo "macOS x64 sig present:  $([ -n "$MACOS_X64_SIG" ] && echo yes || echo NO)"
+          echo "macOS ARM sig present:  $([ -n "$MACOS_ARM_SIG" ] && echo yes || echo NO)"
+
+          mkdir -p meta/autoupdate
+
+          cat > meta/autoupdate/latest-beta.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "Beta release v${VERSION}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/${TAG}/Dota.Keeper.Beta_${VERSION}_x64_en-US.msi"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/${TAG}/Dota.Keeper.Beta_${VERSION}_amd64.AppImage.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "${MACOS_X64_SIG}",
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/${TAG}/Dota.Keeper.Beta_x64.app.tar.gz"
+              },
+              "darwin-aarch64": {
+                "signature": "${MACOS_ARM_SIG}",
+                "url": "https://github.com/stringhandler/dota-keeper/releases/download/${TAG}/Dota.Keeper.Beta_aarch64.app.tar.gz"
+              }
+            }
+          }
+          EOF
+
+          echo ""
+          echo "=== Generated latest-beta.json ==="
+          cat meta/autoupdate/latest-beta.json
+
+      - name: Commit latest-beta.json to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add meta/autoupdate/latest-beta.json
+          git diff --cached --quiet || git commit -m "chore: update latest-beta.json for v${{ steps.version.outputs.VERSION }}"
+          git push

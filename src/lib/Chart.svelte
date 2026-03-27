@@ -1,9 +1,11 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import {
     Chart,
     LineController,
     LineElement,
+    BarController,
+    BarElement,
     PointElement,
     LinearScale,
     CategoryScale,
@@ -17,6 +19,8 @@
   Chart.register(
     LineController,
     LineElement,
+    BarController,
+    BarElement,
     PointElement,
     LinearScale,
     CategoryScale,
@@ -28,14 +32,10 @@
 
   let { config, height = '300px' } = $props();
 
+  /** @type {HTMLCanvasElement | undefined} */
   let canvas;
+  /** @type {import('chart.js').Chart | undefined} */
   let chart;
-
-  onMount(() => {
-    if (canvas && config) {
-      chart = new Chart(canvas, config);
-    }
-  });
 
   onDestroy(() => {
     if (chart) {
@@ -43,13 +43,15 @@
     }
   });
 
-  // Watch for config changes and update chart
+  // Create or recreate chart whenever config changes.
+  // Recreating ensures custom plugins always have fresh closure values.
+  // Also handles the case where config is null on first render (async data load).
   $effect(() => {
-    if (chart && config) {
-      chart.data = config.data;
-      chart.options = config.options;
-      chart.update();
+    if (!canvas || !config) return;
+    if (chart) {
+      chart.destroy();
     }
+    chart = new Chart(canvas, config);
   });
 </script>
 
