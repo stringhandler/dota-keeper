@@ -57,7 +57,11 @@ open class RustPlugin : Plugin<Project> {
                     description = "Build dynamic library in $profile mode for all targets"
                 }
 
-                tasks["mergeUniversal${profileCapitalized}JniLibFolders"].dependsOn(buildTask)
+                // Use matching() so extra flavor dimensions (e.g. "channel") in the
+                // variant name don't break the lookup (task is e.g.
+                // mergeUniversalBetaDebugJniLibFolders, not mergeUniversalDebugJniLibFolders).
+                tasks.matching { it.name.matches(Regex("mergeUniversal.*${profileCapitalized}JniLibFolders")) }
+                    .configureEach { dependsOn(buildTask) }
 
                 for (targetPair in targetsList.withIndex()) {
                     val targetName = targetPair.value
@@ -75,9 +79,8 @@ open class RustPlugin : Plugin<Project> {
                     }
 
                     buildTask.dependsOn(targetBuildTask)
-                    tasks["merge$targetArchCapitalized${profileCapitalized}JniLibFolders"].dependsOn(
-                        targetBuildTask
-                    )
+                    tasks.matching { it.name.matches(Regex("merge${targetArchCapitalized}.*${profileCapitalized}JniLibFolders")) }
+                        .configureEach { dependsOn(targetBuildTask) }
                 }
             }
         }

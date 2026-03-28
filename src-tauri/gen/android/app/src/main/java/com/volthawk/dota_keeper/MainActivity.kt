@@ -36,9 +36,12 @@ class MainActivity : TauriActivity() {
 
   override fun onResume() {
     super.onResume()
-    // Re-inject after a short delay to ensure the page has finished loading
-    // (covers initial launch where onResume fires before the SvelteKit app loads).
+    // Re-inject at multiple delays to ensure at least one attempt lands after
+    // the SvelteKit app has fully loaded. 300 ms catches fast resumes;
+    // 1 s and 3 s cover cold-start where the Tauri/Wry bundle takes longer.
     handler.postDelayed({ injectInsets() }, 300)
+    handler.postDelayed({ injectInsets() }, 1000)
+    handler.postDelayed({ injectInsets() }, 3000)
   }
 
   private fun injectInsets() {
@@ -55,5 +58,10 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     webViewRef = webView
     webView.setBackgroundColor(Color.parseColor("#111827"))
+    // Inject insets once the WebView exists — retried at increasing delays so
+    // at least one attempt lands after the SvelteKit bundle has executed.
+    handler.postDelayed({ injectInsets() }, 300)
+    handler.postDelayed({ injectInsets() }, 1000)
+    handler.postDelayed({ injectInsets() }, 3000)
   }
 }
