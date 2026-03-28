@@ -5,6 +5,15 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-03-28
+
+### Added
+- **Deaths Goal Type**: New goal metric to track deaths — set a maximum death count target (e.g. "at most 4 deaths by 30 min").
+
+### Fixed
+- **Android Bottom Nav**: Buttons on the bottom navigation bar were unclickable on Android because the system navigation bar covered them. Safe area insets are now injected at multiple intervals on app start to ensure they apply after the page has loaded.
+- **Android Build**: Resolved Gradle build failures caused by conflicting product flavor dimensions when building with `cargo tauri android dev`.
+
 ## [0.5.1] - 2026-03-26
 
 ### Added
