@@ -7,8 +7,17 @@
   import HeroIcon from "$lib/HeroIcon.svelte";
   import Chart from "$lib/Chart.svelte";
   import { _ } from "svelte-i18n";
+  import { pqs, initQueue, enqueueParse } from "$lib/parse-queue.svelte.js";
 
   let matchId = $derived(parseInt($page.params.matchId ?? '0'));
+  let backHref = $derived(
+    $page.url.searchParams.get('from') === 'goal' && $page.url.searchParams.get('goalId')
+      ? `/goals/${$page.url.searchParams.get('goalId')}`
+      : '/matches'
+  );
+  let backLabel = $derived(
+    $page.url.searchParams.get('from') === 'goal' ? '← Goal Details' : `← ${$_('nav.matches')}`
+  );
   /** @type {any} */
   let match = $state(null);
   let csData = $state(/** @type {any[]} */ ([]));
@@ -17,27 +26,47 @@
   let isLoading = $state(true);
   let error = $state("");
 
+  let steamId = $state("");
+
+  // Reactive: is this match currently being parsed?
+  let isParsing = $derived(pqs.active.has(matchId));
+  let parseError = $derived(pqs.errors.get(matchId) ?? "");
+
   onMount(async () => {
     await loadData();
   });
 
   async function loadData() {
     try {
-      const [allMatches, cs, goals, allItems] = await Promise.all([
+      const [allMatches, cs, goals, allItems, settings] = await Promise.all([
         invoke("get_matches"),
         invoke("get_match_cs", { matchId }),
         invoke("evaluate_goals_for_match", { matchId }),
         invoke("get_all_items"),
+        invoke("get_settings"),
       ]);
 
       match = allMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
       csData = cs;
       goalDetails = goals;
       items = allItems;
+      steamId = settings.steam_id || "";
 
       if (!match) {
         error = "Match not found.";
       }
+
+      initQueue(steamId, async () => {
+        // Reload match data after parse completes to pick up updated stats
+        const refreshed = await invoke("get_matches");
+        match = refreshed.find((/** @type {any} */ m) => m.match_id === matchId) ?? match;
+        const [refreshedCs, refreshedGoals] = await Promise.all([
+          invoke("get_match_cs", { matchId }),
+          invoke("evaluate_goals_for_match", { matchId }),
+        ]);
+        csData = refreshedCs;
+        goalDetails = refreshedGoals;
+      });
     } catch (e) {
       error = `Failed to load match: ${e}`;
     } finally {
@@ -241,7 +270,7 @@
 
 <div class="match-detail-content">
   <div class="page-header">
-    <a href="/matches" class="back-btn">← {$_('nav.matches')}</a>
+    <a href={backHref} class="back-btn">{backLabel}</a>
     <div class="header-title">
       <h1>Match Details</h1>
       {#if match}
@@ -250,6 +279,14 @@
     </div>
     {#if match}
       <div class="external-links">
+        <button
+          class="reparse-btn"
+          class:parsing={isParsing}
+          disabled={isParsing || !steamId}
+          onclick={() => enqueueParse(matchId)}
+        >
+          {#if isParsing}⟳ Parsing…{:else}↺ Re-parse{/if}
+        </button>
         <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
           View on OpenDota
         </button>
@@ -257,6 +294,9 @@
           View on Stratz
         </button>
       </div>
+      {#if parseError}
+        <p class="parse-error">{parseError}</p>
+      {/if}
     {/if}
   </div>
 
@@ -470,6 +510,50 @@
     display: flex;
     gap: 8px;
     align-items: center;
+  }
+
+  .reparse-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    padding: 10px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .reparse-btn:hover:not(:disabled) {
+    border-color: var(--gold);
+    color: var(--gold);
+    transform: translateY(-1px);
+  }
+
+  .reparse-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .reparse-btn.parsing {
+    color: var(--gold);
+    border-color: rgba(240, 180, 41, 0.4);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .parse-error {
+    font-size: 12px;
+    color: var(--red, #f87171);
+    margin: 4px 0 0 0;
   }
 
   .opendota-btn,

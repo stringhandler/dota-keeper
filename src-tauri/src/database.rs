@@ -1244,6 +1244,35 @@ pub fn update_match_role(conn: &Connection, match_id: i64, role: i32) -> Result<
     Ok(())
 }
 
+/// Update end-of-game stats on a match row — only overwrites fields that are currently 0,
+/// so valid data from the initial match history sync is never clobbered.
+pub fn update_match_stats(
+    conn: &Connection,
+    match_id: i64,
+    xp_per_min: Option<i32>,
+    gold_per_min: Option<i32>,
+    last_hits: Option<i32>,
+    denies: Option<i32>,
+    hero_damage: Option<i32>,
+    tower_damage: Option<i32>,
+    hero_healing: Option<i32>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET
+            xp_per_min    = CASE WHEN xp_per_min    = 0 AND ?1 IS NOT NULL THEN ?1 ELSE xp_per_min    END,
+            gold_per_min  = CASE WHEN gold_per_min  = 0 AND ?2 IS NOT NULL THEN ?2 ELSE gold_per_min  END,
+            last_hits     = CASE WHEN last_hits      = 0 AND ?3 IS NOT NULL THEN ?3 ELSE last_hits     END,
+            denies        = CASE WHEN denies         = 0 AND ?4 IS NOT NULL THEN ?4 ELSE denies        END,
+            hero_damage   = CASE WHEN hero_damage    = 0 AND ?5 IS NOT NULL THEN ?5 ELSE hero_damage   END,
+            tower_damage  = CASE WHEN tower_damage   = 0 AND ?6 IS NOT NULL THEN ?6 ELSE tower_damage  END,
+            hero_healing  = CASE WHEN hero_healing   = 0 AND ?7 IS NOT NULL THEN ?7 ELSE hero_healing  END
+         WHERE match_id = ?8",
+        params![xp_per_min, gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, match_id],
+    ).map_err(|e| format!("Failed to update match stats: {}", e))?;
+
+    Ok(())
+}
+
 /// Store the lane partner's player_slot for a match (None if no partner / not a support)
 pub fn update_match_partner_slot(conn: &Connection, match_id: i64, partner_slot: Option<i32>) -> Result<(), String> {
     conn.execute(

@@ -422,6 +422,13 @@ struct StratzDetailedPlayer {
     steam_account_id: Option<u64>,
     player_slot: Option<i32>,
     position: Option<serde_json::Value>,
+    experience_per_minute: Option<i32>,
+    gold_per_minute: Option<i32>,
+    num_last_hits: Option<i32>,
+    num_denies: Option<i32>,
+    hero_damage: Option<i32>,
+    tower_damage: Option<i32>,
+    hero_healing: Option<i32>,
     stats: Option<StratzPlayerStats>,
 }
 
@@ -449,6 +456,13 @@ query GetMatchDetails($matchId: Long!) {
       steamAccountId
       playerSlot
       position
+      experiencePerMinute
+      goldPerMinute
+      numLastHits
+      numDenies
+      heroDamage
+      towerDamage
+      heroHealing
       stats {
         lastHitsPerMinute
         deniesPerMinute
@@ -514,6 +528,13 @@ pub async fn fetch_match_details(match_id: i64, api_key: &str) -> Result<Detaile
                 }),
                 gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.clone()),
                 purchase_log,
+                xp_per_min: p.experience_per_minute,
+                gold_per_min: p.gold_per_minute,
+                last_hits: p.num_last_hits,
+                denies: p.num_denies,
+                hero_damage: p.hero_damage,
+                tower_damage: p.tower_damage,
+                hero_healing: p.hero_healing,
             }
         })
         .collect();

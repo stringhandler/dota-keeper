@@ -1011,7 +1011,7 @@
           <h2 class="best-worst-title best">Best Games</h2>
           <div class="games-list">
             {#each bestGames as game}
-              <a href="/matches/{game.match_id}" class="game-row">
+              <a href="/matches/{game.match_id}?from=goal&goalId={goalId}" class="game-row">
                 <HeroIcon heroId={game.hero_id} size="small" showName={false} />
                 <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
                 <span class="game-value best-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>
@@ -1026,7 +1026,7 @@
           <h2 class="best-worst-title worst">Worst Games</h2>
           <div class="games-list">
             {#each worstGames as game}
-              <a href="/matches/{game.match_id}" class="game-row">
+              <a href="/matches/{game.match_id}?from=goal&goalId={goalId}" class="game-row">
                 <HeroIcon heroId={game.hero_id} size="small" showName={false} />
                 <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
                 <span class="game-value worst-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>

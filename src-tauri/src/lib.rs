@@ -80,7 +80,7 @@ use database::{
     insert_match_cs_data, insert_player_networth,
     match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
     skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
-    update_match_patch, update_match_role, update_match_state, upsert_patches,
+    update_match_patch, update_match_role, update_match_state, update_match_stats, upsert_patches,
     ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
     LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
@@ -1146,6 +1146,18 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
     // Store lane role
     let role = player_data.lane_role.unwrap_or(0);
     let _ = update_match_role(&conn, match_id, role);
+
+    // Backfill end-of-game stats that may have been zero when first inserted
+    let _ = update_match_stats(
+        &conn, match_id,
+        player_data.xp_per_min,
+        player_data.gold_per_min,
+        player_data.last_hits,
+        player_data.denies,
+        player_data.hero_damage,
+        player_data.tower_damage,
+        player_data.hero_healing,
+    );
 
     // Store per-minute networth for all players (used by PartnerNetworth goals)
     for p in &detailed_match.players {
