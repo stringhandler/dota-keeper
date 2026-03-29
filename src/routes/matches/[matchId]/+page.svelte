@@ -32,13 +32,44 @@
   let isParsing = $derived(pqs.active.has(matchId));
   let parseError = $derived(pqs.errors.get(matchId) ?? "");
 
+  // Per-goal comparison data: { last, lastMatchId, best, bestMatchId, lowerIsBetter }
+  let goalComparisons = $state(/** @type {Map<number, {last: number|null, lastMatchId: number|null, best: number|null, bestMatchId: number|null, lowerIsBetter: boolean}>} */ (new Map()));
+
+  // CS data for compare match
+  let compareCsData = $state(/** @type {any[]} */ ([]));
+
+  $effect(() => {
+    if (compareMatch) {
+      invoke("get_match_cs", { matchId: compareMatch.match_id })
+        .then((cs) => { compareCsData = /** @type {any[]} */ (cs); })
+        .catch(() => { compareCsData = []; });
+    } else {
+      compareCsData = [];
+    }
+  });
+
+  // Compare-to feature
+  let showComparePopup = $state(false);
+  let compareMatchIdInput = $state("");
+  let compareMatch = $state(/** @type {any} */ (null));
+  let compareLabel = $state("");
+  let compareError = $state("");
+  let allMatches = $state(/** @type {any[]} */ ([]));
+
+  let compareLastGame = $derived(
+    [...allMatches].sort((a, b) => b.start_time - a.start_time).find(m => m.match_id !== matchId) ?? null
+  );
+  let compareLastSameHero = $derived(
+    [...allMatches].sort((a, b) => b.start_time - a.start_time).find(m => m.match_id !== matchId && m.hero_id === match?.hero_id) ?? null
+  );
+
   onMount(async () => {
     await loadData();
   });
 
   async function loadData() {
     try {
-      const [allMatches, cs, goals, allItems, settings] = await Promise.all([
+      const [fetchedMatches, cs, goals, allItems, settings] = await Promise.all([
         invoke("get_matches"),
         invoke("get_match_cs", { matchId }),
         invoke("evaluate_goals_for_match", { matchId }),
@@ -46,7 +77,8 @@
         invoke("get_settings"),
       ]);
 
-      match = allMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
+      allMatches = fetchedMatches;
+      match = fetchedMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
       csData = cs;
       goalDetails = goals;
       items = allItems;
@@ -56,9 +88,12 @@
         error = "Match not found.";
       }
 
+      await loadComparisons();
+
       initQueue(steamId, async () => {
         // Reload match data after parse completes to pick up updated stats
         const refreshed = await invoke("get_matches");
+        allMatches = refreshed;
         match = refreshed.find((/** @type {any} */ m) => m.match_id === matchId) ?? match;
         const [refreshedCs, refreshedGoals] = await Promise.all([
           invoke("get_match_cs", { matchId }),
@@ -66,12 +101,103 @@
         ]);
         csData = refreshedCs;
         goalDetails = refreshedGoals;
+        await loadComparisons();
       });
     } catch (e) {
       error = `Failed to load match: ${e}`;
     } finally {
       isLoading = false;
     }
+  }
+
+  async function loadComparisons() {
+    if (!match || goalDetails.length === 0) return;
+    const histograms = await Promise.all(
+      goalDetails.map((/** @type {any} */ ev) =>
+        invoke("get_goal_histogram_data", { goalId: ev.goal.id })
+      )
+    );
+    const map = new Map();
+    for (let i = 0; i < goalDetails.length; i++) {
+      const ev = goalDetails[i];
+      const data = /** @type {any[]} */ (histograms[i]);
+      if (data.length === 0) { map.set(ev.goal.id, { last: null, lastMatchId: null, best: null, bestMatchId: null, lowerIsBetter: false }); continue; }
+      const lowerIsBetter = ev.goal.metric === 'ItemTiming' || ev.goal.metric === 'Deaths';
+      const bestEntry = data.reduce((/** @type {any} */ acc, /** @type {any} */ d) =>
+        lowerIsBetter ? (d.value < acc.value ? d : acc) : (d.value > acc.value ? d : acc)
+      );
+      const prior = data
+        .filter((/** @type {any} */ d) => d.start_time < match.start_time)
+        .sort((/** @type {any} */ a, /** @type {any} */ b) => b.start_time - a.start_time);
+      const lastEntry = prior.length > 0 ? prior[0] : null;
+      map.set(ev.goal.id, {
+        last: lastEntry ? lastEntry.value : null,
+        lastMatchId: lastEntry ? lastEntry.match_id : null,
+        best: bestEntry.value,
+        bestMatchId: bestEntry.match_id,
+        lowerIsBetter,
+      });
+    }
+    goalComparisons = map;
+  }
+
+  /** @param {any} m */
+  function formatCompare(value, metric) {
+    if (metric === 'ItemTiming') return formatSeconds(value);
+    const unit = getMetricUnit(metric);
+    return unit ? `${value} ${unit}` : String(value);
+  }
+
+  /** @param {number} current @param {number} reference @param {boolean} lowerIsBetter */
+  function diffLabel(current, reference, lowerIsBetter) {
+    const delta = current - reference;
+    if (delta === 0) return { text: '—', cls: 'neutral' };
+    const better = lowerIsBetter ? delta < 0 : delta > 0;
+    const sign = delta > 0 ? '+' : '';
+    return { text: `${sign}${delta}`, cls: better ? 'better' : 'worse' };
+  }
+
+  // ── Compare-to feature ────────────────────────────────────────────────────
+
+  function openComparePopup() {
+    showComparePopup = true;
+    compareError = "";
+    compareMatchIdInput = "";
+  }
+
+  function closeComparePopup() {
+    showComparePopup = false;
+  }
+
+  /**
+   * @param {any} target
+   * @param {string} label
+   */
+  function selectCompare(target, label) {
+    compareMatch = target;
+    compareLabel = label;
+    showComparePopup = false;
+    compareError = "";
+  }
+
+  async function loadCompareById() {
+    const id = parseInt(compareMatchIdInput);
+    if (isNaN(id) || id <= 0) { compareError = "Enter a valid match ID."; return; }
+    const found = allMatches.find((/** @type {any} */ m) => m.match_id === id);
+    if (!found) { compareError = "Match not found in your history."; return; }
+    selectCompare(found, `Match #${id}`);
+  }
+
+  /** @param {number} mid @param {string} label */
+  function selectCompareById(mid, label) {
+    const found = allMatches.find((/** @type {any} */ m) => m.match_id === mid);
+    if (found) selectCompare(found, label);
+  }
+
+  function clearCompare() {
+    compareMatch = null;
+    compareLabel = "";
+    compareError = "";
   }
 
   /** @param {number} seconds */
@@ -178,7 +304,6 @@
     const goalDatasets = lhGoals.map((evaluation, i) => {
       const { target_value, target_time_minutes } = evaluation.goal;
       const color = goalLineColors[i % goalLineColors.length];
-      // Linear ramp from 0 at minute 0 to target_value at target_time_minutes; null beyond
       const data = csData.map((d) => {
         if (d.minute > target_time_minutes) return null;
         return Math.round((target_value * d.minute) / target_time_minutes);
@@ -201,13 +326,44 @@
       };
     });
 
+    // Compare match datasets — align by minute, null where compare match ended earlier
+    const cmpByMinute = new Map(compareCsData.map((d) => [d.minute, d]));
+    const compareDatasets = compareCsData.length > 0 ? [
+      {
+        label: `${compareLabel} — Last Hits`,
+        data: csData.map((d) => cmpByMinute.get(d.minute)?.last_hits ?? null),
+        borderColor: "rgba(96, 165, 250, 0.9)",
+        backgroundColor: "rgba(96, 165, 250, 0.08)",
+        borderWidth: 2,
+        borderDash: [5, 3],
+        pointRadius: 2,
+        pointHoverRadius: 5,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false,
+      },
+      {
+        label: `${compareLabel} — Denies`,
+        data: csData.map((d) => cmpByMinute.get(d.minute)?.denies ?? null),
+        borderColor: "rgba(148, 163, 184, 0.6)",
+        backgroundColor: "transparent",
+        borderWidth: 1.5,
+        borderDash: [5, 3],
+        pointRadius: 1,
+        pointHoverRadius: 4,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false,
+      },
+    ] : [];
+
     return {
       type: "line",
       data: {
         labels,
         datasets: [
           {
-            label: "Last Hits",
+            label: "This match — Last Hits",
             data: lhValues,
             borderColor: "#f0b429",
             backgroundColor: "rgba(240, 180, 41, 0.15)",
@@ -218,7 +374,7 @@
             tension: 0.3,
           },
           {
-            label: "Denies",
+            label: "This match — Denies",
             data: dnValues,
             borderColor: "rgba(163, 163, 163, 0.8)",
             backgroundColor: "rgba(163, 163, 163, 0.1)",
@@ -228,6 +384,7 @@
             fill: false,
             tension: 0.3,
           },
+          ...compareDatasets,
           ...goalDatasets,
         ],
       },
@@ -287,6 +444,9 @@
         >
           {#if isParsing}⟳ Parsing…{:else}↺ Re-parse{/if}
         </button>
+        <button class="compare-btn" onclick={openComparePopup}>
+          ⇄ Compare to
+        </button>
         <button class="opendota-btn" onclick={() => openInOpenDota(match.match_id)}>
           View on OpenDota
         </button>
@@ -305,77 +465,123 @@
   {:else if isLoading}
     <div class="loading"><p>{$_('matches.loading')}</p></div>
   {:else if match}
-    <!-- Match Overview Card -->
-    <div class="overview-grid">
-      <div class="overview-card hero-card">
-        <HeroIcon heroId={match.hero_id} size="large" />
-        <div class="hero-info">
-          <div class="hero-name">{getHeroName(match.hero_id)}</div>
-          <div class="result-badge {isWin(match) ? 'win' : 'loss'}">
-            {isWin(match) ? $_('matches.won') : $_('matches.lost')}
+
+    <!-- Comparison banner -->
+    {#if compareMatch}
+      <div class="cmp-banner">
+        <div class="cmp-banner-labels">
+          <span class="cmp-banner-this">This game</span>
+          <span class="cmp-banner-vs">vs</span>
+          <span class="cmp-banner-other">{compareLabel}</span>
+        </div>
+        <button class="cmp-banner-clear" onclick={clearCompare}>✕ Clear comparison</button>
+      </div>
+    {/if}
+
+    <!-- Overview -->
+    {#if compareMatch}
+      {@const b = compareMatch}
+      <div class="overview-compare">
+        <div class="overview-compare-col">
+          <div class="oc-label this">This game</div>
+          <div class="overview-card hero-card">
+            <HeroIcon heroId={match.hero_id} size="large" />
+            <div class="hero-info">
+              <div class="hero-name">{getHeroName(match.hero_id)}</div>
+              <div class="result-badge {isWin(match) ? 'win' : 'loss'}">{isWin(match) ? $_('matches.won') : $_('matches.lost')}</div>
+            </div>
+          </div>
+          <div class="overview-card meta-card">
+            <div class="meta-row"><span class="meta-label">{$_('matches.col_date')}</span><span class="meta-value">{formatDate(match.start_time)}</span></div>
+            <div class="meta-row"><span class="meta-label">Duration</span><span class="meta-value">{formatDuration(match.duration)}</span></div>
+            <div class="meta-row"><span class="meta-label">Game Mode</span><span class="meta-value">{getGameModeName(match.game_mode)}</span></div>
+            <div class="meta-row"><span class="meta-label">Parse State</span><span class="meta-value parse-{match.parse_state.toLowerCase()}">{match.parse_state}</span></div>
+          </div>
+        </div>
+        <div class="overview-compare-col">
+          <div class="oc-label other">{compareLabel}</div>
+          <div class="overview-card hero-card">
+            <HeroIcon heroId={b.hero_id} size="large" />
+            <div class="hero-info">
+              <div class="hero-name">{getHeroName(b.hero_id)}</div>
+              <div class="result-badge {isWin(b) ? 'win' : 'loss'}">{isWin(b) ? $_('matches.won') : $_('matches.lost')}</div>
+            </div>
+          </div>
+          <div class="overview-card meta-card">
+            <div class="meta-row"><span class="meta-label">{$_('matches.col_date')}</span><span class="meta-value">{formatDate(b.start_time)}</span></div>
+            <div class="meta-row"><span class="meta-label">Duration</span><span class="meta-value">{formatDuration(b.duration)}</span></div>
+            <div class="meta-row"><span class="meta-label">Game Mode</span><span class="meta-value">{getGameModeName(b.game_mode)}</span></div>
+            <div class="meta-row"><span class="meta-label">Parse State</span><span class="meta-value parse-{b.parse_state.toLowerCase()}">{b.parse_state}</span></div>
           </div>
         </div>
       </div>
-
-      <div class="overview-card meta-card">
-        <div class="meta-row">
-          <span class="meta-label">{$_('matches.col_date')}</span>
-          <span class="meta-value">{formatDate(match.start_time)}</span>
+    {:else}
+      <div class="overview-grid">
+        <div class="overview-card hero-card">
+          <HeroIcon heroId={match.hero_id} size="large" />
+          <div class="hero-info">
+            <div class="hero-name">{getHeroName(match.hero_id)}</div>
+            <div class="result-badge {isWin(match) ? 'win' : 'loss'}">{isWin(match) ? $_('matches.won') : $_('matches.lost')}</div>
+          </div>
         </div>
-        <div class="meta-row">
-          <span class="meta-label">Duration</span>
-          <span class="meta-value">{formatDuration(match.duration)}</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">Game Mode</span>
-          <span class="meta-value">{getGameModeName(match.game_mode)}</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">Parse State</span>
-          <span class="meta-value parse-{match.parse_state.toLowerCase()}">{match.parse_state}</span>
+        <div class="overview-card meta-card">
+          <div class="meta-row"><span class="meta-label">{$_('matches.col_date')}</span><span class="meta-value">{formatDate(match.start_time)}</span></div>
+          <div class="meta-row"><span class="meta-label">Duration</span><span class="meta-value">{formatDuration(match.duration)}</span></div>
+          <div class="meta-row"><span class="meta-label">Game Mode</span><span class="meta-value">{getGameModeName(match.game_mode)}</span></div>
+          <div class="meta-row"><span class="meta-label">Parse State</span><span class="meta-value parse-{match.parse_state.toLowerCase()}">{match.parse_state}</span></div>
         </div>
       </div>
-    </div>
+    {/if}
 
     <!-- Performance Stats -->
     <div class="stats-section">
       <h2 class="section-title">Performance</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-value kda">
-            <span class="kills">{match.kills}</span>/<span class="deaths">{match.deaths}</span>/<span class="assists">{match.assists}</span>
+      {#if compareMatch}
+        {@const b = compareMatch}
+        <div class="stats-compare-table">
+          <div class="sct-header">
+            <div class="sct-label-col"></div>
+            <div class="sct-col this">This game</div>
+            <div class="sct-col other">{compareLabel}</div>
           </div>
-          <div class="stat-label">{$_('matches.col_kda')}</div>
+          {#each [
+            [$_('matches.col_kda'), `${match.kills}/${match.deaths}/${match.assists}`, `${b.kills}/${b.deaths}/${b.assists}`, null],
+            [$_('matches.col_gpm'), match.gold_per_min, b.gold_per_min, true],
+            [$_('matches.col_xpm'), match.xp_per_min,   b.xp_per_min,   true],
+            ['Last Hits',           match.last_hits,     b.last_hits,    true],
+            ['Denies',              match.denies,        b.denies,       true],
+            ['Hero Dmg',            match.hero_damage,   b.hero_damage,  true],
+            ['Tower Dmg',           match.tower_damage,  b.tower_damage, true],
+            ['Healing',             match.hero_healing,  b.hero_healing, true],
+            ['Duration',            formatDuration(match.duration), formatDuration(b.duration), null],
+          ] as [lbl, va, vb, higherBetter]}
+            {@const isNum = typeof va === 'number' && typeof vb === 'number'}
+            {@const aBetter = isNum && higherBetter !== null ? (/** @type {any} */ (higherBetter) ? va > vb : va < vb) : false}
+            {@const bBetter = isNum && higherBetter !== null ? (/** @type {any} */ (higherBetter) ? vb > va : vb < va) : false}
+            <div class="sct-row">
+              <div class="sct-label-col">{lbl}</div>
+              <div class="sct-col" class:sct-better={aBetter}>{isNum ? (/** @type {number} */ (va)).toLocaleString() : va}</div>
+              <div class="sct-col" class:sct-better={bBetter}>{isNum ? (/** @type {number} */ (vb)).toLocaleString() : vb}</div>
+            </div>
+          {/each}
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.gold_per_min}</div>
-          <div class="stat-label">{$_('matches.col_gpm')}</div>
+      {:else}
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value kda">
+              <span class="kills">{match.kills}</span>/<span class="deaths">{match.deaths}</span>/<span class="assists">{match.assists}</span>
+            </div>
+            <div class="stat-label">{$_('matches.col_kda')}</div>
+          </div>
+          <div class="stat-card"><div class="stat-value">{match.gold_per_min}</div><div class="stat-label">{$_('matches.col_gpm')}</div></div>
+          <div class="stat-card"><div class="stat-value">{match.xp_per_min}</div><div class="stat-label">{$_('matches.col_xpm')}</div></div>
+          <div class="stat-card"><div class="stat-value">{match.last_hits}</div><div class="stat-label">Last Hits</div></div>
+          <div class="stat-card"><div class="stat-value">{match.denies}</div><div class="stat-label">Denies</div></div>
+          <div class="stat-card"><div class="stat-value">{match.hero_damage.toLocaleString()}</div><div class="stat-label">Hero Dmg</div></div>
+          <div class="stat-card"><div class="stat-value">{match.tower_damage.toLocaleString()}</div><div class="stat-label">Tower Dmg</div></div>
+          <div class="stat-card"><div class="stat-value">{match.hero_healing.toLocaleString()}</div><div class="stat-label">Healing</div></div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.xp_per_min}</div>
-          <div class="stat-label">{$_('matches.col_xpm')}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.last_hits}</div>
-          <div class="stat-label">Last Hits</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.denies}</div>
-          <div class="stat-label">Denies</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.hero_damage.toLocaleString()}</div>
-          <div class="stat-label">Hero Dmg</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.tower_damage.toLocaleString()}</div>
-          <div class="stat-label">Tower Dmg</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{match.hero_healing.toLocaleString()}</div>
-          <div class="stat-label">Healing</div>
-        </div>
-      </div>
+      {/if}
     </div>
 
     <!-- Last Hits Chart -->
@@ -398,9 +604,7 @@
       <div class="goals-section">
         <h2 class="section-title">
           Goals
-          <span class="goals-summary">
-            {goalDetails.filter((g) => g.achieved).length}/{goalDetails.length} achieved
-          </span>
+          <span class="goals-summary">{goalDetails.filter((g) => g.achieved).length}/{goalDetails.length} achieved</span>
         </h2>
         <div class="goals-list">
           {#each goalDetails as evaluation}
@@ -429,6 +633,33 @@
                     <span class="goal-actual">Actual: {evaluation.actual_value} {getMetricUnit(evaluation.goal.metric)}</span>
                   {/if}
                 </div>
+                {#if goalComparisons.get(evaluation.goal.id)}
+                  {@const cmp = goalComparisons.get(evaluation.goal.id)}
+                  <div class="goal-comparisons">
+                    {#if cmp.last !== null}
+                      {@const d = diffLabel(evaluation.actual_value, cmp.last, cmp.lowerIsBetter)}
+                      <span class="cmp-chip">
+                        <span class="cmp-label">Last</span>
+                        <span class="cmp-value">{formatCompare(cmp.last, evaluation.goal.metric)}</span>
+                        <span class="cmp-diff {d.cls}">{d.text}</span>
+                        {#if cmp.lastMatchId && cmp.lastMatchId !== matchId}
+                          <button class="cmp-compare-btn" onclick={() => selectCompareById(cmp.lastMatchId, 'Last match')}>⇄</button>
+                        {/if}
+                      </span>
+                    {/if}
+                    {#if cmp.best !== null}
+                      {@const d = diffLabel(evaluation.actual_value, cmp.best, cmp.lowerIsBetter)}
+                      <span class="cmp-chip">
+                        <span class="cmp-label">Best</span>
+                        <span class="cmp-value">{formatCompare(cmp.best, evaluation.goal.metric)}</span>
+                        <span class="cmp-diff {d.cls}">{d.text}</span>
+                        {#if cmp.bestMatchId && cmp.bestMatchId !== matchId}
+                          <button class="cmp-compare-btn" onclick={() => selectCompareById(cmp.bestMatchId, 'Best match')}>⇄</button>
+                        {/if}
+                      </span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </div>
           {/each}
@@ -442,6 +673,47 @@
     {/if}
   {/if}
 </div>
+
+<!-- Compare-to popup -->
+{#if showComparePopup}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="popup-overlay" onclick={closeComparePopup} role="dialog" aria-modal="true">
+    <div class="popup" onclick={(e) => e.stopPropagation()}>
+      <div class="popup-header">
+        <h3>Compare to…</h3>
+        <button class="popup-close" onclick={closeComparePopup}>✕</button>
+      </div>
+      <div class="popup-options">
+        <button class="popup-option-btn" disabled={!compareLastGame} onclick={() => compareLastGame && selectCompare(compareLastGame, 'Last game')}>
+          <span class="option-icon">⏮</span>
+          <div>
+            <div class="option-title">Last game</div>
+            {#if compareLastGame}<div class="option-sub">{getHeroName(compareLastGame.hero_id)} · {formatDate(compareLastGame.start_time)}</div>{/if}
+          </div>
+        </button>
+        <button class="popup-option-btn" disabled={!compareLastSameHero} onclick={() => compareLastSameHero && selectCompare(compareLastSameHero, 'Last game with this hero')}>
+          <span class="option-icon">🦸</span>
+          <div>
+            <div class="option-title">Last game with this hero</div>
+            {#if compareLastSameHero}<div class="option-sub">{getHeroName(compareLastSameHero.hero_id)} · {formatDate(compareLastSameHero.start_time)}</div>
+            {:else}<div class="option-sub muted">No other games with this hero</div>{/if}
+          </div>
+        </button>
+      </div>
+      <div class="popup-manual">
+        <input
+          class="popup-input"
+          type="number"
+          placeholder="Match ID…"
+          bind:value={compareMatchIdInput}
+          onkeydown={(e) => e.key === 'Enter' && loadCompareById()}
+        />
+        <button class="popup-go-btn" onclick={loadCompareById}>Go</button>
+      </div>
+      {#if compareError}<p class="popup-error">{compareError}</p>{/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .match-detail-content {
@@ -888,5 +1160,363 @@
     .stats-grid {
       grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
     }
+  }
+
+  /* Goal comparison chips */
+  .goal-comparisons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .cmp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 200, 80, 0.05);
+    border: 1px solid rgba(255, 200, 80, 0.15);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .cmp-label {
+    color: var(--text-muted);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+
+  .cmp-value {
+    color: var(--text-secondary);
+  }
+
+  .cmp-diff {
+    font-weight: 700;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+  .cmp-diff.better { color: #4ade80; }
+  .cmp-diff.worse  { color: #f87171; }
+  .cmp-diff.neutral { color: var(--text-muted); }
+
+  .cmp-compare-btn {
+    background: transparent;
+    border: 1px solid rgba(255,200,80,0.25);
+    border-radius: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 1px 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 2px;
+  }
+
+  .cmp-compare-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  /* Compare button */
+  .compare-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    padding: 10px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .compare-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    transform: translateY(-1px);
+  }
+
+  /* Comparison banner */
+  .cmp-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(240, 180, 41, 0.07);
+    border: 1px solid rgba(240, 180, 41, 0.25);
+    border-radius: 6px;
+    padding: 10px 16px;
+  }
+
+  .cmp-banner-labels {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .cmp-banner-this { color: var(--gold); }
+  .cmp-banner-vs   { color: var(--text-muted); font-size: 11px; }
+  .cmp-banner-other { color: var(--text-secondary); }
+
+  .cmp-banner-clear {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid rgba(240, 180, 41, 0.3);
+    color: var(--text-muted);
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .cmp-banner-clear:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  /* Side-by-side overview */
+  .overview-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .overview-compare-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .oc-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 0;
+  }
+
+  .oc-label.this  { color: var(--gold); border-bottom: 2px solid rgba(240,180,41,0.4); }
+  .oc-label.other { color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+
+  /* Stats comparison table */
+  .stats-compare-table {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .sct-header, .sct-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 1fr;
+  }
+
+  .sct-header {
+    background: rgba(255,200,80,0.05);
+    border-bottom: 1px solid rgba(255,200,80,0.12);
+  }
+
+  .sct-row {
+    border-bottom: 1px solid rgba(255,200,80,0.06);
+  }
+
+  .sct-row:last-child { border-bottom: none; }
+
+  .sct-row:nth-child(even) {
+    background: rgba(255,255,255,0.015);
+  }
+
+  .sct-label-col {
+    padding: 10px 14px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+  }
+
+  .sct-col {
+    padding: 10px 14px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+  }
+
+  .sct-header .sct-col {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 8px 14px;
+  }
+
+  .sct-header .sct-col.this  { color: var(--gold); border-left: 2px solid rgba(240,180,41,0.4); }
+  .sct-header .sct-col.other { color: var(--text-secondary); border-left: 1px solid rgba(255,200,80,0.12); }
+
+  .sct-col:nth-child(2) { border-left: 2px solid rgba(240,180,41,0.2); }
+  .sct-col:nth-child(3) { border-left: 1px solid rgba(255,200,80,0.08); }
+
+  .sct-col.sct-better { color: #4ade80; }
+
+  /* Compare popup */
+  .popup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+  }
+
+  .popup {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 360px;
+    max-width: 95vw;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .popup-header h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0;
+  }
+
+  .popup-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 8px;
+    transition: color 0.15s;
+  }
+
+  .popup-close:hover { color: var(--text-primary); }
+
+  .popup-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .popup-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 200, 80, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text-primary);
+    width: 100%;
+  }
+
+  .popup-option-btn:hover:not(:disabled) {
+    border-color: var(--gold);
+    background: rgba(240, 180, 41, 0.08);
+  }
+
+  .popup-option-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .option-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .option-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .option-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .option-sub.muted { color: var(--text-muted); font-style: italic; }
+
+  .popup-manual {
+    display: flex;
+    gap: 8px;
+  }
+
+  .popup-input {
+    flex: 1;
+    background: var(--bg-input, rgba(255,255,255,0.05));
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .popup-input:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+
+  .popup-go-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 12px;
+    padding: 8px 16px;
+    background: var(--gold);
+    color: #080c10;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .popup-go-btn:hover { background: var(--gold-bright, #f5c842); }
+
+  .popup-error {
+    font-size: 12px;
+    color: var(--red, #f87171);
+    margin: 0;
   }
 </style>
