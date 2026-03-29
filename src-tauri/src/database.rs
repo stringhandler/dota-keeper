@@ -142,7 +142,7 @@ impl GoalGameMode {
 /// Patch version info cached from OpenDota constants
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PatchInfo {
-    pub name: String,       // e.g., "7.40e"
+    pub name: String,       // e.g., "7.41"
     pub date_epoch: i64,    // Unix timestamp of patch release
 }
 
@@ -254,7 +254,7 @@ pub struct Match {
     pub parse_state: MatchState,
     pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
     pub rank_tier: Option<i32>,  // OpenDota rank_tier: 11-15=Herald, 21-25=Guardian, ..., 80=Immortal
-    pub patch: Option<String>,   // e.g., "7.40e" — determined from start_time via patches table
+    pub patch: Option<String>,   // e.g., "7.41" — determined from start_time via patches table
 }
 
 impl Match {
@@ -1466,6 +1466,7 @@ pub struct MatchDataPoint {
     pub value: i32,
     pub achieved: bool,
     pub won: bool,
+    pub game_mode: i32,
 }
 
 /// Get match data for a specific goal (for histogram visualization)
@@ -1639,6 +1640,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
             value: actual_value,
             achieved,
             won: match_data.is_win(),
+            game_mode: match_data.game_mode,
         });
     }
 

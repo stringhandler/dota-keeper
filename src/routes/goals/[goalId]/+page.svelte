@@ -34,6 +34,7 @@
   // Filters
   let selectedHeroId = $state("");
   let selectedPeriod = $state("");
+  let selectedGameMode = $state("All"); // "All" | "Ranked" | "Turbo"
 
   // Get sorted hero list for dropdown
   const allHeroesSorted = Object.entries(heroes)
@@ -55,6 +56,13 @@
       const days = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 365;
       const cutoff = (Date.now() / 1000) - days * 86400;
       data = data.filter((d) => d.start_time >= cutoff);
+    }
+
+    // Filter by game mode (only when user explicitly selects one)
+    if (selectedGameMode === 'Ranked') {
+      data = data.filter((d) => d.game_mode === 22);
+    } else if (selectedGameMode === 'Turbo') {
+      data = data.filter((d) => d.game_mode === 23);
     }
 
     return data;
@@ -128,6 +136,25 @@
     return [...data]
       .sort((a, b) => a.start_time - b.start_time)
       .slice(-10);
+  });
+
+  // Whether lower value = better for this metric
+  let lowerIsBetter = $derived(goal?.metric === 'ItemTiming' || goal?.metric === 'Deaths');
+
+  // Best games: top 10 by value (highest, or lowest for lower-is-better metrics)
+  let bestGames = $derived.by(() => {
+    const data = filteredData;
+    return [...data]
+      .sort((a, b) => lowerIsBetter ? a.value - b.value : b.value - a.value)
+      .slice(0, 10);
+  });
+
+  // Worst games: bottom 10 by value
+  let worstGames = $derived.by(() => {
+    const data = filteredData;
+    return [...data]
+      .sort((a, b) => lowerIsBetter ? b.value - a.value : a.value - b.value)
+      .slice(0, 10);
   });
 
   // Achievement status indicator — behaviour depends on frequency_type
@@ -401,6 +428,7 @@
   function resetFilters() {
     selectedHeroId = "";
     selectedPeriod = "";
+    selectedGameMode = "All";
   }
 
   /** @param {string} metric */
@@ -703,10 +731,24 @@
 
     <!-- Filters Row -->
     <div class="filters-row">
-      {#if goal.hero_id === null}
+      {#if goal.hero_id === null && !goal.hero_scope}
         <div class="filter-group">
           <div class="filter-label">{$_('goals_detail.hero_filter')}</div>
           <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals_detail.all_heroes')} />
+        </div>
+      {/if}
+      {#if goal.hero_id === null && !goal.hero_scope && goal.game_mode === 'All'}
+        <div class="filter-group">
+          <div class="filter-label">Game Mode</div>
+          <div class="period-buttons">
+            {#each ['All', 'Ranked', 'Turbo'] as mode}
+              <button
+                class="period-btn"
+                class:active={selectedGameMode === mode}
+                onclick={() => selectedGameMode = mode}
+              >{mode}</button>
+            {/each}
+          </div>
         </div>
       {/if}
       <div class="filter-group">
@@ -961,6 +1003,41 @@
         </div>
       {/if}
     </section>
+
+    <!-- Best & Worst Games -->
+    {#if filteredData.length > 0}
+      <div class="best-worst-grid">
+        <section class="best-worst-section">
+          <h2 class="best-worst-title best">Best Games</h2>
+          <div class="games-list">
+            {#each bestGames as game}
+              <a href="/matches/{game.match_id}" class="game-row">
+                <HeroIcon heroId={game.hero_id} size="small" showName={false} />
+                <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
+                <span class="game-value best-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>
+                <span class="game-result {game.won ? 'win' : 'loss'}">{game.won ? 'W' : 'L'}</span>
+                <span class="game-date">{formatDate(game.start_time)}</span>
+              </a>
+            {/each}
+          </div>
+        </section>
+
+        <section class="best-worst-section">
+          <h2 class="best-worst-title worst">Worst Games</h2>
+          <div class="games-list">
+            {#each worstGames as game}
+              <a href="/matches/{game.match_id}" class="game-row">
+                <HeroIcon heroId={game.hero_id} size="small" showName={false} />
+                <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
+                <span class="game-value worst-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>
+                <span class="game-result {game.won ? 'win' : 'loss'}">{game.won ? 'W' : 'L'}</span>
+                <span class="game-date">{formatDate(game.start_time)}</span>
+              </a>
+            {/each}
+          </div>
+        </section>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -1736,6 +1813,112 @@
 
     :global(.chart-wrapper) {
       height: 240px !important;
+    }
+  }
+
+  /* Best & Worst Games */
+  .best-worst-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 28px;
+  }
+
+  .best-worst-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+  }
+
+  .best-worst-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin: 0 0 14px 0;
+  }
+
+  .best-worst-title.best { color: #4ade80; }
+  .best-worst-title.worst { color: #f87171; }
+
+  .games-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .game-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 5px;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: rgba(255, 200, 80, 0.03);
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+    font-size: 12px;
+  }
+
+  .game-row:hover {
+    background: rgba(255, 200, 80, 0.08);
+    border-color: rgba(255, 200, 80, 0.2);
+  }
+
+  .game-hero-name {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .game-value {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  .game-value.best-value { color: #4ade80; }
+  .game-value.worst-value { color: #f87171; }
+
+  .game-result {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .game-result.win {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+  }
+
+  .game-result.loss {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+  }
+
+  .game-date {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 700px) {
+    .best-worst-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>
