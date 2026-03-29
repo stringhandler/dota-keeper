@@ -471,6 +471,18 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create player_networth table: {}", e))?;
 
+    // Create the match_xp table (per-minute XP for the player, used for XP/Level charts)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS match_xp (
+            match_id INTEGER NOT NULL,
+            minute INTEGER NOT NULL,
+            xp INTEGER NOT NULL,
+            PRIMARY KEY (match_id, minute),
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create match_xp table: {}", e))?;
+
     // Add partner_slot column if it doesn't exist (set during parsing for support players)
     let _ = conn.execute(
         "ALTER TABLE matches ADD COLUMN partner_slot INTEGER",
@@ -1401,6 +1413,86 @@ pub fn get_match_cs_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchCS
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to collect CS data: {}", e))
+}
+
+/// Per-minute networth data point for the player's own networth chart
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchNW {
+    pub minute: i32,
+    pub networth: i32,
+}
+
+/// Get per-minute networth for the current player in a match.
+/// Looks up the player's own slot from the matches table and queries player_networth.
+pub fn get_match_networth_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchNW>, String> {
+    let player_slot: i32 = conn.query_row(
+        "SELECT player_slot FROM matches WHERE match_id = ?1",
+        params![match_id],
+        |row| row.get(0),
+    ).map_err(|e| format!("Failed to get player_slot for match {}: {}", match_id, e))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT minute, networth FROM player_networth WHERE match_id = ?1 AND player_slot = ?2 ORDER BY minute ASC",
+        )
+        .map_err(|e| format!("Failed to prepare networth query: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![match_id, player_slot], |row| {
+            Ok(MatchNW {
+                minute: row.get(0)?,
+                networth: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query networth data: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect networth data: {}", e))
+}
+
+/// Per-minute XP data point for the XP/Level charts
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchXP {
+    pub minute: i32,
+    pub xp: i32,
+}
+
+/// Insert per-minute XP data for a match (replaces any existing data)
+pub fn insert_match_xp_data(conn: &Connection, match_id: i64, xp_t: &[i32]) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM match_xp WHERE match_id = ?1",
+        params![match_id],
+    ).map_err(|e| format!("Failed to delete existing XP data: {}", e))?;
+
+    for (minute, &xp) in xp_t.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO match_xp (match_id, minute, xp) VALUES (?1, ?2, ?3)",
+            params![match_id, minute as i32, xp],
+        ).map_err(|e| format!("Failed to insert XP data: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get all per-minute XP data for a match ordered by minute
+pub fn get_match_xp_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchXP>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT minute, xp FROM match_xp WHERE match_id = ?1 ORDER BY minute ASC",
+        )
+        .map_err(|e| format!("Failed to prepare XP data query: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![match_id], |row| {
+            Ok(MatchXP {
+                minute: row.get(0)?,
+                xp: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query XP data: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect XP data: {}", e))
 }
 
 /// Daily goal progress data

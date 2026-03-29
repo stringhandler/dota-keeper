@@ -438,6 +438,7 @@ struct StratzPlayerStats {
     last_hits_per_minute: Option<Vec<i32>>,
     denies_per_minute: Option<Vec<i32>>,
     networth_per_minute: Option<Vec<i32>>,
+    xp_per_minute: Option<Vec<i32>>,
     item_purchases: Option<Vec<StratzItemPurchase>>,
 }
 
@@ -467,6 +468,7 @@ query GetMatchDetails($matchId: Long!) {
         lastHitsPerMinute
         deniesPerMinute
         networthPerMinute
+        xpPerMinute
         itemPurchases {
           time
           itemId
@@ -527,6 +529,10 @@ pub async fn fetch_match_details(match_id: i64, api_key: &str) -> Result<Detaile
                     v.iter().map(|&x| { total += x; total }).collect()
                 }),
                 gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.clone()),
+                xp_t: p.stats.as_ref().and_then(|s| s.xp_per_minute.as_ref()).map(|v| {
+                    let mut total = 0;
+                    v.iter().map(|&x| { total += x; total }).collect()
+                }),
                 purchase_log,
                 xp_per_min: p.experience_per_minute,
                 gold_per_min: p.gold_per_minute,

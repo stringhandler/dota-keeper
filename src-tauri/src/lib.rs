@@ -73,17 +73,19 @@ use database::{
     get_active_weekly_challenge, get_all_goals, get_all_matches, get_challenge_history,
     get_daily_challenge_progress, get_daily_streak, get_db_dir, get_db_conn, get_favorite_hero_ids,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_item_timings_for_match,
-    get_last_hits_analysis, get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp,
+    get_last_hits_analysis, get_match_cs_data, get_match_networth_data, get_match_xp_data,
+    get_matches_with_goals, get_oldest_match_timestamp,
     get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
     get_weekly_challenge_options, get_weekly_challenge_progress, init_db, init_shared_db,
     backfill_match_patches, get_all_patches, insert_goal, insert_item_timing, insert_match,
-    insert_match_cs_data, insert_player_networth,
+    insert_match_cs_data, insert_match_xp_data, insert_player_networth,
     match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
     skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
     update_match_patch, update_match_role, update_match_state, update_match_stats, upsert_patches,
     ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
-    LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
+    LastHitsAnalysis, MatchCS, MatchDataPoint, MatchNW, MatchState, MatchWithGoals, MatchXP,
+    NewGoal, NewItemTiming,
     PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
 };
 use serde_json;
@@ -1165,6 +1167,10 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
             let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
         }
     }
+    // Store per-minute XP for the player (used for XP/Level charts)
+    if let Some(xp_t) = &player_data.xp_t {
+        let _ = insert_match_xp_data(&conn, match_id, xp_t);
+    }
     // Identify and store lane partner slot
     let partner =
         opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
@@ -1466,6 +1472,9 @@ async fn run_backfill_task(
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
+                if let Some(xp_t) = &player_data.xp_t {
+                    let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                }
                 let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
 
@@ -1617,6 +1626,10 @@ async fn reparse_pending_matches(
                             let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                         }
                     }
+                    // Store per-minute XP for the player (used for XP/Level charts)
+                    if let Some(xp_t) = &player_data.xp_t {
+                        let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                    }
                     // Identify and store lane partner slot
                     let partner = opendota::find_lane_partner(
                         &detailed_match.players,
@@ -1736,6 +1749,20 @@ fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, St
 fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
     let conn = get_db_conn()?;
     get_match_cs_data(&conn, match_id)
+}
+
+/// Get per-minute networth data for the player in a specific match
+#[tauri::command]
+fn get_match_networth(match_id: i64) -> Result<Vec<MatchNW>, String> {
+    let conn = get_db_conn()?;
+    get_match_networth_data(&conn, match_id)
+}
+
+/// Get per-minute XP data for a specific match
+#[tauri::command]
+fn get_match_xp(match_id: i64) -> Result<Vec<MatchXP>, String> {
+    let conn = get_db_conn()?;
+    get_match_xp_data(&conn, match_id)
 }
 
 /// Get (or generate) today's daily challenge
@@ -2264,6 +2291,9 @@ async fn background_parse_loop(app: tauri::AppHandle) {
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
+                if let Some(xp_t) = &player_data.xp_t {
+                    let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                }
                 let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
                 if let Some(purchase_log) = &player_data.purchase_log {
@@ -2387,6 +2417,8 @@ pub fn run() {
             get_all_items,
             get_match_item_timings,
             get_match_cs,
+            get_match_networth,
+            get_match_xp,
             get_daily_challenge,
             get_daily_challenge_progress_cmd,
             get_daily_streak_cmd,

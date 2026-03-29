@@ -37,14 +37,27 @@
 
   // CS data for compare match
   let compareCsData = $state(/** @type {any[]} */ ([]));
+  // Networth / XP data
+  let nwData = $state(/** @type {any[]} */ ([]));
+  let xpData = $state(/** @type {any[]} */ ([]));
+  let compareNwData = $state(/** @type {any[]} */ ([]));
+  let compareXpData = $state(/** @type {any[]} */ ([]));
 
   $effect(() => {
     if (compareMatch) {
       invoke("get_match_cs", { matchId: compareMatch.match_id })
         .then((cs) => { compareCsData = /** @type {any[]} */ (cs); })
         .catch(() => { compareCsData = []; });
+      invoke("get_match_networth", { matchId: compareMatch.match_id })
+        .then((nw) => { compareNwData = /** @type {any[]} */ (nw); })
+        .catch(() => { compareNwData = []; });
+      invoke("get_match_xp", { matchId: compareMatch.match_id })
+        .then((xp) => { compareXpData = /** @type {any[]} */ (xp); })
+        .catch(() => { compareXpData = []; });
     } else {
       compareCsData = [];
+      compareNwData = [];
+      compareXpData = [];
     }
   });
 
@@ -69,9 +82,11 @@
 
   async function loadData() {
     try {
-      const [fetchedMatches, cs, goals, allItems, settings] = await Promise.all([
+      const [fetchedMatches, cs, nw, xp, goals, allItems, settings] = await Promise.all([
         invoke("get_matches"),
         invoke("get_match_cs", { matchId }),
+        invoke("get_match_networth", { matchId }),
+        invoke("get_match_xp", { matchId }),
         invoke("evaluate_goals_for_match", { matchId }),
         invoke("get_all_items"),
         invoke("get_settings"),
@@ -80,6 +95,8 @@
       allMatches = fetchedMatches;
       match = fetchedMatches.find((/** @type {any} */ m) => m.match_id === matchId) ?? null;
       csData = cs;
+      nwData = nw;
+      xpData = xp;
       goalDetails = goals;
       items = allItems;
       steamId = settings.steam_id || "";
@@ -95,11 +112,15 @@
         const refreshed = await invoke("get_matches");
         allMatches = refreshed;
         match = refreshed.find((/** @type {any} */ m) => m.match_id === matchId) ?? match;
-        const [refreshedCs, refreshedGoals] = await Promise.all([
+        const [refreshedCs, refreshedNw, refreshedXp, refreshedGoals] = await Promise.all([
           invoke("get_match_cs", { matchId }),
+          invoke("get_match_networth", { matchId }),
+          invoke("get_match_xp", { matchId }),
           invoke("evaluate_goals_for_match", { matchId }),
         ]);
         csData = refreshedCs;
+        nwData = refreshedNw;
+        xpData = refreshedXp;
         goalDetails = refreshedGoals;
         await loadComparisons();
       });
@@ -423,6 +444,205 @@
       },
     };
   });
+
+  // Dota 2 cumulative XP thresholds per level (index = level, value = total XP needed)
+  // Source: https://dota2.fandom.com/wiki/Experience
+  const XP_PER_LEVEL = [
+    0,       // level 0 placeholder
+    0,       // level 1 starts at 0 XP
+    230,     // level 2
+    630,     // level 3
+    1130,    // level 4
+    1730,    // level 5
+    2430,    // level 6
+    3230,    // level 7
+    4130,    // level 8
+    5130,    // level 9
+    6330,    // level 10
+    7630,    // level 11
+    9030,    // level 12
+    10530,   // level 13
+    12130,   // level 14
+    13830,   // level 15
+    15630,   // level 16
+    17630,   // level 17
+    19830,   // level 18
+    22230,   // level 19
+    24630,   // level 20
+    27430,   // level 21
+    30630,   // level 22
+    34030,   // level 23
+    37830,   // level 24
+    42030,   // level 25
+    46830,   // level 26
+    52230,   // level 27
+    58230,   // level 28
+    64830,   // level 29
+    72030,   // level 30
+  ];
+
+  /** @param {number} xp */
+  function xpToLevel(xp) {
+    for (let lvl = XP_PER_LEVEL.length - 1; lvl >= 1; lvl--) {
+      if (xp >= XP_PER_LEVEL[lvl]) return lvl;
+    }
+    return 1;
+  }
+
+  /** @param {string} yTitle */
+  function makeChartOptions(yTitle) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#c0c0c0" } },
+        tooltip: {
+          backgroundColor: "rgba(18, 20, 28, 0.95)",
+          borderColor: "rgba(240, 180, 41, 0.3)",
+          borderWidth: 1,
+          titleColor: "#f0b429",
+          bodyColor: "#e0e0e0",
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#9ca3af", maxTicksLimit: 15 },
+          grid: { color: "rgba(255, 200, 80, 0.08)" },
+          title: { display: true, text: "Game Time", color: "#9ca3af" },
+        },
+        y: {
+          ticks: { color: "#9ca3af" },
+          grid: { color: "rgba(255, 200, 80, 0.08)" },
+          title: { display: true, text: yTitle, color: "#9ca3af" },
+          beginAtZero: true,
+        },
+      },
+    };
+  }
+
+  let nwChartConfig = $derived(() => {
+    if (nwData.length === 0) return null;
+    const labels = nwData.map((d) => `${d.minute}m`);
+    const cmpByMinute = new Map(compareNwData.map((d) => [d.minute, d]));
+    const compareDatasets = compareNwData.length > 0 ? [{
+      label: `${compareLabel} — Networth`,
+      data: nwData.map((d) => cmpByMinute.get(d.minute)?.networth ?? null),
+      borderColor: "rgba(96, 165, 250, 0.9)",
+      backgroundColor: "rgba(96, 165, 250, 0.08)",
+      borderWidth: 2,
+      borderDash: [5, 3],
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      fill: false,
+      tension: 0.3,
+      spanGaps: false,
+    }] : [];
+    return {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "This match — Networth",
+            data: nwData.map((d) => d.networth),
+            borderColor: "#f0b429",
+            backgroundColor: "rgba(240, 180, 41, 0.15)",
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            fill: true,
+            tension: 0.3,
+          },
+          ...compareDatasets,
+        ],
+      },
+      options: makeChartOptions("Gold"),
+    };
+  });
+
+  let xpChartConfig = $derived(() => {
+    if (xpData.length === 0) return null;
+    const labels = xpData.map((d) => `${d.minute}m`);
+    const cmpByMinute = new Map(compareXpData.map((d) => [d.minute, d]));
+    const compareDatasets = compareXpData.length > 0 ? [{
+      label: `${compareLabel} — XP`,
+      data: xpData.map((d) => cmpByMinute.get(d.minute)?.xp ?? null),
+      borderColor: "rgba(167, 139, 250, 0.9)",
+      backgroundColor: "rgba(167, 139, 250, 0.08)",
+      borderWidth: 2,
+      borderDash: [5, 3],
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      fill: false,
+      tension: 0.3,
+      spanGaps: false,
+    }] : [];
+    return {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "This match — XP",
+            data: xpData.map((d) => d.xp),
+            borderColor: "#a78bfa",
+            backgroundColor: "rgba(167, 139, 250, 0.15)",
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            fill: true,
+            tension: 0.3,
+          },
+          ...compareDatasets,
+        ],
+      },
+      options: makeChartOptions("Experience"),
+    };
+  });
+
+  let levelChartConfig = $derived(() => {
+    if (xpData.length === 0) return null;
+    const labels = xpData.map((d) => `${d.minute}m`);
+    const cmpByMinute = new Map(compareXpData.map((d) => [d.minute, d]));
+    const compareDatasets = compareXpData.length > 0 ? [{
+      label: `${compareLabel} — Level`,
+      data: xpData.map((d) => {
+        const cmp = cmpByMinute.get(d.minute);
+        return cmp != null ? xpToLevel(cmp.xp) : null;
+      }),
+      borderColor: "rgba(52, 211, 153, 0.9)",
+      backgroundColor: "rgba(52, 211, 153, 0.08)",
+      borderWidth: 2,
+      borderDash: [5, 3],
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      fill: false,
+      tension: 0,
+      spanGaps: false,
+    }] : [];
+    return {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "This match — Level",
+            data: xpData.map((d) => xpToLevel(d.xp)),
+            borderColor: "#34d399",
+            backgroundColor: "rgba(52, 211, 153, 0.15)",
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            fill: true,
+            tension: 0,
+          },
+          ...compareDatasets,
+        ],
+      },
+      options: makeChartOptions("Level"),
+    };
+  });
 </script>
 
 <div class="match-detail-content">
@@ -595,6 +815,51 @@
         <div class="no-data-box">
           <p>No per-minute data available.</p>
           <p class="no-data-hint">Parse this match to see the last hits progression chart.</p>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Networth Chart -->
+    <div class="chart-section">
+      <h2 class="section-title">Networth by Minute</h2>
+      {#if nwData.length > 0}
+        <div class="chart-container">
+          <Chart config={nwChartConfig()} height="280px" />
+        </div>
+      {:else}
+        <div class="no-data-box">
+          <p>No networth data available.</p>
+          <p class="no-data-hint">Parse this match to see the networth chart.</p>
+        </div>
+      {/if}
+    </div>
+
+    <!-- XP Chart -->
+    <div class="chart-section">
+      <h2 class="section-title">Experience by Minute</h2>
+      {#if xpData.length > 0}
+        <div class="chart-container">
+          <Chart config={xpChartConfig()} height="280px" />
+        </div>
+      {:else}
+        <div class="no-data-box">
+          <p>No experience data available.</p>
+          <p class="no-data-hint">Parse this match to see the XP chart.</p>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Level Chart -->
+    <div class="chart-section">
+      <h2 class="section-title">Level by Minute</h2>
+      {#if xpData.length > 0}
+        <div class="chart-container">
+          <Chart config={levelChartConfig()} height="260px" />
+        </div>
+      {:else}
+        <div class="no-data-box">
+          <p>No level data available.</p>
+          <p class="no-data-hint">Parse this match to see the level chart.</p>
         </div>
       {/if}
     </div>
