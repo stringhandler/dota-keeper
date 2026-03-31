@@ -77,7 +77,8 @@ use database::{
     get_matches_with_goals, get_oldest_match_timestamp,
     get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
     get_weekly_challenge_options, get_weekly_challenge_progress, init_db, init_shared_db,
-    backfill_match_patches, get_all_patches, insert_goal, insert_item_timing, insert_match,
+    backfill_match_patches, clear_item_timings_for_match, get_all_patches, insert_goal,
+    insert_item_timing, insert_match,
     insert_match_cs_data, insert_match_xp_data, insert_player_networth,
     match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
     skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
@@ -1178,6 +1179,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
     // Store item purchase timings if available
     if let Some(purchase_log) = &player_data.purchase_log {
+        let _ = clear_item_timings_for_match(&conn, match_id);
         for purchase in purchase_log {
             if let Some(item_id) = items::get_item_id(&purchase.key) {
                 let timing = NewItemTiming { match_id, item_id, timing_seconds: purchase.time };
@@ -1479,6 +1481,7 @@ async fn run_backfill_task(
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
 
                 if let Some(purchase_log) = &player_data.purchase_log {
+                    let _ = clear_item_timings_for_match(&conn, m.match_id);
                     for purchase in purchase_log {
                         if let Some(item_id) = items::get_item_id(&purchase.key) {
                             let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });
@@ -1644,6 +1647,7 @@ async fn reparse_pending_matches(
 
                     // Store item purchase timings if available
                     if let Some(purchase_log) = &player_data.purchase_log {
+                        let _ = clear_item_timings_for_match(&conn, m.match_id);
                         for purchase in purchase_log {
                             if let Some(item_id) = items::get_item_id(&purchase.key) {
                                 let timing = NewItemTiming {
@@ -2297,6 +2301,7 @@ async fn background_parse_loop(app: tauri::AppHandle) {
                 let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
                 if let Some(purchase_log) = &player_data.purchase_log {
+                    let _ = clear_item_timings_for_match(&conn, m.match_id);
                     for purchase in purchase_log {
                         if let Some(item_id) = items::get_item_id(&purchase.key) {
                             let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });

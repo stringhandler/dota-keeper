@@ -523,12 +523,9 @@
             </div>
           </div>
 
-          <!-- Date + patch -->
+          <!-- Date -->
           <div class="td-text td-date">
             {formatDate(match.start_time)}
-            {#if match.patch}
-              <span class="patch-badge">{match.patch}</span>
-            {/if}
           </div>
 
           <!-- Hero -->

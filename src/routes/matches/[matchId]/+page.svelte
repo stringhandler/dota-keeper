@@ -32,8 +32,8 @@
   let isParsing = $derived(pqs.active.has(matchId));
   let parseError = $derived(pqs.errors.get(matchId) ?? "");
 
-  // Per-goal comparison data: { last, lastMatchId, best, bestMatchId, lowerIsBetter }
-  let goalComparisons = $state(/** @type {Map<number, {last: number|null, lastMatchId: number|null, best: number|null, bestMatchId: number|null, lowerIsBetter: boolean}>} */ (new Map()));
+  // Per-goal comparison data: { last, lastMatchId, best, bestMatchId, bestForHero, bestForHeroMatchId, lowerIsBetter }
+  let goalComparisons = $state(/** @type {Map<number, {last: number|null, lastMatchId: number|null, best: number|null, bestMatchId: number|null, bestForHero: number|null, bestForHeroMatchId: number|null, lowerIsBetter: boolean}>} */ (new Map()));
 
   // CS data for compare match
   let compareCsData = $state(/** @type {any[]} */ ([]));
@@ -42,6 +42,9 @@
   let xpData = $state(/** @type {any[]} */ ([]));
   let compareNwData = $state(/** @type {any[]} */ ([]));
   let compareXpData = $state(/** @type {any[]} */ ([]));
+  // Item purchase timings
+  let itemTimings = $state(/** @type {any[]} */ ([]));
+  let compareItemTimings = $state(/** @type {any[]} */ ([]));
 
   $effect(() => {
     if (compareMatch) {
@@ -54,10 +57,14 @@
       invoke("get_match_xp", { matchId: compareMatch.match_id })
         .then((xp) => { compareXpData = /** @type {any[]} */ (xp); })
         .catch(() => { compareXpData = []; });
+      invoke("get_match_item_timings", { matchId: compareMatch.match_id })
+        .then((t) => { compareItemTimings = /** @type {any[]} */ (t); })
+        .catch(() => { compareItemTimings = []; });
     } else {
       compareCsData = [];
       compareNwData = [];
       compareXpData = [];
+      compareItemTimings = [];
     }
   });
 
@@ -82,11 +89,12 @@
 
   async function loadData() {
     try {
-      const [fetchedMatches, cs, nw, xp, goals, allItems, settings] = await Promise.all([
+      const [fetchedMatches, cs, nw, xp, timings, goals, allItems, settings] = await Promise.all([
         invoke("get_matches"),
         invoke("get_match_cs", { matchId }),
         invoke("get_match_networth", { matchId }),
         invoke("get_match_xp", { matchId }),
+        invoke("get_match_item_timings", { matchId }),
         invoke("evaluate_goals_for_match", { matchId }),
         invoke("get_all_items"),
         invoke("get_settings"),
@@ -97,6 +105,7 @@
       csData = cs;
       nwData = nw;
       xpData = xp;
+      itemTimings = timings;
       goalDetails = goals;
       items = allItems;
       steamId = settings.steam_id || "";
@@ -112,15 +121,17 @@
         const refreshed = await invoke("get_matches");
         allMatches = refreshed;
         match = refreshed.find((/** @type {any} */ m) => m.match_id === matchId) ?? match;
-        const [refreshedCs, refreshedNw, refreshedXp, refreshedGoals] = await Promise.all([
+        const [refreshedCs, refreshedNw, refreshedXp, refreshedTimings, refreshedGoals] = await Promise.all([
           invoke("get_match_cs", { matchId }),
           invoke("get_match_networth", { matchId }),
           invoke("get_match_xp", { matchId }),
+          invoke("get_match_item_timings", { matchId }),
           invoke("evaluate_goals_for_match", { matchId }),
         ]);
         csData = refreshedCs;
         nwData = refreshedNw;
         xpData = refreshedXp;
+        itemTimings = refreshedTimings;
         goalDetails = refreshedGoals;
         await loadComparisons();
       });
@@ -142,11 +153,16 @@
     for (let i = 0; i < goalDetails.length; i++) {
       const ev = goalDetails[i];
       const data = /** @type {any[]} */ (histograms[i]);
-      if (data.length === 0) { map.set(ev.goal.id, { last: null, lastMatchId: null, best: null, bestMatchId: null, lowerIsBetter: false }); continue; }
+      if (data.length === 0) { map.set(ev.goal.id, { last: null, lastMatchId: null, best: null, bestMatchId: null, bestForHero: null, bestForHeroMatchId: null, lowerIsBetter: false }); continue; }
       const lowerIsBetter = ev.goal.metric === 'ItemTiming' || ev.goal.metric === 'Deaths';
       const bestEntry = data.reduce((/** @type {any} */ acc, /** @type {any} */ d) =>
         lowerIsBetter ? (d.value < acc.value ? d : acc) : (d.value > acc.value ? d : acc)
       );
+      const heroData = data.filter((/** @type {any} */ d) => d.hero_id === match.hero_id);
+      const bestForHeroEntry = heroData.length > 0
+        ? heroData.reduce((/** @type {any} */ acc, /** @type {any} */ d) =>
+            lowerIsBetter ? (d.value < acc.value ? d : acc) : (d.value > acc.value ? d : acc))
+        : null;
       const prior = data
         .filter((/** @type {any} */ d) => d.start_time < match.start_time)
         .sort((/** @type {any} */ a, /** @type {any} */ b) => b.start_time - a.start_time);
@@ -156,6 +172,8 @@
         lastMatchId: lastEntry ? lastEntry.match_id : null,
         best: bestEntry.value,
         bestMatchId: bestEntry.match_id,
+        bestForHero: bestForHeroEntry ? bestForHeroEntry.value : null,
+        bestForHeroMatchId: bestForHeroEntry ? bestForHeroEntry.match_id : null,
         lowerIsBetter,
       });
     }
@@ -864,6 +882,61 @@
       {/if}
     </div>
 
+    <!-- Item Purchase Log -->
+    {#if itemTimings.length > 0 || compareItemTimings.length > 0}
+      <div class="items-section">
+        <h2 class="section-title">Item Purchase Log</h2>
+        {#if compareMatch}
+          <div class="items-compare">
+            <div class="items-compare-col">
+              <div class="items-col-label this">This game</div>
+              {#if itemTimings.length > 0}
+                <div class="item-list">
+                  {#each itemTimings as t}
+                    <div class="item-row">
+                      <span class="item-time">{formatSeconds(t.timing_seconds)}</span>
+                      <span class="item-name">{getItemName(t.item_id)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="items-empty">No items recorded.</p>
+              {/if}
+            </div>
+            <div class="items-compare-col">
+              <div class="items-col-label other">{compareLabel}</div>
+              {#if compareItemTimings.length > 0}
+                <div class="item-list">
+                  {#each compareItemTimings as t}
+                    <div class="item-row">
+                      <span class="item-time">{formatSeconds(t.timing_seconds)}</span>
+                      <span class="item-name">{getItemName(t.item_id)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="items-empty">No items recorded.</p>
+              {/if}
+            </div>
+          </div>
+        {:else}
+          <div class="item-list">
+            {#each itemTimings as t}
+              <div class="item-row">
+                <span class="item-time">{formatSeconds(t.timing_seconds)}</span>
+                <span class="item-name">{getItemName(t.item_id)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {:else if match?.parse_state === "Parsed"}
+      <div class="items-section">
+        <h2 class="section-title">Item Purchase Log</h2>
+        <p class="items-empty">No item data recorded for this match.</p>
+      </div>
+    {/if}
+
     <!-- Goals -->
     {#if goalDetails.length > 0}
       <div class="goals-section">
@@ -920,6 +993,17 @@
                         <span class="cmp-diff {d.cls}">{d.text}</span>
                         {#if cmp.bestMatchId && cmp.bestMatchId !== matchId}
                           <button class="cmp-compare-btn" onclick={() => selectCompareById(cmp.bestMatchId, 'Best match')}>⇄</button>
+                        {/if}
+                      </span>
+                    {/if}
+                    {#if cmp.bestForHero !== null}
+                      {@const d = diffLabel(evaluation.actual_value, cmp.bestForHero, cmp.lowerIsBetter)}
+                      <span class="cmp-chip">
+                        <span class="cmp-label">Best for {getHeroName(match.hero_id)}</span>
+                        <span class="cmp-value">{formatCompare(cmp.bestForHero, evaluation.goal.metric)}</span>
+                        <span class="cmp-diff {d.cls}">{d.text}</span>
+                        {#if cmp.bestForHeroMatchId && cmp.bestForHeroMatchId !== matchId}
+                          <button class="cmp-compare-btn" onclick={() => selectCompareById(cmp.bestForHeroMatchId, `Best ${getHeroName(match.hero_id)} match`)}>⇄</button>
                         {/if}
                       </span>
                     {/if}
@@ -1254,11 +1338,65 @@
 
   .stats-section,
   .chart-section,
-  .goals-section {
+  .goals-section,
+  .items-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1.5rem;
+  }
+
+  .items-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  .items-col-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+  .items-col-label.this { color: #f0b429; border-bottom: 2px solid #f0b429; padding-bottom: 4px; }
+  .items-col-label.other { color: rgba(96, 165, 250, 0.9); border-bottom: 2px solid rgba(96, 165, 250, 0.6); padding-bottom: 4px; }
+
+  .item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .item-row:hover { border-color: var(--border); }
+
+  .item-time {
+    font-size: 12px;
+    font-family: monospace;
+    color: #f0b429;
+    min-width: 38px;
+    font-weight: 600;
+  }
+
+  .item-name {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .items-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
   }
 
   .stats-grid {

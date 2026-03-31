@@ -489,18 +489,41 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     );
 
-    // Create the item_timings table
+    // Create the item_timings table (no unique constraint — duplicates allowed for same item bought multiple times)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS item_timings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id INTEGER NOT NULL,
             item_id INTEGER NOT NULL,
             timing_seconds INTEGER NOT NULL,
-            FOREIGN KEY (match_id) REFERENCES matches(match_id),
-            UNIQUE(match_id, item_id)
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
         )",
         [],
     ).map_err(|e| format!("Failed to create item_timings table: {}", e))?;
+
+    // Migration: remove UNIQUE(match_id, item_id) constraint that prevented duplicate item purchases.
+    // SQLite can't drop inline constraints, so we recreate the table if the autoindex still exists.
+    let has_unique: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='sqlite_autoindex_item_timings_1'",
+        [],
+        |row| row.get::<_, i32>(0),
+    ).unwrap_or(0) > 0;
+    if has_unique {
+        conn.execute_batch("
+            BEGIN;
+            ALTER TABLE item_timings RENAME TO item_timings_old;
+            CREATE TABLE item_timings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                timing_seconds INTEGER NOT NULL,
+                FOREIGN KEY (match_id) REFERENCES matches(match_id)
+            );
+            INSERT INTO item_timings SELECT id, match_id, item_id, timing_seconds FROM item_timings_old;
+            DROP TABLE item_timings_old;
+            COMMIT;
+        ").map_err(|e| format!("Failed to migrate item_timings: {}", e))?;
+    }
 
     // Create the daily_challenges table
     conn.execute(
@@ -2301,10 +2324,17 @@ pub fn regenerate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSu
     Ok(None)
 }
 
-/// Insert item timing data for a match
+/// Remove all item timings for a match (called before re-inserting on parse/re-parse)
+pub fn clear_item_timings_for_match(conn: &Connection, match_id: i64) -> Result<(), String> {
+    conn.execute("DELETE FROM item_timings WHERE match_id = ?1", params![match_id])
+        .map_err(|e| format!("Failed to clear item timings: {}", e))?;
+    Ok(())
+}
+
+/// Insert a single item timing for a match
 pub fn insert_item_timing(conn: &Connection, timing: &NewItemTiming) -> Result<(), String> {
     conn.execute(
-        "INSERT OR REPLACE INTO item_timings (match_id, item_id, timing_seconds)
+        "INSERT INTO item_timings (match_id, item_id, timing_seconds)
          VALUES (?1, ?2, ?3)",
         params![
             timing.match_id,
