@@ -20,6 +20,7 @@
   let isBackfilling = $state(false);
   let isSyncingPatches = $state(false);
   let isReparsing = $state(false);
+  let isSettingDirty = $state(false);
   let isClearing = $state(false);
   let steamId = $state("");
   let suggestionDifficulty = $state("Medium");
@@ -453,6 +454,20 @@
       error = `Failed to reparse matches: ${e}`;
     } finally {
       isReparsing = false;
+    }
+  }
+
+  async function setReparseDirty() {
+    error = "";
+    successMessage = "";
+    isSettingDirty = true;
+    try {
+      const result = await invoke("set_reparse_dirty_flag");
+      successMessage = result;
+    } catch (e) {
+      error = `Failed to set reparse flag: ${e}`;
+    } finally {
+      isSettingDirty = false;
     }
   }
 
@@ -904,6 +919,25 @@
         disabled={isReparsing || !steamId}
       >
         {isReparsing ? $_('settings.reparsing') : $_('settings.reparse_btn')}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Reparse All Matches</h3>
+        <p class="setting-description">
+          Mark all matches for reparsing on next app restart. Use this if parsed data seems incomplete or after an update.
+        </p>
+        <p class="warning-text">
+          Requires an app restart. The background parser will reparse all matches automatically.
+        </p>
+      </div>
+      <button
+        class="reparse-btn"
+        onclick={setReparseDirty}
+        disabled={isSettingDirty}
+      >
+        {isSettingDirty ? 'Setting...' : 'Reparse All on Restart'}
       </button>
     </div>
 

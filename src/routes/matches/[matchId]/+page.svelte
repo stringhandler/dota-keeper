@@ -45,6 +45,8 @@
   // Item purchase timings
   let itemTimings = $state(/** @type {any[]} */ ([]));
   let compareItemTimings = $state(/** @type {any[]} */ ([]));
+  // Hero CS stats (best + average per minute)
+  let heroCsStats = $state(/** @type {any[]} */ ([]));
 
   $effect(() => {
     if (compareMatch) {
@@ -114,6 +116,13 @@
         error = "Match not found.";
       }
 
+      // Load hero CS stats (best + avg per minute for this hero in same game mode)
+      if (match) {
+        invoke("get_hero_cs_stats", { heroId: match.hero_id, gameMode: match.game_mode, excludeMatchId: matchId })
+          .then((stats) => { heroCsStats = /** @type {any[]} */ (stats); })
+          .catch(() => { heroCsStats = []; });
+      }
+
       await loadComparisons();
 
       initQueue(steamId, async () => {
@@ -133,6 +142,9 @@
         xpData = refreshedXp;
         itemTimings = refreshedTimings;
         goalDetails = refreshedGoals;
+        invoke("get_hero_cs_stats", { heroId: match.hero_id, gameMode: match.game_mode, excludeMatchId: matchId })
+          .then((stats) => { heroCsStats = /** @type {any[]} */ (stats); })
+          .catch(() => { heroCsStats = []; });
         await loadComparisons();
       });
     } catch (e) {
@@ -396,6 +408,41 @@
       },
     ] : [];
 
+    // Hero best + average CS datasets — only shown when no compare match is active
+    const heroStatsByMin = new Map(heroCsStats.map((d) => [d.minute, d]));
+    const heroName = match ? getHeroName(match.hero_id) : "Hero";
+    const heroCsDatasets = heroCsStats.length > 0 && !compareMatch ? [
+      {
+        label: `Best ${heroName} — Last Hits`,
+        data: csData.map((d) => heroStatsByMin.get(d.minute)?.best_last_hits ?? null),
+        borderColor: "rgba(74, 222, 128, 0.8)",
+        backgroundColor: "transparent",
+        borderWidth: 1.5,
+        borderDash: [8, 4],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false,
+      },
+      {
+        label: `Avg ${heroName} — Last Hits`,
+        data: csData.map((d) => {
+          const s = heroStatsByMin.get(d.minute);
+          return s ? Math.round(s.avg_last_hits) : null;
+        }),
+        borderColor: "rgba(74, 222, 128, 0.4)",
+        backgroundColor: "transparent",
+        borderWidth: 1.5,
+        borderDash: [3, 3],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false,
+      },
+    ] : [];
+
     return {
       type: "line",
       data: {
@@ -423,6 +470,7 @@
             fill: false,
             tension: 0.3,
           },
+          ...heroCsDatasets,
           ...compareDatasets,
           ...goalDatasets,
         ],

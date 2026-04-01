@@ -338,6 +338,51 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create matches table: {}", e))?;
 
+    // Create the app_metadata key-value table for flags like reparse_dirty
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create app_metadata table: {}", e))?;
+
+    // One-time migration: force reparse for existing users who haven't had it yet.
+    // Uses a versioned key so it only fires once.
+    let reparse_v1_done: bool = conn.query_row(
+        "SELECT value FROM app_metadata WHERE key = 'reparse_v1'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).unwrap_or_default() == "1";
+    if !reparse_v1_done {
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '1')",
+            [],
+        ).map_err(|e| format!("Failed to set reparse_dirty for migration: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_v1', '1')",
+            [],
+        ).map_err(|e| format!("Failed to mark reparse_v1 migration done: {}", e))?;
+    }
+
+    // Check the reparse_dirty flag — if set, reset ALL parsed matches to unparsed
+    let reparse_dirty: bool = conn.query_row(
+        "SELECT value FROM app_metadata WHERE key = 'reparse_dirty'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).unwrap_or_default() == "1";
+
+    if reparse_dirty {
+        conn.execute(
+            "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsed' OR parse_state = 'failed'",
+            [],
+        ).map_err(|e| format!("Failed to mark matches for reparse: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '0')",
+            [],
+        ).map_err(|e| format!("Failed to clear reparse_dirty flag: {}", e))?;
+    }
+
     // Cleanup: Reset any "parsing" matches to "unparsed" (in case app crashed during parsing)
     conn.execute(
         "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsing'",
@@ -611,6 +656,15 @@ pub fn init_db() -> Result<Connection, String> {
     ).map_err(|e| format!("Failed to create weekly_challenges table: {}", e))?;
 
     Ok(conn)
+}
+
+/// Set the reparse_dirty flag so all matches get reparsed on next app start.
+pub fn set_reparse_dirty(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '1')",
+        [],
+    ).map_err(|e| format!("Failed to set reparse_dirty flag: {}", e))?;
+    Ok(())
 }
 
 /// Check if a match already exists in the database
@@ -1436,6 +1490,46 @@ pub fn get_match_cs_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchCS
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to collect CS data: {}", e))
+}
+
+/// Per-minute CS stats (best and average at each minute) for a hero across matches of a given game mode.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HeroCsStats {
+    pub minute: i32,
+    pub best_last_hits: i32,
+    pub best_denies: i32,
+    pub avg_last_hits: f64,
+    pub avg_denies: f64,
+}
+
+/// Get best + average CS per minute for a hero, filtered by game mode (22=ranked, 23=turbo).
+/// Best is per-minute (the highest last_hits any match achieved at that minute), same for average.
+pub fn get_hero_cs_stats(conn: &Connection, hero_id: i32, game_mode: i32, exclude_match_id: i64) -> Result<Vec<HeroCsStats>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT mc.minute,
+                MAX(mc.last_hits) as best_lh,
+                MAX(mc.denies) as best_dn,
+                AVG(mc.last_hits) as avg_lh,
+                AVG(mc.denies) as avg_dn
+         FROM match_cs mc
+         JOIN matches m ON m.match_id = mc.match_id
+         WHERE m.hero_id = ?1 AND m.game_mode = ?2 AND mc.match_id != ?3
+         GROUP BY mc.minute
+         ORDER BY mc.minute ASC"
+    ).map_err(|e| format!("Failed to prepare hero cs stats query: {}", e))?;
+
+    let rows = stmt.query_map(params![hero_id, game_mode, exclude_match_id], |row| {
+        Ok(HeroCsStats {
+            minute: row.get(0)?,
+            best_last_hits: row.get(1)?,
+            best_denies: row.get(2)?,
+            avg_last_hits: row.get(3)?,
+            avg_denies: row.get(4)?,
+        })
+    }).map_err(|e| format!("Failed to query hero cs stats: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect hero cs stats: {}", e))
 }
 
 /// Per-minute networth data point for the player's own networth chart

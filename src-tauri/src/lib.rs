@@ -85,7 +85,7 @@ use database::{
     update_match_patch, update_match_role, update_match_state, update_match_stats, upsert_patches,
     ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
-    LastHitsAnalysis, MatchCS, MatchDataPoint, MatchNW, MatchState, MatchWithGoals, MatchXP,
+    HeroCsStats, LastHitsAnalysis, MatchCS, MatchDataPoint, MatchNW, MatchState, MatchWithGoals, MatchXP,
     NewGoal, NewItemTiming,
     PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
 };
@@ -1693,6 +1693,14 @@ async fn reparse_pending_matches(
     ))
 }
 
+/// Set the reparse_dirty flag — all matches will be reparsed on next app restart.
+#[tauri::command]
+fn set_reparse_dirty_flag() -> Result<String, String> {
+    let conn = get_db_conn()?;
+    database::set_reparse_dirty(&conn)?;
+    Ok("Reparse flag set. All matches will be reparsed on next restart.".to_string())
+}
+
 /// Clear all matches from the database
 #[tauri::command]
 fn clear_matches() -> Result<String, String> {
@@ -1753,6 +1761,13 @@ fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, St
 fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
     let conn = get_db_conn()?;
     get_match_cs_data(&conn, match_id)
+}
+
+/// Get best + average CS per minute for a hero in a given game mode
+#[tauri::command]
+fn get_hero_cs_stats(hero_id: i32, game_mode: i32, exclude_match_id: i64) -> Result<Vec<HeroCsStats>, String> {
+    let conn = get_db_conn()?;
+    database::get_hero_cs_stats(&conn, hero_id, game_mode, exclude_match_id)
 }
 
 /// Get per-minute networth data for the player in a specific match
@@ -2416,12 +2431,14 @@ pub fn run() {
             backfill_historical_matches,
             reparse_pending_matches,
             clear_matches,
+            set_reparse_dirty_flag,
             toggle_favorite_hero,
             get_favorite_heroes,
             complete_onboarding,
             get_all_items,
             get_match_item_timings,
             get_match_cs,
+            get_hero_cs_stats,
             get_match_networth,
             get_match_xp,
             get_daily_challenge,
