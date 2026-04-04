@@ -113,7 +113,7 @@
   .modal-header h2 {
     margin: 0;
     font-family: 'Rajdhani', sans-serif;
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--gold, #f0b429);
@@ -148,7 +148,7 @@
   }
 
   .info-section li {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.8;
     color: var(--text-secondary, #b8a895);
   }

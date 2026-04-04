@@ -104,7 +104,7 @@
 
   .tab-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.5px;
     text-transform: uppercase;

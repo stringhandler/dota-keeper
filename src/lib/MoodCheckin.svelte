@@ -182,7 +182,7 @@
 }
 
 .question-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   margin: 0 0 10px 0;
 }
@@ -224,7 +224,7 @@
 }
 
 .score {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   font-family: 'Barlow Condensed', sans-serif;
 }
@@ -278,7 +278,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border);
@@ -303,7 +303,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   background: var(--gold);
   color: #080c10;
   border: none;

@@ -42,7 +42,7 @@
     padding: 10px 16px;
     border-radius: 6px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.5px;
     border-left: 3px solid transparent;

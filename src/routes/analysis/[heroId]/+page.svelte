@@ -864,7 +864,7 @@
 
   .back-link {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--text-muted);
@@ -881,7 +881,7 @@
 
   .hero-name {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--text-primary);
@@ -904,7 +904,7 @@
 
   .filter-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -925,14 +925,14 @@
 
   .stat-item-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
   }
 
   .stat-sub {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-top: 2px;
   }
@@ -955,10 +955,9 @@
 
   /* ── EXPERIMENTAL NOTE ── */
   .experimental-note {
-    font-size: 10px;
+    font-size: 12px;
     font-style: italic;
     color: var(--text-muted);
-    opacity: 0.7;
     margin-bottom: 10px;
   }
 
@@ -989,7 +988,7 @@
 
   .bw-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 1.5px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1002,7 +1001,7 @@
     gap: 10px;
     padding: 5px 10px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--text-secondary);
     text-decoration: none;
     transition: background 0.15s;
@@ -1023,7 +1022,7 @@
 
   .bw-date {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     min-width: 60px;
   }
 
@@ -1036,7 +1035,7 @@
 
   .bw-result {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 1px 6px;
@@ -1061,11 +1060,11 @@
     padding: 48px;
     text-align: center;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .no-data p { margin-bottom: 8px; }
-  .hint { font-size: 12px; color: var(--text-muted); }
+  .hint { font-size: 14px; color: var(--text-muted); }
 
 
   /* ── BENCHMARK MEDALS ROW ── */
@@ -1083,7 +1082,7 @@
 
   .mode-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1099,7 +1098,7 @@
   }
 
   .toggle-label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-right: 4px;
   }
@@ -1113,7 +1112,7 @@
     border: 1px solid var(--border);
     background: var(--bg-surface);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.5px;
     cursor: pointer;

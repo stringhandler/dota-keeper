@@ -495,7 +495,7 @@
     }
 
     .login-brand {
-      font-size: 22px;
+      font-size: 24px;
     }
   }
 
@@ -510,7 +510,7 @@
   }
 
   .login-sub {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin-bottom: 28px;
   }
@@ -523,14 +523,14 @@
 
   .form-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
   }
 
   .login-hint {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-bottom: 8px;
   }
@@ -541,7 +541,7 @@
     gap: 10px;
     margin: 18px 0 4px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -567,7 +567,7 @@
     border-radius: 6px;
     color: #c6d4df;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -667,14 +667,14 @@
   }
 
   .app-version {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 1px;
     font-family: 'Barlow Condensed', sans-serif;
   }
 
   .brand-id {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     letter-spacing: 1px;
     margin-top: 6px;
@@ -688,7 +688,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 5px 8px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--gold-dim);
     letter-spacing: 0.5px;
     font-family: monospace;
@@ -710,7 +710,7 @@
     padding: 11px 20px;
     cursor: pointer;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-secondary);
@@ -778,7 +778,7 @@
   }
 
   .rank-text {
-    font-size: 9px;
+    font-size: 12px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1.5px;
@@ -806,7 +806,7 @@
     border-radius: 4px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
     cursor: pointer;
@@ -835,7 +835,7 @@
     border-radius: 6px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -903,7 +903,7 @@
 
   .page-title {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 3px;
     color: var(--text-primary);

@@ -582,11 +582,11 @@
   /* Align buttons with the inputs */
   .fg-action .btn { align-self: flex-start; }
 
-  .fg-action > div { /* spacer label */ font-size: 10px; visibility: hidden; }
+  .fg-action > div { /* spacer label */ font-size: 12px; visibility: hidden; }
 
   .form-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -602,7 +602,7 @@
     padding: 40px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* ── GOALS GRID ── */
@@ -626,7 +626,7 @@
   }
 
   .delete-confirm-label {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--red);
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.5px;
@@ -635,7 +635,7 @@
   /* Goal type tags */
   .goal-tag {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 1px;
     text-transform: uppercase;
     font-weight: 600;
@@ -678,7 +678,7 @@
   .warning-tag {
     color: var(--gold);
     font-style: italic;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   /* Inline icon layout for item timing goals */

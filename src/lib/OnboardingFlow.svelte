@@ -313,7 +313,7 @@
 
   .step-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--text-muted);
@@ -401,7 +401,7 @@
     border-radius: 4px;
     padding: 8px 12px;
     font-family: 'Barlow', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-primary);
     outline: none;
     margin-bottom: 10px;
@@ -488,13 +488,13 @@
     align-items: center;
     justify-content: center;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
   }
 
   .hero-card-name {
     font-family: 'Barlow', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     text-align: center;
     line-height: 1.2;
@@ -510,7 +510,7 @@
     position: absolute;
     top: 3px;
     right: 4px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--gold);
     line-height: 1;
     text-shadow: 0 0 4px rgba(0,0,0,0.8);
@@ -518,7 +518,7 @@
 
   .no-results {
     grid-column: 1 / -1;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-muted);
     text-align: center;
     padding: 20px 0;
@@ -534,7 +534,7 @@
   /* Mental health */
   .feature-list {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.8;
     padding-left: 20px;
     margin: 0 0 28px;
@@ -561,7 +561,7 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     padding: 0;
     text-decoration: underline;
@@ -578,7 +578,7 @@
     align-items: center;
     gap: 10px;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 12px;
   }
 

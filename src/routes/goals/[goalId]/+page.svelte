@@ -1059,7 +1059,7 @@
 
   .loading p {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .error {
@@ -1068,12 +1068,12 @@
     border: 1px solid rgba(248, 113, 113, 0.25);
     border-radius: 4px;
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .back-link {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1104,7 +1104,7 @@
 
   .page-header h1 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--text-primary);
@@ -1113,7 +1113,7 @@
   }
 
   .goal-description {
-    font-size: 14px;
+    font-size: 15px;
     color: var(--text-secondary);
     margin: 0;
     display: flex;
@@ -1124,7 +1124,7 @@
   .goal-freq-badge {
     display: inline-block;
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1146,7 +1146,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1163,7 +1163,7 @@
 
   .edit-success {
     color: var(--green);
-    font-size: 13px;
+    font-size: 14px;
     margin: 0;
   }
 
@@ -1187,7 +1187,7 @@
     flex-direction: column;
     gap: 6px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     color: var(--text-muted);
@@ -1202,7 +1202,7 @@
     border-radius: 4px;
     padding: 8px 12px;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 14px;
     outline: none;
     transition: border-color 0.2s;
   }
@@ -1226,7 +1226,7 @@
 
   .form-error {
     color: var(--red);
-    font-size: 13px;
+    font-size: 14px;
     margin: 0 0 12px 0;
   }
 
@@ -1241,7 +1241,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: var(--gold);
     color: #080c10;
     border: none;
@@ -1267,7 +1267,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1299,7 +1299,7 @@
 
   .filter-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1315,7 +1315,7 @@
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1351,7 +1351,7 @@
 
   h2 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--text-primary);
@@ -1368,7 +1368,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
     outline: none;
     transition: border-color 0.2s;
@@ -1384,7 +1384,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1428,7 +1428,7 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1438,7 +1438,7 @@
 
   .stat-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
     color: var(--text-primary);
   }
@@ -1451,7 +1451,7 @@
     color: var(--text-muted);
     text-align: center;
     padding: 32px 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .histogram-container {
@@ -1489,7 +1489,7 @@
   }
 
   .legend-item span {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
   }
 
@@ -1517,7 +1517,7 @@
 
   .achievement-rate-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1526,19 +1526,19 @@
 
   .achievement-rate-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
     color: var(--text-primary);
   }
 
   .achievement-rate-count {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--text-muted);
   }
 
   .achievement-target {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     color: var(--text-muted);
@@ -1546,7 +1546,7 @@
   }
 
   .achievement-status {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     margin-bottom: 10px;
   }
@@ -1608,7 +1608,7 @@
     align-items: flex-start;
     gap: 10px;
     flex: 1;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     line-height: 1.5;
   }
@@ -1635,7 +1635,7 @@
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: 4px;
     cursor: pointer;
     padding: 6px 12px;
@@ -1705,7 +1705,7 @@
 
   .scatter-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1747,7 +1747,7 @@
   .tooltip-label {
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1756,7 +1756,7 @@
 
   .tooltip-status {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 6px;
     justify-content: flex-start;
   }
@@ -1771,7 +1771,7 @@
 
   .tooltip-hint {
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-align: center;
     font-style: italic;
@@ -1808,7 +1808,7 @@
     }
 
     .legend-item span {
-      font-size: 11px;
+      font-size: 12px;
     }
 
     :global(.chart-wrapper) {
@@ -1833,7 +1833,7 @@
 
   .best-worst-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 700;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1861,7 +1861,7 @@
     background: rgba(255, 200, 80, 0.03);
     border: 1px solid transparent;
     transition: background 0.15s, border-color 0.15s;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .game-row:hover {
@@ -1874,12 +1874,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .game-value {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.5px;
     min-width: 60px;
@@ -1891,7 +1891,7 @@
 
   .game-result {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
     padding: 2px 6px;
@@ -1912,7 +1912,7 @@
 
   .game-date {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     white-space: nowrap;
   }
 

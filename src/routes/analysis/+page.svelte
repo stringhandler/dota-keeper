@@ -420,7 +420,7 @@
 
   .filter-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -442,7 +442,7 @@
   /* ── CHANGE CHIP ── */
   .change-chip {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     padding: 6px 12px;
     border-radius: 4px;
@@ -550,7 +550,7 @@
 
   .page-info {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 1px;
     color: var(--text-muted);
     min-width: 40px;
@@ -569,7 +569,7 @@
 
   .range-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 1.5px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -608,7 +608,7 @@
   .range-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-top: 4px;
     font-family: 'Barlow Condensed', sans-serif;
@@ -654,7 +654,7 @@
     padding: 48px;
     text-align: center;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .no-data p { margin-bottom: 8px; }

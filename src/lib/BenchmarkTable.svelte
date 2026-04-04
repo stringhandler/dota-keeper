@@ -104,7 +104,7 @@
             <div class="bt-col num-col" class:positive={row.z_score > 0} class:negative={row.z_score < 0}>
               {zToPercentile(row.z_score).toFixed(0)}%
             </div>
-            <div class="bt-col interp-col">
+            <div class="bt-col interp-col" class:interp-great={row.z_score > 1.5} class:interp-good={row.z_score > 0.5 && row.z_score <= 1.5} class:interp-ok={row.z_score > 0.15 && row.z_score <= 0.5} class:interp-bad={row.z_score <= -0.5}>
               {row.interpretation}
               {#if row.low_data}
                 <span class="low-data-badge">Low data</span>
@@ -166,12 +166,12 @@
   }
 
   .user-sd {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
   .user-range {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
   }
 
@@ -191,7 +191,7 @@
     background: var(--bg-elevated);
     border-radius: 4px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -244,13 +244,31 @@
   .negative { color: var(--red); }
 
   .interp-col {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
+  }
+
+  .interp-great {
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  .interp-good {
+    color: var(--teal);
+    font-weight: 600;
+  }
+
+  .interp-ok {
+    color: var(--text-secondary);
+  }
+
+  .interp-bad {
+    color: var(--red);
   }
 
   .data-date {
     margin-top: 8px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     letter-spacing: 0.5px;
   }
@@ -261,13 +279,13 @@
   }
 
   .compact .medal-label {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Low data warning */
   .low-data-badge {
     display: inline-block;
-    font-size: 9px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -288,15 +306,14 @@
   }
 
   .sample-col {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
   .experimental-warning {
     margin-top: 8px;
-    font-size: 10px;
+    font-size: 12px;
     font-style: italic;
     color: var(--text-muted);
-    opacity: 0.7;
   }
 </style>

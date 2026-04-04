@@ -618,7 +618,7 @@
     }
 
     .stat-label {
-      font-size: 9px;
+      font-size: 12px;
       letter-spacing: 1px;
     }
 
@@ -653,7 +653,7 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -671,12 +671,12 @@
   .stat-value.stat-na { color: var(--text-muted); }
 
   .stat-unit {
-    font-size: 18px;
+    font-size: 20px;
     color: var(--text-secondary);
   }
 
   .stat-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-top: 4px;
   }
@@ -744,14 +744,14 @@
   }
 
   .challenge-meta {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     display: flex;
     gap: 14px;
   }
 
   .reset-text {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
   }
@@ -796,7 +796,7 @@
     padding: 40px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 28px;
     display: flex;
     flex-direction: column;
@@ -827,7 +827,7 @@
     border-color: rgba(100, 100, 200, 0.2);
   }
 
-  .weekly-empty-text { color: var(--text-secondary); font-size: 13px; }
+  .weekly-empty-text { color: var(--text-secondary); font-size: 14px; }
 
   .weekly-hero {
     margin-bottom: 8px;
@@ -867,7 +867,7 @@
   }
 
   .weekly-label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     white-space: nowrap;
     min-width: 3rem;
@@ -875,7 +875,7 @@
     font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .weekly-meta { font-size: 11px; display: flex; align-items: center; gap: 8px; }
+  .weekly-meta { font-size: 12px; display: flex; align-items: center; gap: 8px; }
 
   /* ── HERO SUGGESTION ── */
   .suggestion-card {
@@ -895,7 +895,7 @@
 
   .suggestion-hero-name {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--gold);
     margin-bottom: 10px;
@@ -911,7 +911,7 @@
   .sug-stat { display: flex; flex-direction: column; }
 
   .sug-label {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -929,7 +929,7 @@
   .sug-value.green { color: var(--green); }
 
   .sug-games {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-style: italic;
   }

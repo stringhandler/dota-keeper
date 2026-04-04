@@ -811,7 +811,7 @@
       flex: none;
       margin-top: 8px;
       font-family: 'Barlow Condensed', sans-serif;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 600;
       letter-spacing: 1.5px;
       text-transform: uppercase;
@@ -820,14 +820,14 @@
       display: inline-block;
     }
     .td-result.result-win {
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: 1.5px;
       background: rgba(74, 222, 128, 0.15);
       border: 1px solid rgba(74, 222, 128, 0.4);
       color: var(--green);
     }
     .td-result.result-loss {
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: 1.5px;
       background: rgba(248, 113, 113, 0.15);
       border: 1px solid rgba(248, 113, 113, 0.4);
@@ -845,7 +845,7 @@
       margin-top: 8px;
       margin-left: auto;
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: 12px;
       align-self: center;
     }
     .td-kda {
@@ -853,7 +853,7 @@
       flex: none;
       margin-top: 8px;
       margin-left: 12px;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--text-primary);
     }
@@ -900,7 +900,7 @@
     }
 
     .btn-label {
-      font-size: 10px;
+      font-size: 12px;
       text-align: center;
       line-height: 1.2;
     }
@@ -913,7 +913,7 @@
     padding: 48px;
     text-align: center;
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Table */
@@ -941,7 +941,7 @@
 
   .th {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -965,7 +965,7 @@
 
   .match-id-text {
     font-family: monospace;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
@@ -978,7 +978,7 @@
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border);
     padding: 2px 5px;
-    font-size: 11px;
+    font-size: 12px;
     cursor: pointer;
     border-radius: 3px;
     transition: all 0.15s;
@@ -997,7 +997,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     overflow: hidden;
   }
@@ -1022,7 +1022,7 @@
     color: var(--green);
     font-weight: 600;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     letter-spacing: 1px;
   }
 
@@ -1030,7 +1030,7 @@
     color: var(--red);
     font-weight: 600;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     letter-spacing: 1px;
   }
 
@@ -1048,12 +1048,12 @@
 
   .no-goals-text {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .queued-badge {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1062,7 +1062,7 @@
 
   .parsing-badge {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1087,7 +1087,7 @@
 
   .not-ready-text {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1111,7 +1111,7 @@
 
   .parse-btn {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1290,7 +1290,7 @@
     padding: 12px 16px;
     background: var(--bg-elevated);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 14px;
     flex-wrap: wrap;
   }
 
@@ -1389,7 +1389,7 @@
     font-style: italic;
     text-align: center;
     padding: 24px 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .goals-list { display: flex; flex-direction: column; gap: 8px; }
@@ -1432,7 +1432,7 @@
 
   .eval-title {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-primary);
     margin-bottom: 4px;
     display: flex;

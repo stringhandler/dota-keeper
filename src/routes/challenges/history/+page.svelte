@@ -127,7 +127,7 @@
   .back-link {
     display: inline-block;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -153,7 +153,7 @@
 
   .subtitle {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -167,14 +167,14 @@
     border-radius: 4px;
     padding: 10px 14px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .loading, .empty {
     color: var(--text-muted);
     text-align: center;
     padding: 48px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .filter-tabs {
@@ -188,7 +188,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -215,7 +215,7 @@
 
   .group-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -260,7 +260,7 @@
 
   .item-type-badge {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -296,7 +296,7 @@
   }
 
   .completed-date {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 </style>

@@ -1170,7 +1170,7 @@
 
   .back-btn {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1195,7 +1195,7 @@
 
   .page-header h1 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--text-primary);
@@ -1205,7 +1205,7 @@
 
   .subtitle {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1223,7 +1223,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     padding: 10px 16px;
     border-radius: 4px;
     cursor: pointer;
@@ -1268,7 +1268,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     border: none;
     padding: 10px 16px;
     border-radius: 4px;
@@ -1303,7 +1303,7 @@
     color: var(--text-muted);
     text-align: center;
     padding: 48px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .error {
@@ -1313,7 +1313,7 @@
     border-radius: 4px;
     padding: 10px 14px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Overview grid */
@@ -1344,7 +1344,7 @@
 
   .hero-name {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: 1px;
@@ -1353,8 +1353,8 @@
   .result-badge {
     font-family: 'Barlow Condensed', sans-serif;
     display: inline-block;
-    padding: 4px 12px;
-    font-size: 10px;
+    padding: 5px 14px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 2px;
     border-radius: 4px;
@@ -1388,7 +1388,7 @@
 
   .meta-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1397,7 +1397,7 @@
 
   .meta-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text-primary);
   }
@@ -1410,7 +1410,7 @@
   /* Stats */
   .section-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1438,7 +1438,7 @@
   }
 
   .items-col-label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -1466,7 +1466,7 @@
   .item-row:hover { border-color: var(--border); }
 
   .item-time {
-    font-size: 12px;
+    font-size: 14px;
     font-family: monospace;
     color: #f0b429;
     min-width: 38px;
@@ -1474,13 +1474,13 @@
   }
 
   .item-name {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-primary);
   }
 
   .items-empty {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     font-style: italic;
   }
 
@@ -1505,7 +1505,7 @@
 
   .stat-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 0.3rem;
@@ -1513,14 +1513,14 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 1.5px;
   }
 
   .kda {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .kda .kills { color: var(--green); }
@@ -1539,7 +1539,7 @@
     text-align: center;
     padding: 2.5rem;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     border: 1px dashed var(--border);
     border-radius: 6px;
   }
@@ -1553,7 +1553,7 @@
   /* Goals */
   .goals-summary {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text-secondary);
     letter-spacing: 0;
@@ -1613,7 +1613,7 @@
     font-family: 'Rajdhani', sans-serif;
     font-weight: 600;
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 16px;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -1622,7 +1622,7 @@
   .goal-numbers {
     display: flex;
     gap: 1.5rem;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .goal-target { color: var(--text-muted); }
@@ -1633,7 +1633,7 @@
     text-align: center;
     padding: 1.5rem 0;
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   @media (max-width: 700px) {
@@ -1666,7 +1666,7 @@
     border: 1px solid rgba(255, 200, 80, 0.15);
     border-radius: 4px;
     padding: 3px 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .cmp-label {
@@ -1675,7 +1675,7 @@
     font-weight: 600;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .cmp-value {
@@ -1695,7 +1695,7 @@
     border: 1px solid rgba(255,200,80,0.25);
     border-radius: 3px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     padding: 1px 5px;
     cursor: pointer;
     transition: all 0.15s;
@@ -1713,7 +1713,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     padding: 10px 16px;
     border-radius: 4px;
     cursor: pointer;
@@ -1746,18 +1746,18 @@
     align-items: center;
     gap: 10px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.5px;
   }
 
   .cmp-banner-this { color: var(--gold); }
-  .cmp-banner-vs   { color: var(--text-muted); font-size: 11px; }
+  .cmp-banner-vs   { color: var(--text-muted); font-size: 12px; }
   .cmp-banner-other { color: var(--text-secondary); }
 
   .cmp-banner-clear {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1790,7 +1790,7 @@
 
   .oc-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -1831,7 +1831,7 @@
   .sct-label-col {
     padding: 10px 14px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 14px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.5px;
     display: flex;
@@ -1841,7 +1841,7 @@
   .sct-col {
     padding: 10px 14px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text-secondary);
     display: flex;
@@ -1849,7 +1849,7 @@
   }
 
   .sct-header .sct-col {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1952,13 +1952,13 @@
   }
 
   .option-title {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
   }
 
   .option-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-top: 2px;
   }
@@ -1977,7 +1977,7 @@
     border-radius: 4px;
     padding: 8px 12px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .popup-input:focus {

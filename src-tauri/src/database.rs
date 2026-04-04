@@ -4129,13 +4129,13 @@ pub fn get_user_stat_std_dev(
 
 fn interpret_z_score(z: f64) -> String {
     match z {
-        z if z > 1.5 => "Well above average".to_string(),
-        z if z > 0.75 => "Above average".to_string(),
-        z if z > 0.25 => "Slightly above average".to_string(),
-        z if z > -0.25 => "About average".to_string(),
-        z if z > -0.75 => "Slightly below average".to_string(),
-        z if z > -1.5 => "Below average".to_string(),
-        _ => "Well below average".to_string(),
+        z if z > 1.5 => "Well above average".to_string(),  // ~93rd percentile+
+        z if z > 0.5 => "Above average".to_string(),       // ~69th–93rd percentile
+        z if z > 0.15 => "Slightly above average".to_string(), // ~56th–69th percentile
+        z if z > -0.15 => "About average".to_string(),     // ~44th–56th percentile
+        z if z > -0.5 => "Slightly below average".to_string(), // ~31st–44th percentile
+        z if z > -1.5 => "Below average".to_string(),      // ~7th–31st percentile
+        _ => "Well below average".to_string(),              // <7th percentile
     }
 }
 

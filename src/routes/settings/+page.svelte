@@ -1192,7 +1192,7 @@
 
 .subtitle {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1206,7 +1206,7 @@
   border-radius: 4px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .success {
@@ -1216,7 +1216,7 @@
   border-radius: 4px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-section {
@@ -1225,7 +1225,7 @@
 
 .settings-section h2 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 3px;
   color: var(--text-muted);
@@ -1264,7 +1264,7 @@
 }
 
 .setting-description {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.6;
   margin: 0 0 8px 0;
@@ -1298,7 +1298,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1369,7 +1369,7 @@
   border-radius: 4px;
   padding: 8px 12px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   max-width: 280px;
   outline: none;
@@ -1382,7 +1382,7 @@
 
 .custom-pct {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .custom-pct label {
@@ -1398,7 +1398,7 @@
   border-radius: 4px;
   padding: 6px 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
 }
@@ -1415,7 +1415,7 @@
   border-radius: 4px;
   padding: 6px 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
   outline: none;
   transition: border-color 0.2s;
@@ -1441,7 +1441,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1545,14 +1545,14 @@
 .update-available {
   margin: 10px 0 0 0;
   color: var(--gold);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .update-current {
   margin: 10px 0 0 0;
   color: var(--green);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -1586,7 +1586,7 @@
   gap: 10px;
   cursor: pointer;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px;
   border-radius: 4px;
   transition: background 0.2s;
@@ -1617,7 +1617,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1644,7 +1644,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1664,7 +1664,7 @@
 
 .bg-parse-status {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--text-muted);
   margin: 6px 0 4px;
@@ -1683,7 +1683,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   padding: 6px 18px;
@@ -1706,7 +1706,7 @@
 }
 
 .toggle-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
 }
 
@@ -1750,7 +1750,7 @@
 
 .modal-title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--text-primary);
@@ -1768,7 +1768,7 @@
   margin: 0 0 20px 0;
   padding-left: 18px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 
