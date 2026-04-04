@@ -25,7 +25,7 @@
 
   function getMedalIconUrl(/** @type {string} */ bracket) {
     const rank = BRACKET_RANK[/** @type {keyof typeof BRACKET_RANK} */ (bracket)] || 0;
-    return `https://dotakeeper.com/meta/rank_icons/rank_icon_${rank}.png`;
+    return `/rank_icons/rank_icon_${rank}.png`;
   }
 
   /** Convert z-score to percentile (within that bracket's distribution) */
