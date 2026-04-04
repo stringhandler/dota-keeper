@@ -88,6 +88,9 @@ use database::{
     HeroCsStats, LastHitsAnalysis, MatchCS, MatchDataPoint, MatchNW, MatchState, MatchWithGoals, MatchXP,
     NewGoal, NewItemTiming,
     PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
+    upsert_benchmarks, set_benchmark_metadata, get_benchmark_metadata,
+    get_benchmark_comparison, get_user_stat_std_dev, has_benchmark_data,
+    HeroBenchmarkRow, BenchmarkResult,
 };
 use serde_json;
 use settings::{set_settings_dir, AnalyticsConsent, Settings};
@@ -1285,6 +1288,301 @@ fn get_last_hits_analysis_data(
     get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
 }
 
+// ─── Hero Benchmark commands ──────────────────────────────────────────
+
+const BENCHMARK_CSV_URL: &str =
+    "https://raw.githubusercontent.com/stringhandler/dota-keeper/main/meta/benchmarks/hero_benchmarks.csv";
+
+/// Fetch the hero benchmark CSV from GitHub, parse it, and upsert into the database.
+/// Called on startup (non-blocking) and can also be invoked from the frontend.
+/// In debug builds, reads from the local repo file instead of fetching over HTTP.
+async fn fetch_and_store_benchmarks() -> Result<String, String> {
+    let body = if cfg!(debug_assertions) {
+        // In dev, read from the local repo checkout
+        let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("meta")
+            .join("benchmarks")
+            .join("hero_benchmarks.csv");
+        tracing::info!(target: "dota_keeper", "Loading benchmarks from local file: {}", local_path.display());
+        std::fs::read_to_string(&local_path)
+            .map_err(|e| format!("Failed to read local benchmark CSV at {}: {}", local_path.display(), e))?
+    } else {
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(BENCHMARK_CSV_URL)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch benchmarks: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Benchmark fetch returned HTTP {}", resp.status()));
+        }
+
+        resp.text()
+            .await
+            .map_err(|e| format!("Failed to read benchmark response: {}", e))?
+    };
+
+    let rows = parse_benchmark_csv(&body)?;
+    if rows.is_empty() {
+        return Err("Benchmark CSV was empty or contained no valid rows".to_string());
+    }
+
+    let data_date = rows.first().map(|r| r.data_date.clone()).unwrap_or_default();
+
+    let conn = get_db_conn()?;
+    upsert_benchmarks(&conn, &rows)?;
+    set_benchmark_metadata(&conn, "last_fetched", &chrono::Utc::now().to_rfc3339())?;
+    set_benchmark_metadata(&conn, "data_date", &data_date)?;
+
+    tracing::info!(target: "dota_keeper", "Loaded {} benchmark rows (data date: {})", rows.len(), data_date);
+    Ok(data_date)
+}
+
+/// Map Valve internal hero names to hero IDs.
+fn hero_name_to_id(name: &str) -> Option<i32> {
+    let id = match name {
+        "antimage" => 1,
+        "axe" => 2,
+        "bane" => 3,
+        "bloodseeker" => 4,
+        "crystal_maiden" => 5,
+        "drow_ranger" => 6,
+        "earthshaker" => 7,
+        "juggernaut" => 8,
+        "mirana" => 9,
+        "morphling" => 10,
+        "nevermore" => 11,
+        "phantom_lancer" => 12,
+        "puck" => 13,
+        "pudge" => 14,
+        "razor" => 15,
+        "sand_king" => 16,
+        "storm_spirit" => 17,
+        "sven" => 18,
+        "tiny" => 19,
+        "vengefulspirit" => 20,
+        "windrunner" => 21,
+        "zuus" => 22,
+        "kunkka" => 23,
+        "lina" => 25,
+        "lion" => 26,
+        "shadow_shaman" => 27,
+        "slardar" => 28,
+        "tidehunter" => 29,
+        "witch_doctor" => 30,
+        "lich" => 31,
+        "riki" => 32,
+        "enigma" => 33,
+        "tinker" => 34,
+        "sniper" => 35,
+        "necrolyte" => 36,
+        "warlock" => 37,
+        "beastmaster" => 38,
+        "queenofpain" => 39,
+        "venomancer" => 40,
+        "faceless_void" => 41,
+        "skeleton_king" => 42,
+        "death_prophet" => 43,
+        "phantom_assassin" => 44,
+        "pugna" => 45,
+        "templar_assassin" => 46,
+        "viper" => 47,
+        "luna" => 48,
+        "dragon_knight" => 49,
+        "dazzle" => 50,
+        "rattletrap" => 51,
+        "leshrac" => 52,
+        "furion" => 53,
+        "life_stealer" => 54,
+        "dark_seer" => 55,
+        "clinkz" => 56,
+        "omniknight" => 57,
+        "enchantress" => 58,
+        "huskar" => 59,
+        "night_stalker" => 60,
+        "broodmother" => 61,
+        "bounty_hunter" => 62,
+        "weaver" => 63,
+        "jakiro" => 64,
+        "batrider" => 65,
+        "chen" => 66,
+        "spectre" => 67,
+        "ancient_apparition" => 68,
+        "doom_bringer" => 69,
+        "ursa" => 70,
+        "spirit_breaker" => 71,
+        "gyrocopter" => 72,
+        "alchemist" => 73,
+        "invoker" => 74,
+        "silencer" => 75,
+        "obsidian_destroyer" => 76,
+        "lycan" => 77,
+        "brewmaster" => 78,
+        "shadow_demon" => 79,
+        "lone_druid" => 80,
+        "chaos_knight" => 81,
+        "meepo" => 82,
+        "treant" => 83,
+        "ogre_magi" => 84,
+        "undying" => 85,
+        "rubick" => 86,
+        "disruptor" => 87,
+        "nyx_assassin" => 88,
+        "naga_siren" => 89,
+        "keeper_of_the_light" => 90,
+        "wisp" => 91,
+        "visage" => 92,
+        "slark" => 93,
+        "medusa" => 94,
+        "troll_warlord" => 95,
+        "centaur" => 96,
+        "magnataur" => 97,
+        "shredder" => 98,
+        "bristleback" => 99,
+        "tusk" => 100,
+        "skywrath_mage" => 101,
+        "abaddon" => 102,
+        "elder_titan" => 103,
+        "legion_commander" => 104,
+        "techies" => 105,
+        "ember_spirit" => 106,
+        "earth_spirit" => 107,
+        "abyssal_underlord" => 108,
+        "terrorblade" => 109,
+        "phoenix" => 110,
+        "oracle" => 111,
+        "winter_wyvern" => 112,
+        "arc_warden" => 113,
+        "monkey_king" => 114,
+        "dark_willow" => 119,
+        "pangolier" => 120,
+        "grimstroke" => 121,
+        "hoodwink" => 123,
+        "void_spirit" => 126,
+        "snapfire" => 128,
+        "mars" => 129,
+        "ringmaster" => 131,
+        "dawnbreaker" => 135,
+        "marci" => 136,
+        "primal_beast" => 137,
+        "muerta" => 138,
+        "kez" => 145,
+        "largo" => 155,
+        _ => return None,
+    };
+    Some(id)
+}
+
+fn parse_benchmark_csv(body: &str) -> Result<Vec<HeroBenchmarkRow>, String> {
+    let mut rows = Vec::new();
+    let mut lines = body.lines();
+
+    // Skip header
+    let header = lines.next().ok_or("Empty CSV")?;
+    // Validate header has expected columns
+    // data_date,hero_name,mode,bracket,stat_name,mean,std_dev,sample_size,ideal_match_id_avg,ideal_match_id_top
+    let cols: Vec<&str> = header.split(',').collect();
+    if cols.len() < 10 {
+        return Err(format!("Expected 10 CSV columns, got {}", cols.len()));
+    }
+
+    for (line_num, line) in lines.enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = line.split(',').collect();
+        if fields.len() < 10 {
+            tracing::warn!(target: "dota_keeper", "Skipping CSV line {}: not enough fields", line_num + 2);
+            continue;
+        }
+
+        let hero_name = fields[1].trim();
+        let hero_id = match hero_name_to_id(hero_name) {
+            Some(id) => id,
+            None => {
+                tracing::warn!(target: "dota_keeper", "Unknown hero name on line {}: '{}'", line_num + 2, hero_name);
+                continue;
+            }
+        };
+        let mean: f64 = fields[5].trim().parse().map_err(|_| {
+            format!("Invalid mean on line {}: '{}'", line_num + 2, fields[5])
+        })?;
+        let std_dev: f64 = fields[6].trim().parse().map_err(|_| {
+            format!("Invalid std_dev on line {}: '{}'", line_num + 2, fields[6])
+        })?;
+        let sample_size: i32 = fields[7].trim().parse().map_err(|_| {
+            format!("Invalid sample_size on line {}: '{}'", line_num + 2, fields[7])
+        })?;
+        let ideal_match_id_avg: Option<i64> = fields[8].trim().parse().ok();
+        let ideal_match_id_top: Option<i64> = fields[9].trim().parse().ok();
+
+        rows.push(HeroBenchmarkRow {
+            data_date: fields[0].trim().to_string(),
+            hero_id,
+            mode: fields[2].trim().to_lowercase(),
+            bracket: fields[3].trim().to_lowercase(),
+            stat_name: fields[4].trim().to_string(),
+            mean,
+            std_dev,
+            sample_size,
+            ideal_match_id_avg,
+            ideal_match_id_top,
+        });
+    }
+
+    Ok(rows)
+}
+
+/// Get benchmark comparison for a specific hero/mode/stat with a user value.
+#[tauri::command]
+fn get_hero_benchmark(
+    hero_id: i32,
+    mode: String,
+    stat_name: String,
+    user_value: f64,
+    user_hero_id: Option<i32>,
+    user_game_mode: Option<i32>,
+) -> Result<BenchmarkResult, String> {
+    let conn = get_db_conn()?;
+    let mut result = get_benchmark_comparison(&conn, hero_id, &mode, &stat_name, user_value)?;
+
+    // Compute user's own SD if we have enough data
+    let user_sd = get_user_stat_std_dev(
+        &conn,
+        user_hero_id.or(Some(hero_id)),
+        user_game_mode,
+        10, // time_minutes for last_hits_10min
+        30, // window_size
+    )?;
+    result.user_std_dev = user_sd;
+    result.user_mean = Some(user_value);
+
+    Ok(result)
+}
+
+/// Get the benchmark data date metadata.
+#[tauri::command]
+fn get_benchmark_data_date() -> Result<String, String> {
+    let conn = get_db_conn()?;
+    Ok(get_benchmark_metadata(&conn, "data_date")?.unwrap_or_default())
+}
+
+/// Manually trigger a benchmark refresh from the frontend.
+#[tauri::command]
+async fn refresh_benchmarks() -> Result<String, String> {
+    fetch_and_store_benchmarks().await
+}
+
+/// Check if benchmark data is available.
+#[tauri::command]
+fn has_benchmarks() -> Result<bool, String> {
+    let conn = get_db_conn()?;
+    has_benchmark_data(&conn)
+}
+
 /// Starts a background backfill of 100 historical matches, returning immediately.
 #[tauri::command]
 async fn backfill_historical_matches(
@@ -2158,6 +2456,15 @@ fn save_privacy_mode(enabled: bool) -> Result<Settings, String> {
     Ok(settings)
 }
 
+/// Save the minimum benchmark games setting.
+#[tauri::command]
+fn save_min_benchmark_games(value: i32) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.min_benchmark_games = value;
+    settings.save()?;
+    Ok(settings)
+}
+
 /// Enable or disable the background match parser.
 #[tauri::command]
 fn save_background_parse_enabled(enabled: bool) -> Result<Settings, String> {
@@ -2397,6 +2704,19 @@ pub fn run() {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 background_parse_loop(bg_app).await;
             });
+            // Fetch hero benchmark data from GitHub (non-blocking).
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                match fetch_and_store_benchmarks().await {
+                    Ok(date) => {
+                        eprintln!("[benchmarks] Loaded successfully (data date: {})", date);
+                    }
+                    Err(e) => {
+                        eprintln!("[benchmarks] ERROR: {}", e);
+                        tracing::warn!(target: "dota_keeper", "Benchmark fetch failed (will use cached data): {}", e);
+                    }
+                }
+            });
             Ok(())
         })
         .plugin(tauri_plugin_opener::init());
@@ -2477,7 +2797,12 @@ pub fn run() {
             get_medal_history,
             get_medal_stats,
             get_patches,
-            sync_patches
+            sync_patches,
+            get_hero_benchmark,
+            get_benchmark_data_date,
+            refresh_benchmarks,
+            has_benchmarks,
+            save_min_benchmark_games
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

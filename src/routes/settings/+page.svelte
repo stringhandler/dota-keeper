@@ -35,6 +35,7 @@
   let showMentalHealthIntro = $state(false);
   let privacyMode = $state(false);
   let backgroundParseEnabled = $state(true);
+  let minBenchmarkGames = $state(5);
   let bgParseActive = $state(false);
   let bgParsePending = $state(0);
   let appVersion = $state("");
@@ -64,6 +65,7 @@
     await loadPrivacyMode();
     await loadBackgroundParse();
     await loadDataProvider();
+    await loadMinBenchmarkGames();
     await loadAppVersion();
 
     // Sync initial status from backend
@@ -274,6 +276,26 @@
       privacyStore.privacyMode = enabled;
     } catch (e) {
       showToast(`Failed to save privacy mode: ${e}`, "error");
+    }
+  }
+
+  async function loadMinBenchmarkGames() {
+    try {
+      const settings = await invoke("get_settings");
+      minBenchmarkGames = settings.min_benchmark_games ?? 5;
+    } catch (e) {
+      console.error("Failed to load min benchmark games setting:", e);
+    }
+  }
+
+  /** @param {number} value */
+  async function saveMinBenchmarkGames(value) {
+    try {
+      await invoke("save_min_benchmark_games", { value });
+      minBenchmarkGames = value;
+      showToast("Minimum benchmark games saved");
+    } catch (e) {
+      showToast(`Failed to save: ${e}`, "error");
     }
   }
 
@@ -666,6 +688,28 @@
       >
         {isSavingDifficulty ? $_('settings.saving') : $_('settings.save')}
       </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Analysis</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Minimum games for benchmark rank</h3>
+        <p class="setting-description">
+          Minimum number of games required before showing the Last Hitting Rank for a hero.
+        </p>
+        <div class="difficulty-controls">
+          <select class="difficulty-select" bind:value={minBenchmarkGames} onchange={() => saveMinBenchmarkGames(minBenchmarkGames)}>
+            <option value={3}>3 games</option>
+            <option value={5}>5 games (default)</option>
+            <option value={10}>10 games</option>
+            <option value={15}>15 games</option>
+            <option value={20}>20 games</option>
+            <option value={30}>30 games</option>
+          </select>
+        </div>
+      </div>
     </div>
   </div>
 

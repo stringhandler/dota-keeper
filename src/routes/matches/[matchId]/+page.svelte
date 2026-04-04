@@ -6,6 +6,7 @@
   import { getHeroName } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import Chart from "$lib/Chart.svelte";
+  import BenchmarkTable from "$lib/BenchmarkTable.svelte";
   import { _ } from "svelte-i18n";
   import { pqs, initQueue, enqueueParse } from "$lib/parse-queue.svelte.js";
 
@@ -47,6 +48,8 @@
   let compareItemTimings = $state(/** @type {any[]} */ ([]));
   // Hero CS stats (best + average per minute)
   let heroCsStats = $state(/** @type {any[]} */ ([]));
+  // Benchmark data for this match
+  let matchBenchmark = $state(/** @type {any} */ (null));
 
   $effect(() => {
     if (compareMatch) {
@@ -123,6 +126,9 @@
           .catch(() => { heroCsStats = []; });
       }
 
+      // Load benchmark for this match's LH@10
+      await loadMatchBenchmark();
+
       await loadComparisons();
 
       initQueue(steamId, async () => {
@@ -151,6 +157,29 @@
       error = `Failed to load match: ${e}`;
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function loadMatchBenchmark() {
+    if (!match || csData.length === 0) { matchBenchmark = null; return; }
+    try {
+      const hasBench = await invoke("has_benchmarks");
+      if (!hasBench) { matchBenchmark = null; return; }
+      // Get LH at minute 10
+      const cs10 = csData.find((/** @type {any} */ d) => d.minute === 10);
+      if (!cs10) { matchBenchmark = null; return; }
+      const mode = match.game_mode === 23 ? "turbo" : "ranked";
+      matchBenchmark = await invoke("get_hero_benchmark", {
+        heroId: match.hero_id,
+        mode,
+        statName: "last_hits_10min",
+        userValue: cs10.last_hits,
+        userHeroId: match.hero_id,
+        userGameMode: match.game_mode,
+      });
+    } catch (e) {
+      console.error("Failed to load match benchmark:", e);
+      matchBenchmark = null;
     }
   }
 
@@ -869,6 +898,14 @@
         </div>
       {/if}
     </div>
+
+    <!-- Benchmark Ranking -->
+    {#if matchBenchmark?.rows?.length > 0}
+      <div class="chart-section">
+        <h2 class="section-title">Last Hitting Rank for this game</h2>
+        <BenchmarkTable benchmarkData={matchBenchmark} />
+      </div>
+    {/if}
 
     <!-- Last Hits Chart -->
     <div class="chart-section">

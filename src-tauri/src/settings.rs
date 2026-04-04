@@ -62,6 +62,9 @@ pub struct Settings {
     /// Whether privacy mode is enabled (masks Steam ID in the UI for screenshots)
     #[serde(default)]
     pub privacy_mode: bool,
+    /// Minimum number of games required to show the last hitting rank for a hero
+    #[serde(default = "Settings::default_min_benchmark_games")]
+    pub min_benchmark_games: i32,
 }
 
 impl Default for Settings {
@@ -81,6 +84,7 @@ impl Default for Settings {
             stratz_api_key: None,
             opendota_api_key: None,
             privacy_mode: false,
+            min_benchmark_games: Self::default_min_benchmark_games(),
         }
     }
 }
@@ -100,6 +104,10 @@ impl Settings {
 
     fn default_data_provider() -> String {
         "opendota".to_string()
+    }
+
+    fn default_min_benchmark_games() -> i32 {
+        5
     }
 
     /// Generate a unique installation ID (UUID v4)
