@@ -5,6 +5,22 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-05
+
+### Added
+- **Hero Benchmarks**: Compare your hero stats against bracket averages (Herald through Immortal). Shown on the hero analysis detail page with medal badges, z-scores, percentiles, and color-coded interpretation labels.
+- **Match Comparison**: Compare any two matches side-by-side from the match detail page — pick a previous/next game on the same hero, or enter a match ID manually.
+- **Performance Charts**: New gold/XP advantage charts on the match detail page (requires parsed replay data).
+- **Item Timings Comparison**: Side-by-side item timing comparison when comparing two matches.
+- **Reparse Match**: Request a replay parse from OpenDota directly from the match detail page.
+- **Benchmark Bracket Overlays**: Toggle bracket reference lines on hero analysis charts to see where you stand relative to each rank.
+
+### Changed
+- **UI Readability Overhaul**: Increased font sizes across the entire app to meet accessibility guidelines — 16px body text baseline, 12px minimum for labels, 24px+ for headings. All text is now significantly easier to read.
+- **Improved Text Contrast**: Brightened `--text-muted` and `--text-secondary` colors for better contrast against dark backgrounds. Removed compounding `opacity` on muted text elements.
+- **Benchmark Interpretation Labels**: Tightened z-score thresholds so labels like "Above average" and "Slightly above average" align more accurately with their percentile. Interpretation text is now color-coded (green/teal for good, red for below average).
+
+
 ## [0.5.2] - 2026-03-28
 
 ### Added
