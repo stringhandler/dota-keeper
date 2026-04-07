@@ -25,7 +25,6 @@
   let turboGameCount = $state(0);
   let rankedWarning = $state("");
   let turboWarning = $state("");
-  let minBenchmarkGames = $state(5);
   let activeBenchmark = $derived(selectedGameMode === 23 ? turboBenchmark : rankedBenchmark);
   let showBracketOverlays = $state(/** @type {Set<string>} */ (new Set()));
 
@@ -58,10 +57,6 @@
   ]);
 
   onMount(async () => {
-    try {
-      const settings = await invoke("get_settings");
-      minBenchmarkGames = settings.min_benchmark_games ?? 5;
-    } catch { /* use default */ }
     await loadAnalysis();
     await loadBenchmarks();
   });
@@ -108,58 +103,45 @@
       rankedGameCount = rankedPoints.length;
       turboGameCount = turboPoints.length;
 
-      const minGames = minBenchmarkGames;
       const confidentGames = 30;
 
       // Ranked benchmark
       if (rankedGameCount > 0) {
-        if (rankedGameCount < minGames) {
-          const need = minGames - rankedGameCount;
-          rankedWarning = `Need ${need} more ranked game${need === 1 ? '' : 's'} to show rank.`;
-        } else {
-          const rankedAvg = rankedPoints.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + p.last_hits, 0) / rankedGameCount;
-          if (rankedGameCount < confidentGames) {
-            const need = confidentGames - rankedGameCount;
-            rankedWarning = `Confidence is low. Need ${need} more ranked game${need === 1 ? '' : 's'} for a more confident rank.`;
-          }
-          try {
-            rankedBenchmark = await invoke("get_hero_benchmark", {
-              heroId,
-              mode: "ranked",
-              statName: "last_hits_10min",
-              userValue: rankedAvg,
-              userHeroId: heroId,
-              userGameMode: 22,
-            });
-          } catch (e) {
-            console.warn("Ranked benchmark load failed:", e);
-          }
+        const rankedAvg = rankedPoints.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + p.last_hits, 0) / rankedGameCount;
+        if (rankedGameCount < confidentGames) {
+          rankedWarning = `Based on only ${rankedGameCount} ranked game${rankedGameCount === 1 ? '' : 's'} — rank may be inaccurate.`;
+        }
+        try {
+          rankedBenchmark = await invoke("get_hero_benchmark", {
+            heroId,
+            mode: "ranked",
+            statName: "last_hits_10min",
+            userValue: rankedAvg,
+            userHeroId: heroId,
+            userGameMode: 22,
+          });
+        } catch (e) {
+          console.warn("Ranked benchmark load failed:", e);
         }
       }
 
       // Turbo benchmark
       if (turboGameCount > 0) {
-        if (turboGameCount < minGames) {
-          const need = minGames - turboGameCount;
-          turboWarning = `Need ${need} more turbo game${need === 1 ? '' : 's'} to show rank.`;
-        } else {
-          const turboAvg = turboPoints.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + p.last_hits, 0) / turboGameCount;
-          if (turboGameCount < confidentGames) {
-            const need = confidentGames - turboGameCount;
-            turboWarning = `Confidence is low. Need ${need} more turbo game${need === 1 ? '' : 's'} for a more confident rank.`;
-          }
-          try {
-            turboBenchmark = await invoke("get_hero_benchmark", {
-              heroId,
-              mode: "turbo",
-              statName: "last_hits_10min",
-              userValue: turboAvg,
-              userHeroId: heroId,
-              userGameMode: 23,
-            });
-          } catch (e) {
-            console.warn("Turbo benchmark load failed:", e);
-          }
+        const turboAvg = turboPoints.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + p.last_hits, 0) / turboGameCount;
+        if (turboGameCount < confidentGames) {
+          turboWarning = `Based on only ${turboGameCount} turbo game${turboGameCount === 1 ? '' : 's'} — rank may be inaccurate.`;
+        }
+        try {
+          turboBenchmark = await invoke("get_hero_benchmark", {
+            heroId,
+            mode: "turbo",
+            statName: "last_hits_10min",
+            userValue: turboAvg,
+            userHeroId: heroId,
+            userGameMode: 23,
+          });
+        } catch (e) {
+          console.warn("Turbo benchmark load failed:", e);
         }
       }
 

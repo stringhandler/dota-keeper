@@ -5,7 +5,7 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-04-05
+## [1.0.0] - 2026-04-07
 
 ### Added
 - **Hero Benchmarks**: Compare your hero stats against bracket averages (Herald through Immortal). Shown on the hero analysis detail page with medal badges, z-scores, percentiles, and color-coded interpretation labels.
