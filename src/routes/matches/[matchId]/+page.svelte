@@ -3,7 +3,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
-  import { getHeroName } from "$lib/heroes.js";
+  import { getHeroName, CORE_HERO_IDS } from "$lib/heroes.js";
   import HeroIcon from "$lib/HeroIcon.svelte";
   import Chart from "$lib/Chart.svelte";
   import BenchmarkTable from "$lib/BenchmarkTable.svelte";
@@ -50,6 +50,34 @@
   let heroCsStats = $state(/** @type {any[]} */ ([]));
   // Benchmark data for this match
   let matchBenchmark = $state(/** @type {any} */ (null));
+  // Personal LH@10 history across all parsed games (full, unfiltered)
+  let personalLhHistory = $state(/** @type {any[]} */ ([]));
+
+  // Filters for the personal LH distribution ('all'|'ranked'|'turbo' and 'all'|'this'|'cores')
+  let lhFilterMode = $state(/** @type {string} */ ('all'));
+  let lhFilterHero = $state(/** @type {string} */ ('all'));
+
+  // Derived: LH@10 for this match
+  let thisLhAt10 = $derived(csData.find((/** @type {any} */ d) => d.minute === 10)?.last_hits ?? null);
+
+  // Derived: filtered personal history based on mode + hero filters, always excluding current match
+  let filteredLhHistory = $derived.by(() => {
+    return personalLhHistory.filter((/** @type {any} */ d) => {
+      if (d.match_id === matchId) return false;
+      if (lhFilterMode === 'ranked' && d.game_mode !== 22) return false;
+      if (lhFilterMode === 'turbo' && d.game_mode !== 23) return false;
+      if (lhFilterHero === 'this' && d.hero_id !== match?.hero_id) return false;
+      if (lhFilterHero === 'cores' && !CORE_HERO_IDS.has(d.hero_id)) return false;
+      return true;
+    });
+  });
+
+  // Derived: percentile of this game vs filtered history
+  let personalLhPercentile = $derived.by(() => {
+    if (thisLhAt10 === null || filteredLhHistory.length === 0) return null;
+    const below = filteredLhHistory.filter((/** @type {any} */ d) => d.last_hits < thisLhAt10).length;
+    return Math.round((below / filteredLhHistory.length) * 100);
+  });
 
   $effect(() => {
     if (compareMatch) {
@@ -160,6 +188,15 @@
     }
   }
 
+  async function loadPersonalLhHistory() {
+    try {
+      const history = await invoke("get_user_lh_history", { minute: 10 });
+      personalLhHistory = /** @type {any[]} */ (history);
+    } catch (e) {
+      personalLhHistory = [];
+    }
+  }
+
   async function loadMatchBenchmark() {
     if (!match || csData.length === 0) { matchBenchmark = null; return; }
     try {
@@ -181,6 +218,8 @@
       console.error("Failed to load match benchmark:", e);
       matchBenchmark = null;
     }
+    // Load personal LH history alongside benchmark (both need csData)
+    await loadPersonalLhHistory();
   }
 
   async function loadComparisons() {
@@ -533,6 +572,77 @@
             ticks: { color: "#9ca3af" },
             grid: { color: "rgba(255, 200, 80, 0.08)" },
             title: { display: true, text: "Count", color: "#9ca3af" },
+            beginAtZero: true,
+          },
+        },
+      },
+    };
+  });
+
+  // Distribution chart: user's personal LH@10 with filters applied, with this game highlighted
+  let personalLhDistConfig = $derived.by(() => {
+    const allValues = filteredLhHistory.map((/** @type {any} */ d) => d.last_hits);
+    if (allValues.length === 0) return null;
+
+    // Build histogram bins (width = 5)
+    const binSize = 5;
+    const minVal = Math.floor(Math.min(...allValues) / binSize) * binSize;
+    const maxVal = Math.ceil(Math.max(...allValues) / binSize) * binSize;
+    const bins = [];
+    for (let b = minVal; b <= maxVal; b += binSize) bins.push(b);
+
+    const counts = bins.map((b) => allValues.filter((v) => v >= b && v < b + binSize).length);
+    const thisVal = thisLhAt10;
+    const barColors = bins.map((b) =>
+      thisVal !== null && thisVal >= b && thisVal < b + binSize
+        ? "rgba(240, 180, 41, 0.9)"
+        : "rgba(96, 165, 250, 0.5)"
+    );
+    const borderColors = bins.map((b) =>
+      thisVal !== null && thisVal >= b && thisVal < b + binSize
+        ? "rgba(240, 180, 41, 1)"
+        : "rgba(96, 165, 250, 0.8)"
+    );
+
+    return {
+      type: "bar",
+      data: {
+        labels: bins.map((b) => `${b}–${b + binSize - 1}`),
+        datasets: [{
+          label: "Games",
+          data: counts,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1.5,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "rgba(18, 20, 28, 0.95)",
+            borderColor: "rgba(240, 180, 41, 0.3)",
+            borderWidth: 1,
+            titleColor: "#f0b429",
+            bodyColor: "#e0e0e0",
+            callbacks: {
+              title: (/** @type {any[]} */ items) => `LH@10: ${items[0]?.label}`,
+              label: (/** @type {any} */ item) => `${item.raw} game${item.raw === 1 ? "" : "s"}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: "#9ca3af", font: { size: 11 } },
+            grid: { color: "rgba(255, 200, 80, 0.06)" },
+            title: { display: true, text: "Last Hits at 10 min", color: "#9ca3af", font: { size: 11 } },
+          },
+          y: {
+            ticks: { color: "#9ca3af", stepSize: 1 },
+            grid: { color: "rgba(255, 200, 80, 0.06)" },
+            title: { display: true, text: "Games", color: "#9ca3af", font: { size: 11 } },
             beginAtZero: true,
           },
         },
@@ -900,10 +1010,53 @@
     </div>
 
     <!-- Benchmark Ranking -->
-    {#if matchBenchmark?.rows?.length > 0}
+    {#if matchBenchmark?.rows?.length > 0 || thisLhAt10 !== null}
       <div class="chart-section">
         <h2 class="section-title">Last Hitting Rank for this game</h2>
-        <BenchmarkTable benchmarkData={matchBenchmark} />
+
+        {#if thisLhAt10 !== null}
+          <div class="lh10-summary">
+            <div class="lh10-value-block">
+              <span class="lh10-number">{thisLhAt10}</span>
+              <span class="lh10-label">last hits at 10 min</span>
+            </div>
+            {#if personalLhPercentile !== null}
+              <div class="lh10-percentile-block">
+                <span class="lh10-percentile">{personalLhPercentile}th percentile</span>
+                <span class="lh10-percentile-label">vs your other games ({filteredLhHistory.length} games)</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if personalLhHistory.length > 0}
+          <div class="lh10-filters">
+            <div class="lh10-filter-group">
+              {#each [['all', 'All modes'], ['ranked', 'Ranked'], ['turbo', 'Turbo']] as [val, label]}
+                <button class="lh10-filter-btn" class:active={lhFilterMode === val} onclick={() => lhFilterMode = val}>{label}</button>
+              {/each}
+            </div>
+            <div class="lh10-filter-group">
+              <button class="lh10-filter-btn" class:active={lhFilterHero === 'all'} onclick={() => lhFilterHero = 'all'}>All heroes</button>
+              {#if match}
+                <button class="lh10-filter-btn" class:active={lhFilterHero === 'this'} onclick={() => lhFilterHero = 'this'}>{getHeroName(match.hero_id)}</button>
+              {/if}
+              <button class="lh10-filter-btn" class:active={lhFilterHero === 'cores'} onclick={() => lhFilterHero = 'cores'}>All cores</button>
+            </div>
+          </div>
+        {/if}
+
+        {#if personalLhDistConfig !== null}
+          <div class="chart-container" style="margin-bottom: 16px;">
+            <Chart config={personalLhDistConfig} height="180px" />
+          </div>
+        {:else if personalLhHistory.length > 0}
+          <p class="no-data-hint" style="margin-bottom: 16px;">No games match the current filters.</p>
+        {/if}
+
+        {#if matchBenchmark?.rows?.length > 0}
+          <BenchmarkTable benchmarkData={matchBenchmark} />
+        {/if}
       </div>
     {/if}
 
@@ -1429,6 +1582,97 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1.5rem;
+  }
+
+  /* LH@10 summary row */
+  .lh10-summary {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .lh10-value-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(240, 180, 41, 0.08);
+    border: 1.5px solid rgba(240, 180, 41, 0.35);
+    border-radius: 8px;
+    padding: 10px 20px;
+    min-width: 90px;
+  }
+
+  .lh10-number {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #f0b429;
+    line-height: 1;
+  }
+
+  .lh10-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  .lh10-percentile-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .lh10-percentile {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .lh10-percentile-label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .lh10-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .lh10-filter-group {
+    display: flex;
+    gap: 4px;
+  }
+
+  .lh10-filter-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .lh10-filter-btn:hover {
+    border-color: rgba(240, 180, 41, 0.4);
+    color: var(--text-secondary);
+  }
+
+  .lh10-filter-btn.active {
+    background: rgba(240, 180, 41, 0.12);
+    border-color: rgba(240, 180, 41, 0.5);
+    color: #f0b429;
   }
 
   .items-compare {

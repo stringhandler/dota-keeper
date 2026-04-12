@@ -4127,6 +4127,37 @@ pub fn get_user_stat_std_dev(
     Ok(Some(variance.sqrt()))
 }
 
+/// Get all user LH values at a specific minute across all parsed matches, newest first.
+/// Returns (match_id, hero_id, game_mode, last_hits) tuples.
+pub fn get_user_lh_at_minute_history(
+    conn: &Connection,
+    minute: i32,
+) -> Result<Vec<(i64, i32, i32, i32)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.match_id, m.hero_id, m.game_mode, mc.last_hits
+             FROM matches m
+             JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = ?1
+             WHERE m.parse_state = 'parsed' AND mc.last_hits IS NOT NULL
+             ORDER BY m.start_time DESC",
+        )
+        .map_err(|e| format!("Failed to prepare LH history query: {}", e))?;
+
+    let rows = stmt
+        .query_map([minute], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i32>(1)?,
+                row.get::<_, i32>(2)?,
+                row.get::<_, i32>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query LH history: {}", e))?;
+
+    let values: Vec<(i64, i32, i32, i32)> = rows.filter_map(|r| r.ok()).collect();
+    Ok(values)
+}
+
 fn interpret_z_score(z: f64) -> String {
     match z {
         z if z > 1.5 => "Well above average".to_string(),  // ~93rd percentile+

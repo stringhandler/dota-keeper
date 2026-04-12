@@ -90,7 +90,7 @@ use database::{
     PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
     upsert_benchmarks, set_benchmark_metadata, get_benchmark_metadata,
     get_benchmark_comparison, get_user_stat_std_dev, has_benchmark_data,
-    HeroBenchmarkRow, BenchmarkResult,
+    HeroBenchmarkRow, BenchmarkResult, get_user_lh_at_minute_history,
 };
 use serde_json;
 use settings::{set_settings_dir, AnalyticsConsent, Settings};
@@ -1583,6 +1583,25 @@ fn has_benchmarks() -> Result<bool, String> {
     has_benchmark_data(&conn)
 }
 
+/// Get user's personal LH history at a specific minute across all parsed matches.
+/// Returns list of {match_id, hero_id, game_mode, last_hits} objects ordered newest first.
+#[tauri::command]
+fn get_user_lh_history(minute: i32) -> Result<Vec<serde_json::Value>, String> {
+    let conn = get_db_conn()?;
+    let rows = get_user_lh_at_minute_history(&conn, minute)?;
+    Ok(rows
+        .into_iter()
+        .map(|(match_id, hero_id, game_mode, last_hits)| {
+            serde_json::json!({
+                "match_id": match_id,
+                "hero_id": hero_id,
+                "game_mode": game_mode,
+                "last_hits": last_hits,
+            })
+        })
+        .collect())
+}
+
 /// Starts a background backfill of 100 historical matches, returning immediately.
 #[tauri::command]
 async fn backfill_historical_matches(
@@ -2802,6 +2821,7 @@ pub fn run() {
             get_benchmark_data_date,
             refresh_benchmarks,
             has_benchmarks,
+            get_user_lh_history,
             save_min_benchmark_games
         ])
         .run(tauri::generate_context!())
