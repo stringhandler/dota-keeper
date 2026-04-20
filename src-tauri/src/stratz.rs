@@ -520,18 +520,32 @@ pub async fn fetch_match_details(match_id: i64, api_key: &str) -> Result<Detaile
                 lane_role: Some(lane_role),
                 // Stratz returns per-minute deltas; convert to cumulative totals
                 // to match the OpenDota lh_t / dn_t format the rest of the app expects.
+                // Stratz per-minute arrays are 0-indexed starting at minute 1 (index 0 = end of
+                // minute 1). OpenDota's lh_t format starts at minute 0 (index 0 = game start).
+                // Prepend 0 to each cumulative array so index N maps to minute N, matching
+                // OpenDota's convention and the minute values stored in match_cs.
                 lh_t: p.stats.as_ref().and_then(|s| s.last_hits_per_minute.as_ref()).map(|v| {
                     let mut total = 0;
-                    v.iter().map(|&x| { total += x; total }).collect()
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
                 }),
                 dn_t: p.stats.as_ref().and_then(|s| s.denies_per_minute.as_ref()).map(|v| {
                     let mut total = 0;
-                    v.iter().map(|&x| { total += x; total }).collect()
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
                 }),
-                gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.clone()),
+                gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.as_ref()).map(|v| {
+                    let mut out = vec![0];
+                    out.extend(v.iter().copied());
+                    out
+                }),
                 xp_t: p.stats.as_ref().and_then(|s| s.xp_per_minute.as_ref()).map(|v| {
                     let mut total = 0;
-                    v.iter().map(|&x| { total += x; total }).collect()
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
                 }),
                 purchase_log,
                 xp_per_min: p.experience_per_minute,

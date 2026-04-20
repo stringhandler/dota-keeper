@@ -10,6 +10,7 @@
   import { pendingCheckinStore } from "$lib/checkin-store.js";
   import { _ } from "svelte-i18n";
   import { pqs, initQueue, enqueueParse, isPendingError } from "$lib/parse-queue.svelte.js";
+  import { goto } from "$app/navigation";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -25,6 +26,7 @@
   let unlistenMatchStateChanged = null;
   /** @type {ReturnType<typeof setInterval> | null} */
   let autoRefreshTimer = null;
+  let isMobile = $state(false);
 
   // Pull-to-refresh
   let pullStartY = $state(0);
@@ -84,6 +86,10 @@
   });
 
   onMount(async () => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    isMobile = mq.matches;
+    mq.addEventListener('change', (e) => { isMobile = e.matches; });
+
     await loadData();
 
     unlistenMatchStateChanged = await listen("match-state-changed", (event) => {
@@ -439,6 +445,7 @@
 
   <!-- FILTER BAR -->
   <div class="match-filters-wrap">
+    <div class="filter-chips-container">
     <div class="match-filters">
       <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>{$_('matches.filter_all')}</button>
       <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>{$_('matches.filter_wins')}</button>
@@ -458,6 +465,7 @@
           </button>
         {/each}
       {/if}
+    </div>
     </div>
     {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !pqs.active.has(m.match_id) && !pqs.queue.includes(m.match_id) && !pqs.countdowns.has(m.match_id))}
       <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
@@ -490,7 +498,7 @@
       </div>
 
       {#each getPaginatedMatches() as match}
-        <div class="match-row" onclick={() => showGoalDetails(match)}>
+        <div class="match-row" onclick={() => isMobile ? goto(`/matches/${match.match_id}`) : showGoalDetails(match)}>
           <!-- Match ID + actions -->
           <div class="match-id-cell">
             <span class="match-id-text">{match.match_id}</span>
@@ -755,6 +763,11 @@
     flex-wrap: wrap;
   }
 
+  .filter-chips-container {
+    flex: 1;
+    min-width: 0;
+  }
+
   .match-filters {
     display: flex;
     gap: 8px;
@@ -770,6 +783,19 @@
       flex-direction: column;
       align-items: stretch;
       gap: 10px;
+    }
+
+    .filter-chips-container {
+      position: relative;
+    }
+    .filter-chips-container::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 40px;
+      background: linear-gradient(to right, transparent, var(--bg-base, #0d1117));
+      pointer-events: none;
+      z-index: 1;
     }
 
     .match-filters {

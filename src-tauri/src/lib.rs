@@ -910,7 +910,26 @@ struct RefreshResult {
 async fn refresh_matches() -> Result<RefreshResult, String> {
     let settings = Settings::load();
 
-    let matches = api_fetch_recent_matches(&settings, 10).await?;
+    // On a fresh install with no matches, the /recentMatches endpoint may return empty
+    // if the player's profile hasn't been indexed on OpenDota yet. Fall back to the
+    // more reliable /matches endpoint used by backfill.
+    let db_is_empty = {
+        let conn = get_db_conn()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+            .map_err(|e| format!("Failed to count matches: {}", e))?;
+        count == 0
+    };
+
+    let matches = if db_is_empty {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        api_fetch_matches_before(&settings, now, 20).await?
+    } else {
+        api_fetch_recent_matches(&settings, 20).await?
+    };
 
     // Initialize database
     let conn = get_db_conn()?;
