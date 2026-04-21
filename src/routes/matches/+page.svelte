@@ -11,6 +11,7 @@
   import { _ } from "svelte-i18n";
   import { pqs, initQueue, enqueueParse, isPendingError } from "$lib/parse-queue.svelte.js";
   import { goto } from "$app/navigation";
+  import SkeletonLine from "$lib/SkeletonLine.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -478,7 +479,22 @@
   </div>
 
   {#if isLoading}
-    <div class="loading-state">{$_('matches.loading')}</div>
+    <div class="skeleton-rows">
+      {#each Array(6) as _}
+        <div class="skeleton-match-row">
+          <div class="skeleton-hero-icon"></div>
+          <div class="skeleton-match-info">
+            <SkeletonLine width="110px" height="13px" />
+            <div class="skeleton-match-meta">
+              <SkeletonLine width="40px" height="11px" />
+              <SkeletonLine width="50px" height="11px" />
+              <SkeletonLine width="60px" height="11px" />
+            </div>
+          </div>
+          <SkeletonLine width="52px" height="13px" />
+        </div>
+      {/each}
+    </div>
   {:else if matches.length === 0}
     <div class="empty-state">{$_('matches.empty')}</div>
   {:else}
@@ -930,6 +946,51 @@
       text-align: center;
       line-height: 1.2;
     }
+  }
+
+  .skeleton-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .skeleton-match-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .skeleton-hero-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--border) 50%, var(--bg-elevated) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    flex-shrink: 0;
+  }
+
+  .skeleton-match-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .skeleton-match-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 
   .empty-state {

@@ -356,6 +356,121 @@
     };
   });
 
+  // Trend chart: all filtered games over time, with rolling average + goal line
+  let trendChartConfig = $derived.by(() => {
+    const data = [...filteredData].sort((a, b) => a.start_time - b.start_time);
+    if (!goal || data.length < 2) return null;
+
+    const isItemTiming = goal.metric === 'ItemTiming';
+    const fmt = /** @param {number} v */ (v) => isItemTiming ? formatSeconds(v) : String(v);
+    const window = 5;
+    const rollingAvg = data.map((_, i) => {
+      const slice = data.slice(Math.max(0, i - window + 1), i + 1);
+      return Math.round(slice.reduce((s, d) => s + d.value, 0) / slice.length);
+    });
+
+    const goalLinePlugin = {
+      id: 'trendGoalLine',
+      /** @param {import('chart.js').Chart} chart */
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        const yScale = chart.scales.y;
+        const xScale = chart.scales.x;
+        const y = yScale.getPixelForValue(goal.target_value);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(240,180,41,0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xScale.left, y);
+        ctx.lineTo(xScale.right, y);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(240,180,41,0.9)';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`Goal: ${fmt(goal.target_value)}`, xScale.right - 4, y - 4);
+        ctx.restore();
+      }
+    };
+
+    return {
+      type: 'line',
+      plugins: [goalLinePlugin],
+      data: {
+        labels: data.map(d => formatDate(d.start_time)),
+        datasets: [
+          {
+            label: 'Per game',
+            data: data.map(d => d.value),
+            borderColor: 'transparent',
+            pointBackgroundColor: data.map(d => d.achieved ? 'rgba(74,222,128,0.8)' : 'rgba(248,113,113,0.65)'),
+            pointBorderColor: data.map(d => d.achieved ? 'rgba(74,222,128,1)' : 'rgba(248,113,113,1)'),
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0,
+          },
+          {
+            label: `${window}-game avg`,
+            data: rollingAvg,
+            borderColor: 'rgba(240,180,41,0.85)',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (/** @type {any} */ ctx) => {
+                if (ctx.datasetIndex === 0) {
+                  const d = data[ctx.dataIndex];
+                  return `${fmt(d.value)} (${d.achieved ? '✓' : '✗'})`;
+                }
+                return `${window}-game avg: ${fmt(ctx.parsed.y)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#726558', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+            grid: { color: 'rgba(255,200,80,0.06)' },
+          },
+          y: {
+            ticks: { color: '#726558', font: { size: 11 },
+              callback: /** @param {any} v */ (v) => fmt(v),
+            },
+            grid: { color: 'rgba(255,200,80,0.08)' },
+          },
+        },
+      },
+    };
+  });
+
+  // Success rates for different time windows
+  let successRates = $derived.by(() => {
+    if (!filteredData.length) return null;
+    const now = Date.now() / 1000;
+    const windows = [
+      { label: 'Last 7d',  cutoff: now - 7 * 86400 },
+      { label: 'Last 30d', cutoff: now - 30 * 86400 },
+      { label: 'All time', cutoff: 0 },
+    ];
+    return windows.map(w => {
+      const games = filteredData.filter(d => d.start_time >= w.cutoff);
+      if (games.length === 0) return { label: w.label, rate: null, total: 0 };
+      const achieved = games.filter(d => d.achieved).length;
+      return { label: w.label, rate: Math.round((achieved / games.length) * 100), total: games.length };
+    }).filter(w => w.total > 0);
+  });
+
   let bannerDismissed = $state(false);
   let hoveredDot = $state(/** @type {any} */ (null));
 
@@ -937,6 +1052,35 @@
         </div>
       {/if}
     </section>
+
+    <!-- Trend Section -->
+    {#if trendChartConfig}
+      <section class="trend-section">
+        <h2>Performance Trend</h2>
+
+        {#if successRates && successRates.length > 0}
+          <div class="success-rate-chips">
+            {#each successRates as w}
+              {@const r = w.rate ?? 0}
+              <div class="rate-chip" class:rate-good={r >= 75} class:rate-warn={r >= 50 && r < 75} class:rate-bad={r < 50}>
+                <span class="rate-label">{w.label}</span>
+                <span class="rate-value">{r}%</span>
+                <span class="rate-count">({w.total}g)</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="trend-legend">
+          <span class="tl-dot achieved"></span><span class="tl-text">Achieved</span>
+          <span class="tl-dot failed"></span><span class="tl-text">Missed</span>
+          <span class="tl-line avg"></span><span class="tl-text">5-game avg</span>
+          <span class="tl-line goal"></span><span class="tl-text">Goal</span>
+        </div>
+
+        <Chart config={trendChartConfig} height="260px" />
+      </section>
+    {/if}
 
     <!-- Statistics Section -->
     <section class="stats-section">
@@ -1921,4 +2065,79 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* Trend section */
+  .trend-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+
+  .trend-section h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    margin: 0 0 14px;
+  }
+
+  .success-rate-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .rate-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .rate-chip.rate-good { border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.08); }
+  .rate-chip.rate-warn { border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.08); }
+  .rate-chip.rate-bad  { border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+
+  .rate-label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+  .rate-value { color: var(--text-primary); font-size: 14px; }
+  .rate-count { color: var(--text-muted); font-size: 11px; }
+
+  .trend-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .tl-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .tl-dot.achieved { background: rgba(74,222,128,0.9); }
+  .tl-dot.failed   { background: rgba(248,113,113,0.9); }
+
+  .tl-line {
+    display: inline-block;
+    width: 18px; height: 2px;
+  }
+  .tl-line.avg  { background: rgba(240,180,41,0.85); }
+  .tl-line.goal { background: rgba(240,180,41,0.5); border-top: 2px dashed rgba(240,180,41,0.8); height: 0; }
+
+  .tl-text { margin-left: -6px; }
 </style>

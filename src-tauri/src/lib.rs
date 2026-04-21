@@ -2693,6 +2693,153 @@ async fn background_parse_loop(app: tauri::AppHandle) {
 
 // ── end Background match parser ───────────────────────────────────────────────
 
+// ── Performance Journal ───────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+struct JournalEntry {
+    match_id: i64,
+    hero_id: i32,
+    start_time: i64,
+    metric_value: f64,
+    kills: i32,
+    deaths: i32,
+    assists: i32,
+    gold_per_min: i32,
+    xp_per_min: i32,
+    hero_damage: i32,
+    radiant_win: bool,
+    player_slot: i32,
+    game_mode: i32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct PerformanceJournal {
+    top: Vec<JournalEntry>,
+    bottom: Vec<JournalEntry>,
+}
+
+/// Return the top and bottom N matches for a given performance metric.
+///
+/// `metric` may be one of: `kda`, `gpm`, `xpm`, `damage`, `deaths`, `lh10`.
+/// `hero_id` filters to a specific hero when set.
+/// `limit` controls how many entries appear in each of the `top` / `bottom` lists.
+#[tauri::command]
+fn get_performance_journal(
+    metric: String,
+    hero_id: Option<i32>,
+    limit: usize,
+) -> Result<PerformanceJournal, String> {
+    let conn = get_db_conn().map_err(|e| format!("DB connection error: {}", e))?;
+
+    // Build the metric expression and whether "low = good" (deaths).
+    let (metric_expr, low_is_best, use_lh10): (&str, bool, bool) = match metric.as_str() {
+        "kda"    => ("CAST(m.kills + m.assists AS REAL) / MAX(1.0, CAST(m.deaths AS REAL))", false, false),
+        "gpm"    => ("CAST(m.gold_per_min AS REAL)", false, false),
+        "xpm"    => ("CAST(m.xp_per_min AS REAL)", false, false),
+        "damage" => ("CAST(m.hero_damage AS REAL)", false, false),
+        "deaths" => ("CAST(m.deaths AS REAL)", true, false),
+        "lh10"   => ("CAST(mc.last_hits AS REAL)", false, true),
+        other    => return Err(format!("Unknown metric: {}", other)),
+    };
+
+    let hero_filter = if hero_id.is_some() { "AND m.hero_id = ?2" } else { "" };
+
+    let join_clause = if use_lh10 {
+        "INNER JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = 10"
+    } else {
+        ""
+    };
+
+    // For "top": high metric = best → DESC (unless deaths where low = best → ASC).
+    let (top_order, bottom_order) = if low_is_best {
+        ("ASC", "DESC")
+    } else {
+        ("DESC", "ASC")
+    };
+
+    let limit_i64 = limit as i64;
+
+    let build_query = |order: &str| -> String {
+        format!(
+            "SELECT m.match_id, m.hero_id, m.start_time,
+                    {metric} AS metric_value,
+                    m.kills, m.deaths, m.assists,
+                    m.gold_per_min, m.xp_per_min, m.hero_damage,
+                    m.radiant_win, m.player_slot, m.game_mode
+             FROM matches m
+             {join}
+             WHERE 1=1 {hero_f}
+             ORDER BY metric_value {ord}
+             LIMIT ?1",
+            metric = metric_expr,
+            join = join_clause,
+            hero_f = hero_filter,
+            ord = order,
+        )
+    };
+
+    let fetch_entries = |sql: &str| -> Result<Vec<JournalEntry>, String> {
+        let mut stmt = conn
+            .prepare(sql)
+            .map_err(|e| format!("DB prepare error: {}", e))?;
+
+        let rows: Vec<JournalEntry> = if let Some(hid) = hero_id {
+            stmt.query_map(rusqlite::params![limit_i64, hid], |row| {
+                Ok(JournalEntry {
+                    match_id:     row.get(0)?,
+                    hero_id:      row.get(1)?,
+                    start_time:   row.get(2)?,
+                    metric_value: row.get(3)?,
+                    kills:        row.get(4)?,
+                    deaths:       row.get(5)?,
+                    assists:      row.get(6)?,
+                    gold_per_min: row.get(7)?,
+                    xp_per_min:   row.get(8)?,
+                    hero_damage:  row.get(9)?,
+                    radiant_win:  row.get::<_, i32>(10)? != 0,
+                    player_slot:  row.get(11)?,
+                    game_mode:    row.get(12)?,
+                })
+            })
+            .map_err(|e| format!("DB query error: {}", e))?
+            .filter_map(|r: rusqlite::Result<JournalEntry>| r.ok())
+            .collect()
+        } else {
+            stmt.query_map(rusqlite::params![limit_i64], |row| {
+                Ok(JournalEntry {
+                    match_id:     row.get(0)?,
+                    hero_id:      row.get(1)?,
+                    start_time:   row.get(2)?,
+                    metric_value: row.get(3)?,
+                    kills:        row.get(4)?,
+                    deaths:       row.get(5)?,
+                    assists:      row.get(6)?,
+                    gold_per_min: row.get(7)?,
+                    xp_per_min:   row.get(8)?,
+                    hero_damage:  row.get(9)?,
+                    radiant_win:  row.get::<_, i32>(10)? != 0,
+                    player_slot:  row.get(11)?,
+                    game_mode:    row.get(12)?,
+                })
+            })
+            .map_err(|e| format!("DB query error: {}", e))?
+            .filter_map(|r: rusqlite::Result<JournalEntry>| r.ok())
+            .collect()
+        };
+        Ok(rows)
+    };
+
+    let top_sql    = build_query(top_order);
+    let bottom_sql = build_query(bottom_order);
+
+    let top    = fetch_entries(&top_sql)?;
+    let bottom = fetch_entries(&bottom_sql)?;
+
+    Ok(PerformanceJournal { top, bottom })
+}
+
+// ── end Performance Journal ───────────────────────────────────────────────────
+
 // DSN baked in at compile time from the SENTRY_DSN env var (via build.rs).
 const SENTRY_DSN: &str = env!("SENTRY_DSN");
 
@@ -2841,7 +2988,8 @@ pub fn run() {
             refresh_benchmarks,
             has_benchmarks,
             get_user_lh_history,
-            save_min_benchmark_games
+            save_min_benchmark_games,
+            get_performance_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

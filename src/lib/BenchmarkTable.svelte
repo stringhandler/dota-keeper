@@ -316,4 +316,20 @@
     font-style: italic;
     color: var(--text-muted);
   }
+
+  @media (max-width: 640px) {
+    .medal-badge-row {
+      flex-wrap: wrap;
+    }
+
+    .benchmark-table {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .bt-header,
+    .bt-row {
+      min-width: 480px;
+    }
+  }
 </style>
