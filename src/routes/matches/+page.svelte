@@ -10,6 +10,8 @@
   import { pendingCheckinStore } from "$lib/checkin-store.js";
   import { _ } from "svelte-i18n";
   import { pqs, initQueue, enqueueParse, isPendingError } from "$lib/parse-queue.svelte.js";
+  import { goto } from "$app/navigation";
+  import SkeletonLine from "$lib/SkeletonLine.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -25,6 +27,7 @@
   let unlistenMatchStateChanged = null;
   /** @type {ReturnType<typeof setInterval> | null} */
   let autoRefreshTimer = null;
+  let isMobile = $state(false);
 
   // Pull-to-refresh
   let pullStartY = $state(0);
@@ -84,6 +87,10 @@
   });
 
   onMount(async () => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    isMobile = mq.matches;
+    mq.addEventListener('change', (e) => { isMobile = e.matches; });
+
     await loadData();
 
     unlistenMatchStateChanged = await listen("match-state-changed", (event) => {
@@ -439,6 +446,7 @@
 
   <!-- FILTER BAR -->
   <div class="match-filters-wrap">
+    <div class="filter-chips-container">
     <div class="match-filters">
       <button class="filter-chip" class:active={activeFilter === 'all'} onclick={() => setFilter('all')}>{$_('matches.filter_all')}</button>
       <button class="filter-chip" class:active={activeFilter === 'wins'} onclick={() => setFilter('wins')}>{$_('matches.filter_wins')}</button>
@@ -459,6 +467,7 @@
         {/each}
       {/if}
     </div>
+    </div>
     {#if matches.some(m => (m.parse_state === "Unparsed" || m.parse_state === "Failed") && !pqs.active.has(m.match_id) && !pqs.queue.includes(m.match_id) && !pqs.countdowns.has(m.match_id))}
       <button class="btn btn-secondary parse-all-btn" onclick={handleParseAll}>
         {$_('matches.parse_all')}
@@ -470,7 +479,22 @@
   </div>
 
   {#if isLoading}
-    <div class="loading-state">{$_('matches.loading')}</div>
+    <div class="skeleton-rows">
+      {#each Array(6) as _}
+        <div class="skeleton-match-row">
+          <div class="skeleton-hero-icon"></div>
+          <div class="skeleton-match-info">
+            <SkeletonLine width="110px" height="13px" />
+            <div class="skeleton-match-meta">
+              <SkeletonLine width="40px" height="11px" />
+              <SkeletonLine width="50px" height="11px" />
+              <SkeletonLine width="60px" height="11px" />
+            </div>
+          </div>
+          <SkeletonLine width="52px" height="13px" />
+        </div>
+      {/each}
+    </div>
   {:else if matches.length === 0}
     <div class="empty-state">{$_('matches.empty')}</div>
   {:else}
@@ -490,7 +514,7 @@
       </div>
 
       {#each getPaginatedMatches() as match}
-        <div class="match-row" onclick={() => showGoalDetails(match)}>
+        <div class="match-row" onclick={() => isMobile ? goto(`/matches/${match.match_id}`) : showGoalDetails(match)}>
           <!-- Match ID + actions -->
           <div class="match-id-cell">
             <span class="match-id-text">{match.match_id}</span>
@@ -755,6 +779,11 @@
     flex-wrap: wrap;
   }
 
+  .filter-chips-container {
+    flex: 1;
+    min-width: 0;
+  }
+
   .match-filters {
     display: flex;
     gap: 8px;
@@ -770,6 +799,19 @@
       flex-direction: column;
       align-items: stretch;
       gap: 10px;
+    }
+
+    .filter-chips-container {
+      position: relative;
+    }
+    .filter-chips-container::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 40px;
+      background: linear-gradient(to right, transparent, var(--bg-base, #0d1117));
+      pointer-events: none;
+      z-index: 1;
     }
 
     .match-filters {
@@ -904,6 +946,51 @@
       text-align: center;
       line-height: 1.2;
     }
+  }
+
+  .skeleton-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .skeleton-match-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .skeleton-hero-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--border) 50%, var(--bg-elevated) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    flex-shrink: 0;
+  }
+
+  .skeleton-match-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .skeleton-match-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 
   .empty-state {

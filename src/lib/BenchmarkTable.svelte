@@ -79,8 +79,8 @@
     </div>
 
     {#if !compact}
-      <!-- Full table -->
-      <div class="benchmark-table">
+      <!-- Desktop table -->
+      <div class="benchmark-table desktop-only">
         <div class="bt-header">
           <div class="bt-col bracket-col">Bracket</div>
           <div class="bt-col num-col">Mean</div>
@@ -111,6 +111,40 @@
               {/if}
             </div>
             <div class="bt-col num-col sample-col" class:low-data-text={row.low_data}>{row.sample_size}</div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Mobile cards -->
+      <div class="mobile-cards mobile-only">
+        {#each benchmarkData.rows as row}
+          <div class="mc-row" class:best-fit={row.is_best_fit} class:low-data={row.low_data} style={row.is_best_fit ? `border-left-color: ${getBracketColor(row.bracket)}` : ''}>
+            <div class="mc-bracket">
+              <img class="bracket-medal-icon" src={getMedalIconUrl(row.bracket)} alt={row.bracket} />
+              <span class="mc-bracket-name">{capitalise(row.bracket)}</span>
+              {#if row.low_data}<span class="low-data-badge">Low data</span>{/if}
+            </div>
+            <div class="mc-stats">
+              <div class="mc-stat">
+                <span class="mc-label">Mean</span>
+                <span class="mc-value">{row.mean.toFixed(1)}</span>
+              </div>
+              <div class="mc-stat">
+                <span class="mc-label">SD</span>
+                <span class="mc-value">{row.std_dev.toFixed(1)}</span>
+              </div>
+              <div class="mc-stat">
+                <span class="mc-label">z</span>
+                <span class="mc-value" class:positive={row.z_score > 0} class:negative={row.z_score < 0}>{formatZ(row.z_score)}</span>
+              </div>
+              <div class="mc-stat">
+                <span class="mc-label">%ile</span>
+                <span class="mc-value" class:positive={row.z_score > 0} class:negative={row.z_score < 0}>{zToPercentile(row.z_score).toFixed(0)}%</span>
+              </div>
+            </div>
+            <div class="mc-interp" class:interp-great={row.z_score > 1.5} class:interp-good={row.z_score > 0.5 && row.z_score <= 1.5} class:interp-ok={row.z_score > 0.15 && row.z_score <= 0.5} class:interp-bad={row.z_score <= -0.5}>
+              {row.interpretation}
+            </div>
           </div>
         {/each}
       </div>
@@ -315,5 +349,92 @@
     font-size: 12px;
     font-style: italic;
     color: var(--text-muted);
+  }
+
+  .desktop-only { display: flex; }
+  .mobile-only  { display: none; }
+
+  /* Mobile card layout */
+  .mobile-cards {
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .mc-row {
+    background: var(--bg-surface);
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mc-row.best-fit {
+    background: var(--bg-elevated);
+    border-left-width: 3px;
+  }
+
+  .mc-row.low-data { opacity: 0.7; }
+
+  .mc-bracket {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mc-bracket-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+  }
+
+  .mc-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .mc-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .mc-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .mc-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .mc-interp {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .mc-interp.interp-great { color: var(--green); font-weight: 700; }
+  .mc-interp.interp-good  { color: var(--teal);  font-weight: 600; }
+  .mc-interp.interp-ok    { color: var(--text-secondary); }
+  .mc-interp.interp-bad   { color: var(--red); }
+
+  @media (max-width: 640px) {
+    .medal-badge-row {
+      flex-wrap: wrap;
+    }
+
+    .desktop-only { display: none; }
+    .mobile-only  { display: flex; }
   }
 </style>
