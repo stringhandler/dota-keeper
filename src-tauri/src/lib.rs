@@ -1317,15 +1317,32 @@ const BENCHMARK_CSV_URL: &str =
 /// In debug builds, reads from the local repo file instead of fetching over HTTP.
 async fn fetch_and_store_benchmarks() -> Result<String, String> {
     let body = if cfg!(debug_assertions) {
-        // In dev, read from the local repo checkout
+        // In dev, prefer the local repo file so we don't hit the network on every run.
+        // If it doesn't exist (e.g. running on a mobile device), fall through to the network.
         let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("meta")
             .join("benchmarks")
             .join("hero_benchmarks.csv");
-        tracing::info!(target: "dota_keeper", "Loading benchmarks from local file: {}", local_path.display());
-        std::fs::read_to_string(&local_path)
-            .map_err(|e| format!("Failed to read local benchmark CSV at {}: {}", local_path.display(), e))?
+        if local_path.exists() {
+            tracing::info!(target: "dota_keeper", "Loading benchmarks from local file: {}", local_path.display());
+            std::fs::read_to_string(&local_path)
+                .map_err(|e| format!("Failed to read local benchmark CSV at {}: {}", local_path.display(), e))?
+        } else {
+            tracing::info!(target: "dota_keeper", "Local benchmark CSV not found, fetching from GitHub");
+            let client = reqwest::Client::new();
+            let resp = client
+                .get(BENCHMARK_CSV_URL)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch benchmarks: {}", e))?;
+            if !resp.status().is_success() {
+                return Err(format!("Benchmark fetch returned HTTP {}", resp.status()));
+            }
+            resp.text()
+                .await
+                .map_err(|e| format!("Failed to read benchmark response: {}", e))?
+        }
     } else {
         let client = reqwest::Client::new();
         let resp = client
