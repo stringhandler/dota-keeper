@@ -65,3 +65,6 @@ Where creating a release, you need to update package.json, src-tauri/Cargo.toml,
 - [ ] Goal definition system
 - [ ] Analysis engine
 - [ ] User interface
+
+
+
