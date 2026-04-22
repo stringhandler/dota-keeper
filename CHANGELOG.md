@@ -5,6 +5,24 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-22
+
+### Added
+- **Hero Percentile on Match Detail**: The match detail page now shows your hero-specific performance percentile, letting you see at a glance how your stats rank relative to other players on that hero.
+- **Performance Journal**: New Journal page for logging reflections and notes on your sessions, accessible from the bottom navigation.
+- **Skeleton Loaders**: Loading skeleton placeholders are shown while match and goal data is fetching, reducing perceived load time.
+- **Goal History Trend**: Goal detail pages now show a history trend chart to visualise your improvement over time.
+- **Automated Android Release**: Android builds are now published automatically via CI on release.
+
+### Fixed
+- **Last Hit Graph on Match Detail**: The last-hits/denies chart is now correctly displayed on the match detail page (was previously hidden).
+- **Benchmark Table on Mobile**: Hero benchmark comparison table now renders correctly on small screens with proper column sizing and data display.
+- **Mobile Match Detail Accessibility**: Match detail page was unreachable on mobile; navigation has been corrected.
+- **Mobile Match Filter Overflow**: Filter chips on the matches page no longer overflow the screen on narrow displays.
+- **No-Matches Refresh on First Run**: App now correctly triggers a match refresh prompt when the match list is empty on first launch.
+- **Stratz Last Hit Minute Offset**: Fixed an off-by-one error in Stratz API last-hit data that caused per-minute values to appear one minute early.
+- **Create Goal from Suggestion**: Creating a goal directly from a suggestion card now works correctly.
+
 ## [1.0.0] - 2026-04-07
 
 ### Added
