@@ -199,11 +199,12 @@
 
   async function loadMatchBenchmark() {
     if (!match || csData.length === 0) { matchBenchmark = null; return; }
+    const cs10 = csData.find((/** @type {any} */ d) => d.minute === 10);
+    // Always load personal history when we have minute-10 data, even if benchmarks aren't available
+    if (cs10) await loadPersonalLhHistory();
     try {
       const hasBench = await invoke("has_benchmarks");
       if (!hasBench) { matchBenchmark = null; return; }
-      // Get LH at minute 10
-      const cs10 = csData.find((/** @type {any} */ d) => d.minute === 10);
       if (!cs10) { matchBenchmark = null; return; }
       const mode = match.game_mode === 23 ? "turbo" : "ranked";
       matchBenchmark = await invoke("get_hero_benchmark", {
@@ -218,8 +219,6 @@
       console.error("Failed to load match benchmark:", e);
       matchBenchmark = null;
     }
-    // Load personal LH history alongside benchmark (both need csData)
-    await loadPersonalLhHistory();
   }
 
   async function loadComparisons() {
