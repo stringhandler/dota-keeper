@@ -2259,40 +2259,135 @@ fn percent_decode(input: &str) -> String {
 }
 
 /// Start a Steam OpenID login flow.
-/// Binds a temporary local HTTP server, returns the Steam authorisation URL.
+/// On desktop: binds a temporary local HTTP server, returns the Steam authorisation URL.
+/// On Android: returns a Steam URL with the hosted relay page as return_to; the relay
+/// redirects the browser back to the app via the dotakeeper:// deep link scheme.
 /// When Steam redirects back, the callback is verified and a `steam-login-complete`
 /// event is emitted with `{steam_id}` on success or `{error}` on failure.
 #[tauri::command]
 async fn start_steam_login(app: tauri::AppHandle) -> Result<String, String> {
-    use tokio::net::TcpListener;
+    #[cfg(target_os = "android")]
+    {
+        let return_to = "https://dotakeeper.com/steam-callback/";
+        let realm = "https://dotakeeper.com/";
+        let steam_url = format!(
+            "https://steamcommunity.com/openid/login\
+             ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
+             &openid.mode=checkid_setup\
+             &openid.return_to={}\
+             &openid.realm={}\
+             &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
+             &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
+            percent_encode(return_to),
+            percent_encode(realm),
+        );
+        return Ok(steam_url);
+    }
 
-    let listener = TcpListener::bind("127.0.0.1:0")
+    #[cfg(not(target_os = "android"))]
+    {
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("Failed to bind port: {e}"))?;
+
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("Failed to get local address: {e}"))?
+            .port();
+
+        let return_to = format!("http://127.0.0.1:{port}/callback");
+        let realm = format!("http://127.0.0.1:{port}");
+
+        let steam_url = format!(
+            "https://steamcommunity.com/openid/login\
+             ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
+             &openid.mode=checkid_setup\
+             &openid.return_to={}\
+             &openid.realm={}\
+             &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
+             &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
+            percent_encode(&return_to),
+            percent_encode(&realm),
+        );
+
+        tokio::spawn(handle_steam_callback(listener, app));
+
+        Ok(steam_url)
+    }
+}
+
+/// Handle the Steam OpenID callback arriving via the dotakeeper:// deep link on Android.
+/// Called from the frontend with the raw query string from dotakeeper://auth?...
+#[tauri::command]
+async fn verify_steam_deep_link(query_string: String, app: tauri::AppHandle) -> Result<(), String> {
+    let mut params: Vec<(String, String)> = Vec::new();
+    let mut claimed_id: Option<String> = None;
+    let mut openid_mode: Option<String> = None;
+
+    for pair in query_string.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let key = percent_decode(k);
+            let val = percent_decode(v);
+            if key == "openid.claimed_id" {
+                claimed_id = Some(val.clone());
+            }
+            if key == "openid.mode" {
+                openid_mode = Some(val.clone());
+            }
+            params.push((key, val));
+        }
+    }
+
+    if openid_mode.as_deref() != Some("id_res") {
+        let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Login cancelled"}));
+        return Ok(());
+    }
+
+    let steam_id = match claimed_id
+        .as_deref()
+        .and_then(|id| id.strip_prefix("https://steamcommunity.com/openid/id/"))
+        .map(|s| s.trim().to_string())
+    {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Could not extract Steam ID"}));
+            return Ok(());
+        }
+    };
+
+    let verify_params: Vec<(String, String)> = params
+        .into_iter()
+        .map(|(k, v)| {
+            if k == "openid.mode" {
+                (k, "check_authentication".to_string())
+            } else {
+                (k, v)
+            }
+        })
+        .collect();
+
+    let verified = match reqwest::Client::new()
+        .post("https://steamcommunity.com/openid/login")
+        .form(&verify_params)
+        .send()
         .await
-        .map_err(|e| format!("Failed to bind port: {e}"))?;
+    {
+        Ok(resp) => resp.text().await.unwrap_or_default().contains("is_valid:true"),
+        Err(e) => {
+            eprintln!("Steam OpenID verification request failed: {e}");
+            false
+        }
+    };
 
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("Failed to get local address: {e}"))?
-        .port();
+    if verified {
+        let _ = app.emit("steam-login-complete", serde_json::json!({"steam_id": steam_id}));
+    } else {
+        let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Steam verification failed"}));
+    }
 
-    let return_to = format!("http://127.0.0.1:{port}/callback");
-    let realm = format!("http://127.0.0.1:{port}");
-
-    let steam_url = format!(
-        "https://steamcommunity.com/openid/login\
-         ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
-         &openid.mode=checkid_setup\
-         &openid.return_to={}\
-         &openid.realm={}\
-         &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
-         &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
-        percent_encode(&return_to),
-        percent_encode(&realm),
-    );
-
-    tokio::spawn(handle_steam_callback(listener, app));
-
-    Ok(steam_url)
+    Ok(())
 }
 
 async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::AppHandle) {
@@ -2921,7 +3016,8 @@ pub fn run() {
             });
             Ok(())
         })
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init());
 
     // tauri-plugin-updater does not support Android/iOS
     #[cfg(desktop)]
@@ -2978,6 +3074,7 @@ pub fn run() {
             get_weekly_challenge_progress_cmd,
             get_challenge_history_cmd,
             start_steam_login,
+            verify_steam_deep_link,
             save_mental_health_enabled,
             save_checkin_frequency,
             mark_mental_health_intro_shown,

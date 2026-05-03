@@ -24,6 +24,7 @@
   import { setupI18n, setLocale, resolveLocale, locale } from "$lib/i18n.js";
   import { _ } from "svelte-i18n";
   import '../app.css';
+  import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
   // Initialise i18n once on app load
   setupI18n();
@@ -74,6 +75,18 @@
     if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
       showToast("Feedback is not configured. Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY.", "error", 8000);
     }
+
+    // Handle Steam deep link callback on Android (dotakeeper://auth?openid.*)
+    try {
+      await onOpenUrl(async (/** @type {string[]} */ urls) => {
+        for (const url of urls) {
+          if (url.startsWith('dotakeeper://auth')) {
+            const queryString = url.split('?')[1] ?? '';
+            await invoke('verify_steam_deep_link', { queryString });
+          }
+        }
+      });
+    } catch (_) {}
 
     // Check analytics consent on every startup
     const consent = await getAnalyticsConsent();
