@@ -43,6 +43,8 @@
   let isUpdating = $state(false);
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
+  /** Query strings of Steam deep links already processed this load (single-use nonces). */
+  const processedDeepLinks = new Set();
   let showFeedbackModal = $state(false);
   let appVersion = $state("");
   let showWhatsNew = $state(false);
@@ -81,18 +83,45 @@
       showToast("Feedback is not configured. Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY.", "error", 8000);
     }
 
-    // Handle Steam deep link callback on Android (dotakeeper://auth?openid.*)
+    // Persistent Steam-login completion path. This MUST live at the layout level
+    // (not inside handleSteamLogin) because on Android the app process is often
+    // killed while the external browser is foregrounded — the WebView reloads on
+    // return, so any listener registered before the redirect is gone. onMount runs
+    // again on reload, so registering here guarantees the callback is handled.
+
+    // Desktop: handle_steam_callback emits this event with {steam_id} / {error}.
+    listen("steam-login-complete", async (event) => {
+      steamLoginPending = false;
+      const payload = /** @type {{steam_id?: string, error?: string}} */ (event.payload);
+      if (payload.steam_id) {
+        try {
+          await saveAndLogin(payload.steam_id);
+        } catch (e) {
+          error = `Failed to save Steam ID: ${e}`;
+        }
+      } else if (payload.error) {
+        error = payload.error;
+      }
+    });
+
+    // Android: handle the Steam deep link callback (dotakeeper://auth?openid.*).
     // Uses listen() directly because @tauri-apps/plugin-deep-link has "browser":null,
     // causing Vite to emit an empty module for WebView builds.
     listen('deep-link://new-url', async (event) => {
       const urls = /** @type {(string|null)[]} */ (event.payload);
       for (const url of urls) {
-        if (typeof url === 'string' && url.startsWith('dotakeeper://auth')) {
-          const queryString = url.split('?')[1] ?? '';
-          await invoke('verify_steam_deep_link', { queryString });
-        }
+        await handleSteamDeepLink(url);
       }
     });
+
+    // Cold start: the launch deep link may have arrived before the listener above
+    // was attached. Drain any pending launch URL the app was opened with.
+    try {
+      const pending = /** @type {string[]} */ (await invoke('get_pending_deep_links'));
+      for (const url of pending) {
+        await handleSteamDeepLink(url);
+      }
+    } catch (_) {}
 
     // Check analytics consent on every startup
     const consent = await getAnalyticsConsent();
@@ -174,30 +203,45 @@
     }
   }
 
+  /**
+   * Verify and complete a Steam login from a dotakeeper://auth deep link URL.
+   * Called from both the live `deep-link://new-url` event and the cold-start
+   * drain of pending launch URLs, so it is safe to call with any URL.
+   * @param {string | null} url
+   */
+  async function handleSteamDeepLink(url) {
+    if (typeof url !== 'string' || !url.startsWith('dotakeeper://auth')) return;
+    const queryString = url.split('?')[1] ?? '';
+    // On cold start the same callback can arrive via both the deep-link event and
+    // the pending-link drain. Steam OpenID nonces are single-use, so dedupe to
+    // avoid a second verification failing and clobbering the successful login.
+    if (processedDeepLinks.has(queryString)) return;
+    processedDeepLinks.add(queryString);
+    try {
+      const steamId = /** @type {string | null} */ (
+        await invoke('verify_steam_deep_link', { queryString })
+      );
+      steamLoginPending = false;
+      if (steamId) {
+        await saveAndLogin(steamId);
+      }
+      // steamId === null means the user cancelled — stay on the login screen quietly.
+    } catch (e) {
+      steamLoginPending = false;
+      error = `Steam login failed: ${e}`;
+    }
+  }
+
   async function handleSteamLogin() {
     steamLoginPending = true;
     error = "";
-    /** @type {(() => void) | undefined} */
-    let unlisten;
     try {
       const url = await invoke("start_steam_login");
-      unlisten = await listen("steam-login-complete", async (event) => {
-        unlisten?.();
-        steamLoginPending = false;
-        const payload = event.payload;
-        if (payload.steam_id) {
-          try {
-            await saveAndLogin(payload.steam_id);
-          } catch (e) {
-            error = `Failed to save Steam ID: ${e}`;
-          }
-        } else {
-          error = payload.error || "Steam login failed";
-        }
-      });
+      // Completion is handled by the persistent listeners registered in onMount
+      // (the desktop `steam-login-complete` event and the Android deep-link path),
+      // which survive the WebView reload that Android may trigger on return.
       await openUrl(url);
     } catch (e) {
-      unlisten?.();
       steamLoginPending = false;
       error = `Steam login failed: ${e}`;
     }

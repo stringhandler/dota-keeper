@@ -2320,8 +2320,15 @@ async fn start_steam_login(app: tauri::AppHandle) -> Result<String, String> {
 
 /// Handle the Steam OpenID callback arriving via the dotakeeper:// deep link on Android.
 /// Called from the frontend with the raw query string from dotakeeper://auth?...
+///
+/// Returns `Ok(Some(steam_id))` when verification succeeds, `Ok(None)` when the login
+/// was cancelled, and `Err(message)` when verification fails. The frontend uses the
+/// returned value directly rather than relying on an emitted event, because on Android
+/// the app process is frequently killed while the external browser is in the foreground:
+/// the WebView reloads on return, so any event listener registered before the redirect
+/// no longer exists by the time this runs.
 #[tauri::command]
-async fn verify_steam_deep_link(query_string: String, app: tauri::AppHandle) -> Result<(), String> {
+async fn verify_steam_deep_link(query_string: String) -> Result<Option<String>, String> {
     let mut params: Vec<(String, String)> = Vec::new();
     let mut claimed_id: Option<String> = None;
     let mut openid_mode: Option<String> = None;
@@ -2340,9 +2347,9 @@ async fn verify_steam_deep_link(query_string: String, app: tauri::AppHandle) -> 
         }
     }
 
+    // Steam sends mode=id_res on success, mode=cancel on cancellation.
     if openid_mode.as_deref() != Some("id_res") {
-        let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Login cancelled"}));
-        return Ok(());
+        return Ok(None);
     }
 
     let steam_id = match claimed_id
@@ -2351,10 +2358,7 @@ async fn verify_steam_deep_link(query_string: String, app: tauri::AppHandle) -> 
         .map(|s| s.trim().to_string())
     {
         Some(id) if !id.is_empty() => id,
-        _ => {
-            let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Could not extract Steam ID"}));
-            return Ok(());
-        }
+        _ => return Err("Could not extract Steam ID".to_string()),
     };
 
     let verify_params: Vec<(String, String)> = params
@@ -2382,12 +2386,31 @@ async fn verify_steam_deep_link(query_string: String, app: tauri::AppHandle) -> 
     };
 
     if verified {
-        let _ = app.emit("steam-login-complete", serde_json::json!({"steam_id": steam_id}));
+        Ok(Some(steam_id))
     } else {
-        let _ = app.emit("steam-login-complete", serde_json::json!({"error": "Steam verification failed"}));
+        Err("Steam verification failed".to_string())
     }
+}
 
-    Ok(())
+/// Return any deep-link URLs the app was launched with (cold start), so the frontend
+/// can complete a Steam login that arrived before its `deep-link://new-url` listener
+/// was attached. Empty on desktop / when there is no pending link.
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn get_pending_deep_links(app: tauri::AppHandle) -> Vec<String> {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link()
+        .get_current()
+        .ok()
+        .flatten()
+        .map(|urls| urls.into_iter().map(|u| u.to_string()).collect())
+        .unwrap_or_default()
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn get_pending_deep_links() -> Vec<String> {
+    Vec::new()
 }
 
 async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::AppHandle) {
@@ -3075,6 +3098,7 @@ pub fn run() {
             get_challenge_history_cmd,
             start_steam_login,
             verify_steam_deep_link,
+            get_pending_deep_links,
             save_mental_health_enabled,
             save_checkin_frequency,
             mark_mental_health_intro_shown,
