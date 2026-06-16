@@ -5,6 +5,21 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-beta.1] - 2026-06-16
+
+### Added
+- **Steam Login on Android**: Steam OpenID authentication now works on Android. Tapping "Sign in with Steam" opens the Steam browser and returns you to the app automatically via a deep link. Cold-start deep link callbacks (received before the listener attached) are now drained and processed on layout mount.
+- **Deep Link Plugin**: Integrated the Tauri deep-link plugin (`tauri-plugin-deep-link`) to handle `dotakeeper://` URI scheme callbacks on Android.
+
+### Changed
+- **Tauri API**: Upgraded `@tauri-apps/api` to 2.11.0 for compatibility with the deep-link plugin.
+
+### Fixed
+- **Android Steam Login Reliability**: Android WebView reloads when returning from an external browser, killing any event listeners registered before the redirect. Steam login completion is now handled by persistent layout-level listeners that survive the reload. On Android, `verify_steam_deep_link` returns the Steam ID directly rather than emitting a window event.
+- **Deep Link Null Pointer (Android)**: Handled deep-link intents in `MainActivity.kt` before the Rust `onNewIntent` to prevent a null pointer crash when the app is cold-started via a deep link.
+- **Loading Screen**: Added a loading timeout safety net and improved UX on the loading screen to prevent the app from appearing stuck on slow devices.
+- **Android WebView Host Policy**: Configured Vite to allow all hosts so the Android WebView and Tauri proxy work correctly in dev and release builds.
+
 ## [0.5.2] - 2026-03-28
 
 ### Added
