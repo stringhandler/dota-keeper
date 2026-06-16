@@ -73,18 +73,24 @@ use database::{
     get_active_weekly_challenge, get_all_goals, get_all_matches, get_challenge_history,
     get_daily_challenge_progress, get_daily_streak, get_db_dir, get_db_conn, get_favorite_hero_ids,
     get_goal_by_id, get_goal_match_data, get_goals_with_daily_progress, get_item_timings_for_match,
-    get_last_hits_analysis, get_match_cs_data, get_matches_with_goals, get_oldest_match_timestamp,
+    get_last_hits_analysis, get_match_cs_data, get_match_networth_data, get_match_xp_data,
+    get_matches_with_goals, get_oldest_match_timestamp,
     get_or_generate_daily_challenge, get_or_generate_hero_suggestion, get_unparsed_matches,
     get_weekly_challenge_options, get_weekly_challenge_progress, init_db, init_shared_db,
-    backfill_match_patches, get_all_patches, insert_goal, insert_item_timing, insert_match,
-    insert_match_cs_data, insert_player_networth,
+    backfill_match_patches, clear_item_timings_for_match, get_all_patches, insert_goal,
+    insert_item_timing, insert_match,
+    insert_match_cs_data, insert_match_xp_data, insert_player_networth,
     match_exists, regenerate_hero_suggestion, reroll_weekly_challenges, set_db_dir,
     skip_weekly_challenge, toggle_hero_favorite, update_goal, update_match_partner_slot,
-    update_match_patch, update_match_role, update_match_state, upsert_patches,
+    update_match_patch, update_match_role, update_match_state, update_match_stats, upsert_patches,
     ChallengeHistoryItem, ChallengeOption, DailyChallenge,
     DailyChallengeProgress, Goal, GoalEvaluation, GoalWithDailyProgress, HeroGoalSuggestion,
-    LastHitsAnalysis, MatchCS, MatchDataPoint, MatchState, MatchWithGoals, NewGoal, NewItemTiming,
+    HeroCsStats, LastHitsAnalysis, MatchCS, MatchDataPoint, MatchNW, MatchState, MatchWithGoals, MatchXP,
+    NewGoal, NewItemTiming,
     PatchInfo, WeeklyChallenge, WeeklyChallengeProgress,
+    upsert_benchmarks, set_benchmark_metadata, get_benchmark_metadata,
+    get_benchmark_comparison, get_user_stat_std_dev, has_benchmark_data,
+    HeroBenchmarkRow, BenchmarkResult, get_user_lh_at_minute_history,
 };
 use serde_json;
 use settings::{set_settings_dir, AnalyticsConsent, Settings};
@@ -904,7 +910,26 @@ struct RefreshResult {
 async fn refresh_matches() -> Result<RefreshResult, String> {
     let settings = Settings::load();
 
-    let matches = api_fetch_recent_matches(&settings, 10).await?;
+    // On a fresh install with no matches, the /recentMatches endpoint may return empty
+    // if the player's profile hasn't been indexed on OpenDota yet. Fall back to the
+    // more reliable /matches endpoint used by backfill.
+    let db_is_empty = {
+        let conn = get_db_conn()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+            .map_err(|e| format!("Failed to count matches: {}", e))?;
+        count == 0
+    };
+
+    let matches = if db_is_empty {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        api_fetch_matches_before(&settings, now, 20).await?
+    } else {
+        api_fetch_recent_matches(&settings, 20).await?
+    };
 
     // Initialize database
     let conn = get_db_conn()?;
@@ -1147,11 +1172,27 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
     let role = player_data.lane_role.unwrap_or(0);
     let _ = update_match_role(&conn, match_id, role);
 
+    // Backfill end-of-game stats that may have been zero when first inserted
+    let _ = update_match_stats(
+        &conn, match_id,
+        player_data.xp_per_min,
+        player_data.gold_per_min,
+        player_data.last_hits,
+        player_data.denies,
+        player_data.hero_damage,
+        player_data.tower_damage,
+        player_data.hero_healing,
+    );
+
     // Store per-minute networth for all players (used by PartnerNetworth goals)
     for p in &detailed_match.players {
         if let Some(nw_t) = &p.gold_t {
             let _ = insert_player_networth(&conn, match_id, p.player_slot, nw_t);
         }
+    }
+    // Store per-minute XP for the player (used for XP/Level charts)
+    if let Some(xp_t) = &player_data.xp_t {
+        let _ = insert_match_xp_data(&conn, match_id, xp_t);
     }
     // Identify and store lane partner slot
     let partner =
@@ -1160,6 +1201,7 @@ async fn parse_match(app: tauri::AppHandle, match_id: i64, steam_id: String) -> 
 
     // Store item purchase timings if available
     if let Some(purchase_log) = &player_data.purchase_log {
+        let _ = clear_item_timings_for_match(&conn, match_id);
         for purchase in purchase_log {
             if let Some(item_id) = items::get_item_id(&purchase.key) {
                 let timing = NewItemTiming { match_id, item_id, timing_seconds: purchase.time };
@@ -1263,6 +1305,337 @@ fn get_last_hits_analysis_data(
 ) -> Result<LastHitsAnalysis, String> {
     let conn = get_db_conn()?;
     get_last_hits_analysis(&conn, time_minutes, window_size, hero_id, game_mode)
+}
+
+// ─── Hero Benchmark commands ──────────────────────────────────────────
+
+const BENCHMARK_CSV_URL: &str =
+    "https://raw.githubusercontent.com/stringhandler/dota-keeper/main/meta/benchmarks/hero_benchmarks.csv";
+
+/// Fetch the hero benchmark CSV from GitHub, parse it, and upsert into the database.
+/// Called on startup (non-blocking) and can also be invoked from the frontend.
+/// In debug builds, reads from the local repo file instead of fetching over HTTP.
+async fn fetch_and_store_benchmarks() -> Result<String, String> {
+    let body = if cfg!(debug_assertions) {
+        // In dev, prefer the local repo file so we don't hit the network on every run.
+        // If it doesn't exist (e.g. running on a mobile device), fall through to the network.
+        let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("meta")
+            .join("benchmarks")
+            .join("hero_benchmarks.csv");
+        if local_path.exists() {
+            tracing::info!(target: "dota_keeper", "Loading benchmarks from local file: {}", local_path.display());
+            std::fs::read_to_string(&local_path)
+                .map_err(|e| format!("Failed to read local benchmark CSV at {}: {}", local_path.display(), e))?
+        } else {
+            tracing::info!(target: "dota_keeper", "Local benchmark CSV not found, fetching from GitHub");
+            let client = reqwest::Client::new();
+            let resp = client
+                .get(BENCHMARK_CSV_URL)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch benchmarks: {}", e))?;
+            if !resp.status().is_success() {
+                return Err(format!("Benchmark fetch returned HTTP {}", resp.status()));
+            }
+            resp.text()
+                .await
+                .map_err(|e| format!("Failed to read benchmark response: {}", e))?
+        }
+    } else {
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(BENCHMARK_CSV_URL)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch benchmarks: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Benchmark fetch returned HTTP {}", resp.status()));
+        }
+
+        resp.text()
+            .await
+            .map_err(|e| format!("Failed to read benchmark response: {}", e))?
+    };
+
+    let rows = parse_benchmark_csv(&body)?;
+    if rows.is_empty() {
+        return Err("Benchmark CSV was empty or contained no valid rows".to_string());
+    }
+
+    let data_date = rows.first().map(|r| r.data_date.clone()).unwrap_or_default();
+
+    let conn = get_db_conn()?;
+    upsert_benchmarks(&conn, &rows)?;
+    set_benchmark_metadata(&conn, "last_fetched", &chrono::Utc::now().to_rfc3339())?;
+    set_benchmark_metadata(&conn, "data_date", &data_date)?;
+
+    tracing::info!(target: "dota_keeper", "Loaded {} benchmark rows (data date: {})", rows.len(), data_date);
+    Ok(data_date)
+}
+
+/// Map Valve internal hero names to hero IDs.
+fn hero_name_to_id(name: &str) -> Option<i32> {
+    let id = match name {
+        "antimage" => 1,
+        "axe" => 2,
+        "bane" => 3,
+        "bloodseeker" => 4,
+        "crystal_maiden" => 5,
+        "drow_ranger" => 6,
+        "earthshaker" => 7,
+        "juggernaut" => 8,
+        "mirana" => 9,
+        "morphling" => 10,
+        "nevermore" => 11,
+        "phantom_lancer" => 12,
+        "puck" => 13,
+        "pudge" => 14,
+        "razor" => 15,
+        "sand_king" => 16,
+        "storm_spirit" => 17,
+        "sven" => 18,
+        "tiny" => 19,
+        "vengefulspirit" => 20,
+        "windrunner" => 21,
+        "zuus" => 22,
+        "kunkka" => 23,
+        "lina" => 25,
+        "lion" => 26,
+        "shadow_shaman" => 27,
+        "slardar" => 28,
+        "tidehunter" => 29,
+        "witch_doctor" => 30,
+        "lich" => 31,
+        "riki" => 32,
+        "enigma" => 33,
+        "tinker" => 34,
+        "sniper" => 35,
+        "necrolyte" => 36,
+        "warlock" => 37,
+        "beastmaster" => 38,
+        "queenofpain" => 39,
+        "venomancer" => 40,
+        "faceless_void" => 41,
+        "skeleton_king" => 42,
+        "death_prophet" => 43,
+        "phantom_assassin" => 44,
+        "pugna" => 45,
+        "templar_assassin" => 46,
+        "viper" => 47,
+        "luna" => 48,
+        "dragon_knight" => 49,
+        "dazzle" => 50,
+        "rattletrap" => 51,
+        "leshrac" => 52,
+        "furion" => 53,
+        "life_stealer" => 54,
+        "dark_seer" => 55,
+        "clinkz" => 56,
+        "omniknight" => 57,
+        "enchantress" => 58,
+        "huskar" => 59,
+        "night_stalker" => 60,
+        "broodmother" => 61,
+        "bounty_hunter" => 62,
+        "weaver" => 63,
+        "jakiro" => 64,
+        "batrider" => 65,
+        "chen" => 66,
+        "spectre" => 67,
+        "ancient_apparition" => 68,
+        "doom_bringer" => 69,
+        "ursa" => 70,
+        "spirit_breaker" => 71,
+        "gyrocopter" => 72,
+        "alchemist" => 73,
+        "invoker" => 74,
+        "silencer" => 75,
+        "obsidian_destroyer" => 76,
+        "lycan" => 77,
+        "brewmaster" => 78,
+        "shadow_demon" => 79,
+        "lone_druid" => 80,
+        "chaos_knight" => 81,
+        "meepo" => 82,
+        "treant" => 83,
+        "ogre_magi" => 84,
+        "undying" => 85,
+        "rubick" => 86,
+        "disruptor" => 87,
+        "nyx_assassin" => 88,
+        "naga_siren" => 89,
+        "keeper_of_the_light" => 90,
+        "wisp" => 91,
+        "visage" => 92,
+        "slark" => 93,
+        "medusa" => 94,
+        "troll_warlord" => 95,
+        "centaur" => 96,
+        "magnataur" => 97,
+        "shredder" => 98,
+        "bristleback" => 99,
+        "tusk" => 100,
+        "skywrath_mage" => 101,
+        "abaddon" => 102,
+        "elder_titan" => 103,
+        "legion_commander" => 104,
+        "techies" => 105,
+        "ember_spirit" => 106,
+        "earth_spirit" => 107,
+        "abyssal_underlord" => 108,
+        "terrorblade" => 109,
+        "phoenix" => 110,
+        "oracle" => 111,
+        "winter_wyvern" => 112,
+        "arc_warden" => 113,
+        "monkey_king" => 114,
+        "dark_willow" => 119,
+        "pangolier" => 120,
+        "grimstroke" => 121,
+        "hoodwink" => 123,
+        "void_spirit" => 126,
+        "snapfire" => 128,
+        "mars" => 129,
+        "ringmaster" => 131,
+        "dawnbreaker" => 135,
+        "marci" => 136,
+        "primal_beast" => 137,
+        "muerta" => 138,
+        "kez" => 145,
+        "largo" => 155,
+        _ => return None,
+    };
+    Some(id)
+}
+
+fn parse_benchmark_csv(body: &str) -> Result<Vec<HeroBenchmarkRow>, String> {
+    let mut rows = Vec::new();
+    let mut lines = body.lines();
+
+    // Skip header
+    let header = lines.next().ok_or("Empty CSV")?;
+    // Validate header has expected columns
+    // data_date,hero_name,mode,bracket,stat_name,mean,std_dev,sample_size,ideal_match_id_avg,ideal_match_id_top
+    let cols: Vec<&str> = header.split(',').collect();
+    if cols.len() < 10 {
+        return Err(format!("Expected 10 CSV columns, got {}", cols.len()));
+    }
+
+    for (line_num, line) in lines.enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = line.split(',').collect();
+        if fields.len() < 10 {
+            tracing::warn!(target: "dota_keeper", "Skipping CSV line {}: not enough fields", line_num + 2);
+            continue;
+        }
+
+        let hero_name = fields[1].trim();
+        let hero_id = match hero_name_to_id(hero_name) {
+            Some(id) => id,
+            None => {
+                tracing::warn!(target: "dota_keeper", "Unknown hero name on line {}: '{}'", line_num + 2, hero_name);
+                continue;
+            }
+        };
+        let mean: f64 = fields[5].trim().parse().map_err(|_| {
+            format!("Invalid mean on line {}: '{}'", line_num + 2, fields[5])
+        })?;
+        let std_dev: f64 = fields[6].trim().parse().map_err(|_| {
+            format!("Invalid std_dev on line {}: '{}'", line_num + 2, fields[6])
+        })?;
+        let sample_size: i32 = fields[7].trim().parse().map_err(|_| {
+            format!("Invalid sample_size on line {}: '{}'", line_num + 2, fields[7])
+        })?;
+        let ideal_match_id_avg: Option<i64> = fields[8].trim().parse().ok();
+        let ideal_match_id_top: Option<i64> = fields[9].trim().parse().ok();
+
+        rows.push(HeroBenchmarkRow {
+            data_date: fields[0].trim().to_string(),
+            hero_id,
+            mode: fields[2].trim().to_lowercase(),
+            bracket: fields[3].trim().to_lowercase(),
+            stat_name: fields[4].trim().to_string(),
+            mean,
+            std_dev,
+            sample_size,
+            ideal_match_id_avg,
+            ideal_match_id_top,
+        });
+    }
+
+    Ok(rows)
+}
+
+/// Get benchmark comparison for a specific hero/mode/stat with a user value.
+#[tauri::command]
+fn get_hero_benchmark(
+    hero_id: i32,
+    mode: String,
+    stat_name: String,
+    user_value: f64,
+    user_hero_id: Option<i32>,
+    user_game_mode: Option<i32>,
+) -> Result<BenchmarkResult, String> {
+    let conn = get_db_conn()?;
+    let mut result = get_benchmark_comparison(&conn, hero_id, &mode, &stat_name, user_value)?;
+
+    // Compute user's own SD if we have enough data
+    let user_sd = get_user_stat_std_dev(
+        &conn,
+        user_hero_id.or(Some(hero_id)),
+        user_game_mode,
+        10, // time_minutes for last_hits_10min
+        30, // window_size
+    )?;
+    result.user_std_dev = user_sd;
+    result.user_mean = Some(user_value);
+
+    Ok(result)
+}
+
+/// Get the benchmark data date metadata.
+#[tauri::command]
+fn get_benchmark_data_date() -> Result<String, String> {
+    let conn = get_db_conn()?;
+    Ok(get_benchmark_metadata(&conn, "data_date")?.unwrap_or_default())
+}
+
+/// Manually trigger a benchmark refresh from the frontend.
+#[tauri::command]
+async fn refresh_benchmarks() -> Result<String, String> {
+    fetch_and_store_benchmarks().await
+}
+
+/// Check if benchmark data is available.
+#[tauri::command]
+fn has_benchmarks() -> Result<bool, String> {
+    let conn = get_db_conn()?;
+    has_benchmark_data(&conn)
+}
+
+/// Get user's personal LH history at a specific minute across all parsed matches.
+/// Returns list of {match_id, hero_id, game_mode, last_hits} objects ordered newest first.
+#[tauri::command]
+fn get_user_lh_history(minute: i32) -> Result<Vec<serde_json::Value>, String> {
+    let conn = get_db_conn()?;
+    let rows = get_user_lh_at_minute_history(&conn, minute)?;
+    Ok(rows
+        .into_iter()
+        .map(|(match_id, hero_id, game_mode, last_hits)| {
+            serde_json::json!({
+                "match_id": match_id,
+                "hero_id": hero_id,
+                "game_mode": game_mode,
+                "last_hits": last_hits,
+            })
+        })
+        .collect())
 }
 
 /// Starts a background backfill of 100 historical matches, returning immediately.
@@ -1454,10 +1827,14 @@ async fn run_backfill_task(
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
+                if let Some(xp_t) = &player_data.xp_t {
+                    let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                }
                 let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
 
                 if let Some(purchase_log) = &player_data.purchase_log {
+                    let _ = clear_item_timings_for_match(&conn, m.match_id);
                     for purchase in purchase_log {
                         if let Some(item_id) = items::get_item_id(&purchase.key) {
                             let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });
@@ -1605,6 +1982,10 @@ async fn reparse_pending_matches(
                             let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                         }
                     }
+                    // Store per-minute XP for the player (used for XP/Level charts)
+                    if let Some(xp_t) = &player_data.xp_t {
+                        let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                    }
                     // Identify and store lane partner slot
                     let partner = opendota::find_lane_partner(
                         &detailed_match.players,
@@ -1619,6 +2000,7 @@ async fn reparse_pending_matches(
 
                     // Store item purchase timings if available
                     if let Some(purchase_log) = &player_data.purchase_log {
+                        let _ = clear_item_timings_for_match(&conn, m.match_id);
                         for purchase in purchase_log {
                             if let Some(item_id) = items::get_item_id(&purchase.key) {
                                 let timing = NewItemTiming {
@@ -1662,6 +2044,14 @@ async fn reparse_pending_matches(
         "Reparse complete! Successfully parsed {} of {} matches. {} failed.",
         parsed_count, total_matches, failed_count
     ))
+}
+
+/// Set the reparse_dirty flag — all matches will be reparsed on next app restart.
+#[tauri::command]
+fn set_reparse_dirty_flag() -> Result<String, String> {
+    let conn = get_db_conn()?;
+    database::set_reparse_dirty(&conn)?;
+    Ok("Reparse flag set. All matches will be reparsed on next restart.".to_string())
 }
 
 /// Clear all matches from the database
@@ -1724,6 +2114,27 @@ fn get_match_item_timings(match_id: i64) -> Result<Vec<database::ItemTiming>, St
 fn get_match_cs(match_id: i64) -> Result<Vec<MatchCS>, String> {
     let conn = get_db_conn()?;
     get_match_cs_data(&conn, match_id)
+}
+
+/// Get best + average CS per minute for a hero in a given game mode
+#[tauri::command]
+fn get_hero_cs_stats(hero_id: i32, game_mode: i32, exclude_match_id: i64) -> Result<Vec<HeroCsStats>, String> {
+    let conn = get_db_conn()?;
+    database::get_hero_cs_stats(&conn, hero_id, game_mode, exclude_match_id)
+}
+
+/// Get per-minute networth data for the player in a specific match
+#[tauri::command]
+fn get_match_networth(match_id: i64) -> Result<Vec<MatchNW>, String> {
+    let conn = get_db_conn()?;
+    get_match_networth_data(&conn, match_id)
+}
+
+/// Get per-minute XP data for a specific match
+#[tauri::command]
+fn get_match_xp(match_id: i64) -> Result<Vec<MatchXP>, String> {
+    let conn = get_db_conn()?;
+    get_match_xp_data(&conn, match_id)
 }
 
 /// Get (or generate) today's daily challenge
@@ -1848,40 +2259,158 @@ fn percent_decode(input: &str) -> String {
 }
 
 /// Start a Steam OpenID login flow.
-/// Binds a temporary local HTTP server, returns the Steam authorisation URL.
+/// On desktop: binds a temporary local HTTP server, returns the Steam authorisation URL.
+/// On Android: returns a Steam URL with the hosted relay page as return_to; the relay
+/// redirects the browser back to the app via the dotakeeper:// deep link scheme.
 /// When Steam redirects back, the callback is verified and a `steam-login-complete`
 /// event is emitted with `{steam_id}` on success or `{error}` on failure.
 #[tauri::command]
 async fn start_steam_login(app: tauri::AppHandle) -> Result<String, String> {
-    use tokio::net::TcpListener;
+    #[cfg(target_os = "android")]
+    {
+        let return_to = "https://dotakeeper.com/steam-callback/";
+        let realm = "https://dotakeeper.com/";
+        let steam_url = format!(
+            "https://steamcommunity.com/openid/login\
+             ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
+             &openid.mode=checkid_setup\
+             &openid.return_to={}\
+             &openid.realm={}\
+             &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
+             &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
+            percent_encode(return_to),
+            percent_encode(realm),
+        );
+        return Ok(steam_url);
+    }
 
-    let listener = TcpListener::bind("127.0.0.1:0")
+    #[cfg(not(target_os = "android"))]
+    {
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("Failed to bind port: {e}"))?;
+
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("Failed to get local address: {e}"))?
+            .port();
+
+        let return_to = format!("http://127.0.0.1:{port}/callback");
+        let realm = format!("http://127.0.0.1:{port}");
+
+        let steam_url = format!(
+            "https://steamcommunity.com/openid/login\
+             ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
+             &openid.mode=checkid_setup\
+             &openid.return_to={}\
+             &openid.realm={}\
+             &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
+             &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
+            percent_encode(&return_to),
+            percent_encode(&realm),
+        );
+
+        tokio::spawn(handle_steam_callback(listener, app));
+
+        Ok(steam_url)
+    }
+}
+
+/// Handle the Steam OpenID callback arriving via the dotakeeper:// deep link on Android.
+/// Called from the frontend with the raw query string from dotakeeper://auth?...
+///
+/// Returns `Ok(Some(steam_id))` when verification succeeds, `Ok(None)` when the login
+/// was cancelled, and `Err(message)` when verification fails. The frontend uses the
+/// returned value directly rather than relying on an emitted event, because on Android
+/// the app process is frequently killed while the external browser is in the foreground:
+/// the WebView reloads on return, so any event listener registered before the redirect
+/// no longer exists by the time this runs.
+#[tauri::command]
+async fn verify_steam_deep_link(query_string: String) -> Result<Option<String>, String> {
+    let mut params: Vec<(String, String)> = Vec::new();
+    let mut claimed_id: Option<String> = None;
+    let mut openid_mode: Option<String> = None;
+
+    for pair in query_string.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let key = percent_decode(k);
+            let val = percent_decode(v);
+            if key == "openid.claimed_id" {
+                claimed_id = Some(val.clone());
+            }
+            if key == "openid.mode" {
+                openid_mode = Some(val.clone());
+            }
+            params.push((key, val));
+        }
+    }
+
+    // Steam sends mode=id_res on success, mode=cancel on cancellation.
+    if openid_mode.as_deref() != Some("id_res") {
+        return Ok(None);
+    }
+
+    let steam_id = match claimed_id
+        .as_deref()
+        .and_then(|id| id.strip_prefix("https://steamcommunity.com/openid/id/"))
+        .map(|s| s.trim().to_string())
+    {
+        Some(id) if !id.is_empty() => id,
+        _ => return Err("Could not extract Steam ID".to_string()),
+    };
+
+    let verify_params: Vec<(String, String)> = params
+        .into_iter()
+        .map(|(k, v)| {
+            if k == "openid.mode" {
+                (k, "check_authentication".to_string())
+            } else {
+                (k, v)
+            }
+        })
+        .collect();
+
+    let verified = match reqwest::Client::new()
+        .post("https://steamcommunity.com/openid/login")
+        .form(&verify_params)
+        .send()
         .await
-        .map_err(|e| format!("Failed to bind port: {e}"))?;
+    {
+        Ok(resp) => resp.text().await.unwrap_or_default().contains("is_valid:true"),
+        Err(e) => {
+            eprintln!("Steam OpenID verification request failed: {e}");
+            false
+        }
+    };
 
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("Failed to get local address: {e}"))?
-        .port();
+    if verified {
+        Ok(Some(steam_id))
+    } else {
+        Err("Steam verification failed".to_string())
+    }
+}
 
-    let return_to = format!("http://127.0.0.1:{port}/callback");
-    let realm = format!("http://127.0.0.1:{port}");
+/// Return any deep-link URLs the app was launched with (cold start), so the frontend
+/// can complete a Steam login that arrived before its `deep-link://new-url` listener
+/// was attached. Empty on desktop / when there is no pending link.
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn get_pending_deep_links(app: tauri::AppHandle) -> Vec<String> {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link()
+        .get_current()
+        .ok()
+        .flatten()
+        .map(|urls| urls.into_iter().map(|u| u.to_string()).collect())
+        .unwrap_or_default()
+}
 
-    let steam_url = format!(
-        "https://steamcommunity.com/openid/login\
-         ?openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0\
-         &openid.mode=checkid_setup\
-         &openid.return_to={}\
-         &openid.realm={}\
-         &openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select\
-         &openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select",
-        percent_encode(&return_to),
-        percent_encode(&realm),
-    );
-
-    tokio::spawn(handle_steam_callback(listener, app));
-
-    Ok(steam_url)
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn get_pending_deep_links() -> Vec<String> {
+    Vec::new()
 }
 
 async fn handle_steam_callback(listener: tokio::net::TcpListener, app: tauri::AppHandle) {
@@ -2100,6 +2629,15 @@ fn save_privacy_mode(enabled: bool) -> Result<Settings, String> {
     Ok(settings)
 }
 
+/// Save the minimum benchmark games setting.
+#[tauri::command]
+fn save_min_benchmark_games(value: i32) -> Result<Settings, String> {
+    let mut settings = Settings::load();
+    settings.min_benchmark_games = value;
+    settings.save()?;
+    Ok(settings)
+}
+
 /// Enable or disable the background match parser.
 #[tauri::command]
 fn save_background_parse_enabled(enabled: bool) -> Result<Settings, String> {
@@ -2252,9 +2790,13 @@ async fn background_parse_loop(app: tauri::AppHandle) {
                         let _ = insert_player_networth(&conn, m.match_id, p.player_slot, nw_t);
                     }
                 }
+                if let Some(xp_t) = &player_data.xp_t {
+                    let _ = insert_match_xp_data(&conn, m.match_id, xp_t);
+                }
                 let partner = opendota::find_lane_partner(&detailed_match.players, player_data.player_slot, role);
                 let _ = update_match_partner_slot(&conn, m.match_id, partner.map(|p| p.player_slot));
                 if let Some(purchase_log) = &player_data.purchase_log {
+                    let _ = clear_item_timings_for_match(&conn, m.match_id);
                     for purchase in purchase_log {
                         if let Some(item_id) = items::get_item_id(&purchase.key) {
                             let _ = insert_item_timing(&conn, &NewItemTiming { match_id: m.match_id, item_id, timing_seconds: purchase.time });
@@ -2285,6 +2827,153 @@ async fn background_parse_loop(app: tauri::AppHandle) {
 }
 
 // ── end Background match parser ───────────────────────────────────────────────
+
+// ── Performance Journal ───────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+struct JournalEntry {
+    match_id: i64,
+    hero_id: i32,
+    start_time: i64,
+    metric_value: f64,
+    kills: i32,
+    deaths: i32,
+    assists: i32,
+    gold_per_min: i32,
+    xp_per_min: i32,
+    hero_damage: i32,
+    radiant_win: bool,
+    player_slot: i32,
+    game_mode: i32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct PerformanceJournal {
+    top: Vec<JournalEntry>,
+    bottom: Vec<JournalEntry>,
+}
+
+/// Return the top and bottom N matches for a given performance metric.
+///
+/// `metric` may be one of: `kda`, `gpm`, `xpm`, `damage`, `deaths`, `lh10`.
+/// `hero_id` filters to a specific hero when set.
+/// `limit` controls how many entries appear in each of the `top` / `bottom` lists.
+#[tauri::command]
+fn get_performance_journal(
+    metric: String,
+    hero_id: Option<i32>,
+    limit: usize,
+) -> Result<PerformanceJournal, String> {
+    let conn = get_db_conn().map_err(|e| format!("DB connection error: {}", e))?;
+
+    // Build the metric expression and whether "low = good" (deaths).
+    let (metric_expr, low_is_best, use_lh10): (&str, bool, bool) = match metric.as_str() {
+        "kda"    => ("CAST(m.kills + m.assists AS REAL) / MAX(1.0, CAST(m.deaths AS REAL))", false, false),
+        "gpm"    => ("CAST(m.gold_per_min AS REAL)", false, false),
+        "xpm"    => ("CAST(m.xp_per_min AS REAL)", false, false),
+        "damage" => ("CAST(m.hero_damage AS REAL)", false, false),
+        "deaths" => ("CAST(m.deaths AS REAL)", true, false),
+        "lh10"   => ("CAST(mc.last_hits AS REAL)", false, true),
+        other    => return Err(format!("Unknown metric: {}", other)),
+    };
+
+    let hero_filter = if hero_id.is_some() { "AND m.hero_id = ?2" } else { "" };
+
+    let join_clause = if use_lh10 {
+        "INNER JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = 10"
+    } else {
+        ""
+    };
+
+    // For "top": high metric = best → DESC (unless deaths where low = best → ASC).
+    let (top_order, bottom_order) = if low_is_best {
+        ("ASC", "DESC")
+    } else {
+        ("DESC", "ASC")
+    };
+
+    let limit_i64 = limit as i64;
+
+    let build_query = |order: &str| -> String {
+        format!(
+            "SELECT m.match_id, m.hero_id, m.start_time,
+                    {metric} AS metric_value,
+                    m.kills, m.deaths, m.assists,
+                    m.gold_per_min, m.xp_per_min, m.hero_damage,
+                    m.radiant_win, m.player_slot, m.game_mode
+             FROM matches m
+             {join}
+             WHERE 1=1 {hero_f}
+             ORDER BY metric_value {ord}
+             LIMIT ?1",
+            metric = metric_expr,
+            join = join_clause,
+            hero_f = hero_filter,
+            ord = order,
+        )
+    };
+
+    let fetch_entries = |sql: &str| -> Result<Vec<JournalEntry>, String> {
+        let mut stmt = conn
+            .prepare(sql)
+            .map_err(|e| format!("DB prepare error: {}", e))?;
+
+        let rows: Vec<JournalEntry> = if let Some(hid) = hero_id {
+            stmt.query_map(rusqlite::params![limit_i64, hid], |row| {
+                Ok(JournalEntry {
+                    match_id:     row.get(0)?,
+                    hero_id:      row.get(1)?,
+                    start_time:   row.get(2)?,
+                    metric_value: row.get(3)?,
+                    kills:        row.get(4)?,
+                    deaths:       row.get(5)?,
+                    assists:      row.get(6)?,
+                    gold_per_min: row.get(7)?,
+                    xp_per_min:   row.get(8)?,
+                    hero_damage:  row.get(9)?,
+                    radiant_win:  row.get::<_, i32>(10)? != 0,
+                    player_slot:  row.get(11)?,
+                    game_mode:    row.get(12)?,
+                })
+            })
+            .map_err(|e| format!("DB query error: {}", e))?
+            .filter_map(|r: rusqlite::Result<JournalEntry>| r.ok())
+            .collect()
+        } else {
+            stmt.query_map(rusqlite::params![limit_i64], |row| {
+                Ok(JournalEntry {
+                    match_id:     row.get(0)?,
+                    hero_id:      row.get(1)?,
+                    start_time:   row.get(2)?,
+                    metric_value: row.get(3)?,
+                    kills:        row.get(4)?,
+                    deaths:       row.get(5)?,
+                    assists:      row.get(6)?,
+                    gold_per_min: row.get(7)?,
+                    xp_per_min:   row.get(8)?,
+                    hero_damage:  row.get(9)?,
+                    radiant_win:  row.get::<_, i32>(10)? != 0,
+                    player_slot:  row.get(11)?,
+                    game_mode:    row.get(12)?,
+                })
+            })
+            .map_err(|e| format!("DB query error: {}", e))?
+            .filter_map(|r: rusqlite::Result<JournalEntry>| r.ok())
+            .collect()
+        };
+        Ok(rows)
+    };
+
+    let top_sql    = build_query(top_order);
+    let bottom_sql = build_query(bottom_order);
+
+    let top    = fetch_entries(&top_sql)?;
+    let bottom = fetch_entries(&bottom_sql)?;
+
+    Ok(PerformanceJournal { top, bottom })
+}
+
+// ── end Performance Journal ───────────────────────────────────────────────────
 
 // DSN baked in at compile time from the SENTRY_DSN env var (via build.rs).
 const SENTRY_DSN: &str = env!("SENTRY_DSN");
@@ -2335,9 +3024,23 @@ pub fn run() {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 background_parse_loop(bg_app).await;
             });
+            // Fetch hero benchmark data from GitHub (non-blocking).
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                match fetch_and_store_benchmarks().await {
+                    Ok(date) => {
+                        eprintln!("[benchmarks] Loaded successfully (data date: {})", date);
+                    }
+                    Err(e) => {
+                        eprintln!("[benchmarks] ERROR: {}", e);
+                        tracing::warn!(target: "dota_keeper", "Benchmark fetch failed (will use cached data): {}", e);
+                    }
+                }
+            });
             Ok(())
         })
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init());
 
     // tauri-plugin-updater does not support Android/iOS
     #[cfg(desktop)]
@@ -2369,12 +3072,16 @@ pub fn run() {
             backfill_historical_matches,
             reparse_pending_matches,
             clear_matches,
+            set_reparse_dirty_flag,
             toggle_favorite_hero,
             get_favorite_heroes,
             complete_onboarding,
             get_all_items,
             get_match_item_timings,
             get_match_cs,
+            get_hero_cs_stats,
+            get_match_networth,
+            get_match_xp,
             get_daily_challenge,
             get_daily_challenge_progress_cmd,
             get_daily_streak_cmd,
@@ -2390,6 +3097,8 @@ pub fn run() {
             get_weekly_challenge_progress_cmd,
             get_challenge_history_cmd,
             start_steam_login,
+            verify_steam_deep_link,
+            get_pending_deep_links,
             save_mental_health_enabled,
             save_checkin_frequency,
             mark_mental_health_intro_shown,
@@ -2411,7 +3120,14 @@ pub fn run() {
             get_medal_history,
             get_medal_stats,
             get_patches,
-            sync_patches
+            sync_patches,
+            get_hero_benchmark,
+            get_benchmark_data_date,
+            refresh_benchmarks,
+            has_benchmarks,
+            get_user_lh_history,
+            save_min_benchmark_games,
+            get_performance_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

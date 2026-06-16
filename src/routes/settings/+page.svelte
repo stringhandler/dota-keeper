@@ -20,6 +20,7 @@
   let isBackfilling = $state(false);
   let isSyncingPatches = $state(false);
   let isReparsing = $state(false);
+  let isSettingDirty = $state(false);
   let isClearing = $state(false);
   let steamId = $state("");
   let suggestionDifficulty = $state("Medium");
@@ -34,6 +35,7 @@
   let showMentalHealthIntro = $state(false);
   let privacyMode = $state(false);
   let backgroundParseEnabled = $state(true);
+  let minBenchmarkGames = $state(5);
   let bgParseActive = $state(false);
   let bgParsePending = $state(0);
   let appVersion = $state("");
@@ -63,6 +65,7 @@
     await loadPrivacyMode();
     await loadBackgroundParse();
     await loadDataProvider();
+    await loadMinBenchmarkGames();
     await loadAppVersion();
 
     // Sync initial status from backend
@@ -276,6 +279,26 @@
     }
   }
 
+  async function loadMinBenchmarkGames() {
+    try {
+      const settings = await invoke("get_settings");
+      minBenchmarkGames = settings.min_benchmark_games ?? 5;
+    } catch (e) {
+      console.error("Failed to load min benchmark games setting:", e);
+    }
+  }
+
+  /** @param {number} value */
+  async function saveMinBenchmarkGames(value) {
+    try {
+      await invoke("save_min_benchmark_games", { value });
+      minBenchmarkGames = value;
+      showToast("Minimum benchmark games saved");
+    } catch (e) {
+      showToast(`Failed to save: ${e}`, "error");
+    }
+  }
+
   async function loadBackgroundParse() {
     try {
       const settings = await invoke("get_settings");
@@ -453,6 +476,20 @@
       error = `Failed to reparse matches: ${e}`;
     } finally {
       isReparsing = false;
+    }
+  }
+
+  async function setReparseDirty() {
+    error = "";
+    successMessage = "";
+    isSettingDirty = true;
+    try {
+      const result = await invoke("set_reparse_dirty_flag");
+      successMessage = result;
+    } catch (e) {
+      error = `Failed to set reparse flag: ${e}`;
+    } finally {
+      isSettingDirty = false;
     }
   }
 
@@ -651,6 +688,28 @@
       >
         {isSavingDifficulty ? $_('settings.saving') : $_('settings.save')}
       </button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Analysis</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Minimum games for benchmark rank</h3>
+        <p class="setting-description">
+          Minimum number of games required before showing the Last Hitting Rank for a hero.
+        </p>
+        <div class="difficulty-controls">
+          <select class="difficulty-select" bind:value={minBenchmarkGames} onchange={() => saveMinBenchmarkGames(minBenchmarkGames)}>
+            <option value={3}>3 games</option>
+            <option value={5}>5 games (default)</option>
+            <option value={10}>10 games</option>
+            <option value={15}>15 games</option>
+            <option value={20}>20 games</option>
+            <option value={30}>30 games</option>
+          </select>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -909,6 +968,25 @@
 
     <div class="setting-item">
       <div class="setting-info">
+        <h3>Reparse All Matches</h3>
+        <p class="setting-description">
+          Mark all matches for reparsing on next app restart. Use this if parsed data seems incomplete or after an update.
+        </p>
+        <p class="warning-text">
+          Requires an app restart. The background parser will reparse all matches automatically.
+        </p>
+      </div>
+      <button
+        class="reparse-btn"
+        onclick={setReparseDirty}
+        disabled={isSettingDirty}
+      >
+        {isSettingDirty ? 'Setting...' : 'Reparse All on Restart'}
+      </button>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
         <h3>{$_('settings.clear_matches_title')}</h3>
         <p class="setting-description">
           {$_('settings.clear_matches_desc')}
@@ -1114,7 +1192,7 @@
 
 .subtitle {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1128,7 +1206,7 @@
   border-radius: 4px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .success {
@@ -1138,7 +1216,7 @@
   border-radius: 4px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-section {
@@ -1147,7 +1225,7 @@
 
 .settings-section h2 {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 3px;
   color: var(--text-muted);
@@ -1186,7 +1264,7 @@
 }
 
 .setting-description {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.6;
   margin: 0 0 8px 0;
@@ -1220,7 +1298,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1291,7 +1369,7 @@
   border-radius: 4px;
   padding: 8px 12px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   max-width: 280px;
   outline: none;
@@ -1304,7 +1382,7 @@
 
 .custom-pct {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .custom-pct label {
@@ -1320,7 +1398,7 @@
   border-radius: 4px;
   padding: 6px 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
 }
@@ -1337,7 +1415,7 @@
   border-radius: 4px;
   padding: 6px 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
   outline: none;
   transition: border-color 0.2s;
@@ -1363,7 +1441,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1467,14 +1545,14 @@
 .update-available {
   margin: 10px 0 0 0;
   color: var(--gold);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .update-current {
   margin: 10px 0 0 0;
   color: var(--green);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -1508,7 +1586,7 @@
   gap: 10px;
   cursor: pointer;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px;
   border-radius: 4px;
   transition: background 0.2s;
@@ -1539,7 +1617,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1566,7 +1644,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1586,7 +1664,7 @@
 
 .bg-parse-status {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--text-muted);
   margin: 6px 0 4px;
@@ -1605,7 +1683,7 @@
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
   cursor: pointer;
   padding: 6px 18px;
@@ -1628,7 +1706,7 @@
 }
 
 .toggle-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
 }
 
@@ -1672,7 +1750,7 @@
 
 .modal-title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--text-primary);
@@ -1690,7 +1768,7 @@
   margin: 0 0 20px 0;
   padding-left: 18px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 

@@ -142,7 +142,7 @@ impl GoalGameMode {
 /// Patch version info cached from OpenDota constants
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PatchInfo {
-    pub name: String,       // e.g., "7.40e"
+    pub name: String,       // e.g., "7.41"
     pub date_epoch: i64,    // Unix timestamp of patch release
 }
 
@@ -254,7 +254,7 @@ pub struct Match {
     pub parse_state: MatchState,
     pub role: i32,  // 0=unknown, 1=carry, 2=mid, 3=offlane, 4=soft support, 5=hard support
     pub rank_tier: Option<i32>,  // OpenDota rank_tier: 11-15=Herald, 21-25=Guardian, ..., 80=Immortal
-    pub patch: Option<String>,   // e.g., "7.40e" — determined from start_time via patches table
+    pub patch: Option<String>,   // e.g., "7.41" — determined from start_time via patches table
 }
 
 impl Match {
@@ -337,6 +337,51 @@ pub fn init_db() -> Result<Connection, String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create matches table: {}", e))?;
+
+    // Create the app_metadata key-value table for flags like reparse_dirty
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create app_metadata table: {}", e))?;
+
+    // One-time migration: force reparse for existing users who haven't had it yet.
+    // Uses a versioned key so it only fires once.
+    let reparse_v1_done: bool = conn.query_row(
+        "SELECT value FROM app_metadata WHERE key = 'reparse_v1'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).unwrap_or_default() == "1";
+    if !reparse_v1_done {
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '1')",
+            [],
+        ).map_err(|e| format!("Failed to set reparse_dirty for migration: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_v1', '1')",
+            [],
+        ).map_err(|e| format!("Failed to mark reparse_v1 migration done: {}", e))?;
+    }
+
+    // Check the reparse_dirty flag — if set, reset ALL parsed matches to unparsed
+    let reparse_dirty: bool = conn.query_row(
+        "SELECT value FROM app_metadata WHERE key = 'reparse_dirty'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).unwrap_or_default() == "1";
+
+    if reparse_dirty {
+        conn.execute(
+            "UPDATE matches SET parse_state = 'unparsed' WHERE parse_state = 'parsed' OR parse_state = 'failed'",
+            [],
+        ).map_err(|e| format!("Failed to mark matches for reparse: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '0')",
+            [],
+        ).map_err(|e| format!("Failed to clear reparse_dirty flag: {}", e))?;
+    }
 
     // Cleanup: Reset any "parsing" matches to "unparsed" (in case app crashed during parsing)
     conn.execute(
@@ -471,24 +516,59 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create player_networth table: {}", e))?;
 
+    // Create the match_xp table (per-minute XP for the player, used for XP/Level charts)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS match_xp (
+            match_id INTEGER NOT NULL,
+            minute INTEGER NOT NULL,
+            xp INTEGER NOT NULL,
+            PRIMARY KEY (match_id, minute),
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create match_xp table: {}", e))?;
+
     // Add partner_slot column if it doesn't exist (set during parsing for support players)
     let _ = conn.execute(
         "ALTER TABLE matches ADD COLUMN partner_slot INTEGER",
         [],
     );
 
-    // Create the item_timings table
+    // Create the item_timings table (no unique constraint — duplicates allowed for same item bought multiple times)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS item_timings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id INTEGER NOT NULL,
             item_id INTEGER NOT NULL,
             timing_seconds INTEGER NOT NULL,
-            FOREIGN KEY (match_id) REFERENCES matches(match_id),
-            UNIQUE(match_id, item_id)
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
         )",
         [],
     ).map_err(|e| format!("Failed to create item_timings table: {}", e))?;
+
+    // Migration: remove UNIQUE(match_id, item_id) constraint that prevented duplicate item purchases.
+    // SQLite can't drop inline constraints, so we recreate the table if the autoindex still exists.
+    let has_unique: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='sqlite_autoindex_item_timings_1'",
+        [],
+        |row| row.get::<_, i32>(0),
+    ).unwrap_or(0) > 0;
+    if has_unique {
+        conn.execute_batch("
+            BEGIN;
+            ALTER TABLE item_timings RENAME TO item_timings_old;
+            CREATE TABLE item_timings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                timing_seconds INTEGER NOT NULL,
+                FOREIGN KEY (match_id) REFERENCES matches(match_id)
+            );
+            INSERT INTO item_timings SELECT id, match_id, item_id, timing_seconds FROM item_timings_old;
+            DROP TABLE item_timings_old;
+            COMMIT;
+        ").map_err(|e| format!("Failed to migrate item_timings: {}", e))?;
+    }
 
     // Create the daily_challenges table
     conn.execute(
@@ -575,7 +655,40 @@ pub fn init_db() -> Result<Connection, String> {
         [],
     ).map_err(|e| format!("Failed to create weekly_challenges table: {}", e))?;
 
+    // Hero benchmark data (fetched from GitHub CSV on startup)
+    // Drop and recreate if schema changed (this is just cached data, safe to rebuild)
+    let _ = conn.execute("DROP TABLE IF EXISTS hero_benchmarks", []);
+    let _ = conn.execute("DROP TABLE IF EXISTS benchmark_metadata", []);
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hero_benchmarks (
+            hero_id     INTEGER NOT NULL,
+            mode        TEXT NOT NULL,
+            bracket     TEXT NOT NULL,
+            stat_name   TEXT NOT NULL,
+            mean        REAL NOT NULL,
+            std_dev     REAL NOT NULL,
+            data_date   TEXT NOT NULL,
+            sample_size INTEGER NOT NULL DEFAULT 0,
+            ideal_match_id_avg INTEGER,
+            ideal_match_id_top INTEGER,
+            PRIMARY KEY (hero_id, mode, bracket, stat_name)
+        );
+        CREATE TABLE IF NOT EXISTS benchmark_metadata (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );"
+    ).map_err(|e| format!("Failed to create hero_benchmarks tables: {}", e))?;
+
     Ok(conn)
+}
+
+/// Set the reparse_dirty flag so all matches get reparsed on next app start.
+pub fn set_reparse_dirty(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('reparse_dirty', '1')",
+        [],
+    ).map_err(|e| format!("Failed to set reparse_dirty flag: {}", e))?;
+    Ok(())
 }
 
 /// Check if a match already exists in the database
@@ -1244,6 +1357,35 @@ pub fn update_match_role(conn: &Connection, match_id: i64, role: i32) -> Result<
     Ok(())
 }
 
+/// Update end-of-game stats on a match row — only overwrites fields that are currently 0,
+/// so valid data from the initial match history sync is never clobbered.
+pub fn update_match_stats(
+    conn: &Connection,
+    match_id: i64,
+    xp_per_min: Option<i32>,
+    gold_per_min: Option<i32>,
+    last_hits: Option<i32>,
+    denies: Option<i32>,
+    hero_damage: Option<i32>,
+    tower_damage: Option<i32>,
+    hero_healing: Option<i32>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE matches SET
+            xp_per_min    = CASE WHEN xp_per_min    = 0 AND ?1 IS NOT NULL THEN ?1 ELSE xp_per_min    END,
+            gold_per_min  = CASE WHEN gold_per_min  = 0 AND ?2 IS NOT NULL THEN ?2 ELSE gold_per_min  END,
+            last_hits     = CASE WHEN last_hits      = 0 AND ?3 IS NOT NULL THEN ?3 ELSE last_hits     END,
+            denies        = CASE WHEN denies         = 0 AND ?4 IS NOT NULL THEN ?4 ELSE denies        END,
+            hero_damage   = CASE WHEN hero_damage    = 0 AND ?5 IS NOT NULL THEN ?5 ELSE hero_damage   END,
+            tower_damage  = CASE WHEN tower_damage   = 0 AND ?6 IS NOT NULL THEN ?6 ELSE tower_damage  END,
+            hero_healing  = CASE WHEN hero_healing   = 0 AND ?7 IS NOT NULL THEN ?7 ELSE hero_healing  END
+         WHERE match_id = ?8",
+        params![xp_per_min, gold_per_min, last_hits, denies, hero_damage, tower_damage, hero_healing, match_id],
+    ).map_err(|e| format!("Failed to update match stats: {}", e))?;
+
+    Ok(())
+}
+
 /// Store the lane partner's player_slot for a match (None if no partner / not a support)
 pub fn update_match_partner_slot(conn: &Connection, match_id: i64, partner_slot: Option<i32>) -> Result<(), String> {
     conn.execute(
@@ -1374,6 +1516,126 @@ pub fn get_match_cs_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchCS
         .map_err(|e| format!("Failed to collect CS data: {}", e))
 }
 
+/// Per-minute CS stats (best and average at each minute) for a hero across matches of a given game mode.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HeroCsStats {
+    pub minute: i32,
+    pub best_last_hits: i32,
+    pub best_denies: i32,
+    pub avg_last_hits: f64,
+    pub avg_denies: f64,
+}
+
+/// Get best + average CS per minute for a hero, filtered by game mode (22=ranked, 23=turbo).
+/// Best is per-minute (the highest last_hits any match achieved at that minute), same for average.
+pub fn get_hero_cs_stats(conn: &Connection, hero_id: i32, game_mode: i32, exclude_match_id: i64) -> Result<Vec<HeroCsStats>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT mc.minute,
+                MAX(mc.last_hits) as best_lh,
+                MAX(mc.denies) as best_dn,
+                AVG(mc.last_hits) as avg_lh,
+                AVG(mc.denies) as avg_dn
+         FROM match_cs mc
+         JOIN matches m ON m.match_id = mc.match_id
+         WHERE m.hero_id = ?1 AND m.game_mode = ?2 AND mc.match_id != ?3
+         GROUP BY mc.minute
+         ORDER BY mc.minute ASC"
+    ).map_err(|e| format!("Failed to prepare hero cs stats query: {}", e))?;
+
+    let rows = stmt.query_map(params![hero_id, game_mode, exclude_match_id], |row| {
+        Ok(HeroCsStats {
+            minute: row.get(0)?,
+            best_last_hits: row.get(1)?,
+            best_denies: row.get(2)?,
+            avg_last_hits: row.get(3)?,
+            avg_denies: row.get(4)?,
+        })
+    }).map_err(|e| format!("Failed to query hero cs stats: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect hero cs stats: {}", e))
+}
+
+/// Per-minute networth data point for the player's own networth chart
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchNW {
+    pub minute: i32,
+    pub networth: i32,
+}
+
+/// Get per-minute networth for the current player in a match.
+/// Looks up the player's own slot from the matches table and queries player_networth.
+pub fn get_match_networth_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchNW>, String> {
+    let player_slot: i32 = conn.query_row(
+        "SELECT player_slot FROM matches WHERE match_id = ?1",
+        params![match_id],
+        |row| row.get(0),
+    ).map_err(|e| format!("Failed to get player_slot for match {}: {}", match_id, e))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT minute, networth FROM player_networth WHERE match_id = ?1 AND player_slot = ?2 ORDER BY minute ASC",
+        )
+        .map_err(|e| format!("Failed to prepare networth query: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![match_id, player_slot], |row| {
+            Ok(MatchNW {
+                minute: row.get(0)?,
+                networth: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query networth data: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect networth data: {}", e))
+}
+
+/// Per-minute XP data point for the XP/Level charts
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MatchXP {
+    pub minute: i32,
+    pub xp: i32,
+}
+
+/// Insert per-minute XP data for a match (replaces any existing data)
+pub fn insert_match_xp_data(conn: &Connection, match_id: i64, xp_t: &[i32]) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM match_xp WHERE match_id = ?1",
+        params![match_id],
+    ).map_err(|e| format!("Failed to delete existing XP data: {}", e))?;
+
+    for (minute, &xp) in xp_t.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO match_xp (match_id, minute, xp) VALUES (?1, ?2, ?3)",
+            params![match_id, minute as i32, xp],
+        ).map_err(|e| format!("Failed to insert XP data: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get all per-minute XP data for a match ordered by minute
+pub fn get_match_xp_data(conn: &Connection, match_id: i64) -> Result<Vec<MatchXP>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT minute, xp FROM match_xp WHERE match_id = ?1 ORDER BY minute ASC",
+        )
+        .map_err(|e| format!("Failed to prepare XP data query: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![match_id], |row| {
+            Ok(MatchXP {
+                minute: row.get(0)?,
+                xp: row.get(1)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query XP data: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect XP data: {}", e))
+}
+
 /// Daily goal progress data
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DayGoalProgress {
@@ -1466,6 +1728,7 @@ pub struct MatchDataPoint {
     pub value: i32,
     pub achieved: bool,
     pub won: bool,
+    pub game_mode: i32,
 }
 
 /// Get match data for a specific goal (for histogram visualization)
@@ -1639,6 +1902,7 @@ pub fn get_goal_match_data(conn: &Connection, goal_id: i64) -> Result<Vec<MatchD
             value: actual_value,
             achieved,
             won: match_data.is_win(),
+            game_mode: match_data.game_mode,
         });
     }
 
@@ -1679,6 +1943,12 @@ pub struct LastHitsDataPoint {
     pub start_time: i64,
     pub last_hits: i32,
     pub game_mode: i32,
+    pub gold_per_min: i32,
+    pub xp_per_min: i32,
+    pub kills: i32,
+    pub deaths: i32,
+    pub assists: i32,
+    pub won: bool,
 }
 
 /// Last hits analysis result
@@ -1718,7 +1988,9 @@ pub fn get_last_hits_analysis(
 ) -> Result<LastHitsAnalysis, String> {
     // Build the query with filters
     let mut query = String::from(
-        "SELECT m.match_id, m.hero_id, m.start_time, m.game_mode, mc.last_hits
+        "SELECT m.match_id, m.hero_id, m.start_time, m.game_mode, mc.last_hits,
+                m.gold_per_min, m.xp_per_min, m.kills, m.deaths, m.assists,
+                m.radiant_win, m.player_slot
          FROM matches m
          LEFT JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = ?1
          WHERE m.parse_state = 'parsed' AND mc.last_hits IS NOT NULL"
@@ -1754,12 +2026,22 @@ pub fn get_last_hits_analysis(
 
     let rows = stmt
         .query_map(&params_refs[..], |row| {
+            let radiant_win: i32 = row.get(10)?;
+            let player_slot: i32 = row.get(11)?;
+            let is_radiant = player_slot < 128;
+            let won = (radiant_win == 1) == is_radiant;
             Ok(LastHitsDataPoint {
                 match_id: row.get(0)?,
                 hero_id: row.get(1)?,
                 start_time: row.get(2)?,
                 game_mode: row.get(3)?,
                 last_hits: row.get(4)?,
+                gold_per_min: row.get(5)?,
+                xp_per_min: row.get(6)?,
+                kills: row.get(7)?,
+                deaths: row.get(8)?,
+                assists: row.get(9)?,
+                won,
             })
         })
         .map_err(|e| format!("Failed to query matches: {}", e))?;
@@ -2178,10 +2460,17 @@ pub fn regenerate_hero_suggestion(conn: &Connection) -> Result<Option<HeroGoalSu
     Ok(None)
 }
 
-/// Insert item timing data for a match
+/// Remove all item timings for a match (called before re-inserting on parse/re-parse)
+pub fn clear_item_timings_for_match(conn: &Connection, match_id: i64) -> Result<(), String> {
+    conn.execute("DELETE FROM item_timings WHERE match_id = ?1", params![match_id])
+        .map_err(|e| format!("Failed to clear item timings: {}", e))?;
+    Ok(())
+}
+
+/// Insert a single item timing for a match
 pub fn insert_item_timing(conn: &Connection, timing: &NewItemTiming) -> Result<(), String> {
     conn.execute(
-        "INSERT OR REPLACE INTO item_timings (match_id, item_id, timing_seconds)
+        "INSERT INTO item_timings (match_id, item_id, timing_seconds)
          VALUES (?1, ?2, ?3)",
         params![
             timing.match_id,
@@ -3573,4 +3862,318 @@ pub fn get_medal_stats(conn: &Connection) -> Result<MedalStats, String> {
         current_rank_tier,
         peak_rank_tier,
     })
+}
+
+// ─── Hero Benchmark functions ─────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HeroBenchmarkRow {
+    pub hero_id: i32,
+    pub mode: String,
+    pub bracket: String,
+    pub stat_name: String,
+    pub mean: f64,
+    pub std_dev: f64,
+    pub data_date: String,
+    pub sample_size: i32,
+    pub ideal_match_id_avg: Option<i64>,
+    pub ideal_match_id_top: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BracketZScore {
+    pub bracket: String,
+    pub mean: f64,
+    pub std_dev: f64,
+    pub z_score: f64,
+    pub interpretation: String,
+    pub is_best_fit: bool,
+    pub sample_size: i32,
+    pub low_data: bool,
+    pub ideal_match_id_avg: Option<i64>,
+    pub ideal_match_id_top: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BenchmarkResult {
+    pub rows: Vec<BracketZScore>,
+    pub best_fit_bracket: String,
+    pub data_date: String,
+    pub user_std_dev: Option<f64>,
+    pub user_mean: Option<f64>,
+}
+
+/// Upsert benchmark rows parsed from the CSV into the database.
+pub fn upsert_benchmarks(conn: &Connection, rows: &[HeroBenchmarkRow]) -> Result<(), String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    // Clear old data and insert fresh
+    tx.execute("DELETE FROM hero_benchmarks", [])
+        .map_err(|e| format!("Failed to clear hero_benchmarks: {}", e))?;
+
+    let mut stmt = tx
+        .prepare(
+            "INSERT INTO hero_benchmarks (hero_id, mode, bracket, stat_name, mean, std_dev, data_date, sample_size, ideal_match_id_avg, ideal_match_id_top)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+        )
+        .map_err(|e| format!("Failed to prepare benchmark insert: {}", e))?;
+
+    for row in rows {
+        stmt.execute(params![
+            row.hero_id,
+            row.mode,
+            row.bracket,
+            row.stat_name,
+            row.mean,
+            row.std_dev,
+            row.data_date,
+            row.sample_size,
+            row.ideal_match_id_avg,
+            row.ideal_match_id_top,
+        ])
+        .map_err(|e| format!("Failed to insert benchmark row: {}", e))?;
+    }
+    drop(stmt);
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit benchmarks: {}", e))?;
+    Ok(())
+}
+
+/// Store the last-fetched date for benchmarks.
+pub fn set_benchmark_metadata(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO benchmark_metadata (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )
+    .map_err(|e| format!("Failed to set benchmark metadata: {}", e))?;
+    Ok(())
+}
+
+/// Get a benchmark metadata value.
+pub fn get_benchmark_metadata(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM benchmark_metadata WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("Failed to get benchmark metadata: {}", e))
+}
+
+/// Query benchmarks for a given hero + mode + stat, and compute z-scores for a user value.
+pub fn get_benchmark_comparison(
+    conn: &Connection,
+    hero_id: i32,
+    mode: &str,
+    stat_name: &str,
+    user_value: f64,
+) -> Result<BenchmarkResult, String> {
+    let bracket_order = [
+        "herald", "guardian", "crusader", "archon", "legend", "ancient", "divine", "immortal",
+    ];
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT bracket, mean, std_dev, data_date, sample_size, ideal_match_id_avg, ideal_match_id_top
+             FROM hero_benchmarks
+             WHERE hero_id = ?1 AND mode = ?2 AND stat_name = ?3"
+        )
+        .map_err(|e| format!("Failed to prepare benchmark query: {}", e))?;
+
+    let rows_iter = stmt
+        .query_map(params![hero_id, mode, stat_name], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i32>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query benchmarks: {}", e))?;
+
+    let mut bracket_data: HashMap<String, (f64, f64, String, i32, Option<i64>, Option<i64>)> = HashMap::new();
+    for row in rows_iter {
+        let (bracket, mean, std_dev, data_date, sample_size, avg_id, top_id) = row.map_err(|e| format!("Row error: {}", e))?;
+        bracket_data.insert(bracket, (mean, std_dev, data_date, sample_size, avg_id, top_id));
+    }
+
+    if bracket_data.is_empty() {
+        return Ok(BenchmarkResult {
+            rows: Vec::new(),
+            best_fit_bracket: String::new(),
+            data_date: String::new(),
+            user_std_dev: None,
+            user_mean: None,
+        });
+    }
+
+    let mut best_fit_bracket = String::new();
+    let mut best_fit_abs_z = f64::MAX;
+    let mut data_date = String::new();
+
+    let mut z_rows: Vec<BracketZScore> = Vec::new();
+    for bracket_name in &bracket_order {
+        if let Some((mean, std_dev, dd, samples, avg_id, top_id)) = bracket_data.get(*bracket_name) {
+            let z_score = if *std_dev > 0.0 {
+                (user_value - mean) / std_dev
+            } else {
+                0.0
+            };
+
+            let abs_z = z_score.abs();
+            if abs_z < best_fit_abs_z {
+                best_fit_abs_z = abs_z;
+                best_fit_bracket = bracket_name.to_string();
+            }
+
+            data_date = dd.clone();
+
+            let interpretation = interpret_z_score(z_score);
+
+            z_rows.push(BracketZScore {
+                bracket: bracket_name.to_string(),
+                mean: *mean,
+                std_dev: *std_dev,
+                z_score,
+                interpretation,
+                is_best_fit: false, // will set below
+                sample_size: *samples,
+                low_data: *samples < 30,
+                ideal_match_id_avg: *avg_id,
+                ideal_match_id_top: *top_id,
+            });
+        }
+    }
+
+    // Mark best fit
+    for row in &mut z_rows {
+        if row.bracket == best_fit_bracket {
+            row.is_best_fit = true;
+        }
+    }
+
+    Ok(BenchmarkResult {
+        rows: z_rows,
+        best_fit_bracket,
+        data_date,
+        user_std_dev: None, // caller fills this in
+        user_mean: None,    // caller fills this in
+    })
+}
+
+/// Compute the user's standard deviation for a stat across recent matches.
+pub fn get_user_stat_std_dev(
+    conn: &Connection,
+    hero_id: Option<i32>,
+    game_mode: Option<i32>,
+    time_minutes: i32,
+    window_size: usize,
+) -> Result<Option<f64>, String> {
+    let mut query = String::from(
+        "SELECT mc.last_hits
+         FROM matches m
+         JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = ?1
+         WHERE m.parse_state = 'parsed' AND mc.last_hits IS NOT NULL"
+    );
+    let mut param_count = 1;
+
+    if hero_id.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND m.hero_id = ?{}", param_count));
+    }
+    if game_mode.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND m.game_mode = ?{}", param_count));
+    }
+
+    query.push_str(" ORDER BY m.start_time DESC");
+
+    let mut stmt = conn
+        .prepare(&query)
+        .map_err(|e| format!("Failed to prepare user SD query: {}", e))?;
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(time_minutes)];
+    if let Some(h) = hero_id {
+        params_vec.push(Box::new(h));
+    }
+    if let Some(m) = game_mode {
+        params_vec.push(Box::new(m));
+    }
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+
+    let rows = stmt
+        .query_map(&params_refs[..], |row| row.get::<_, i32>(0))
+        .map_err(|e| format!("Failed to query user stats: {}", e))?;
+
+    let values: Vec<f64> = rows
+        .filter_map(|r| r.ok())
+        .take(window_size)
+        .map(|v| v as f64)
+        .collect();
+
+    if values.len() < 2 {
+        return Ok(None);
+    }
+
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+    Ok(Some(variance.sqrt()))
+}
+
+/// Get all user LH values at a specific minute across all parsed matches, newest first.
+/// Returns (match_id, hero_id, game_mode, last_hits) tuples.
+pub fn get_user_lh_at_minute_history(
+    conn: &Connection,
+    minute: i32,
+) -> Result<Vec<(i64, i32, i32, i32)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.match_id, m.hero_id, m.game_mode, mc.last_hits
+             FROM matches m
+             JOIN match_cs mc ON m.match_id = mc.match_id AND mc.minute = ?1
+             WHERE m.parse_state = 'parsed' AND mc.last_hits IS NOT NULL
+             ORDER BY m.start_time DESC",
+        )
+        .map_err(|e| format!("Failed to prepare LH history query: {}", e))?;
+
+    let rows = stmt
+        .query_map([minute], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i32>(1)?,
+                row.get::<_, i32>(2)?,
+                row.get::<_, i32>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query LH history: {}", e))?;
+
+    let values: Vec<(i64, i32, i32, i32)> = rows.filter_map(|r| r.ok()).collect();
+    Ok(values)
+}
+
+fn interpret_z_score(z: f64) -> String {
+    match z {
+        z if z > 1.5 => "Well above average".to_string(),  // ~93rd percentile+
+        z if z > 0.5 => "Above average".to_string(),       // ~69th–93rd percentile
+        z if z > 0.15 => "Slightly above average".to_string(), // ~56th–69th percentile
+        z if z > -0.15 => "About average".to_string(),     // ~44th–56th percentile
+        z if z > -0.5 => "Slightly below average".to_string(), // ~31st–44th percentile
+        z if z > -1.5 => "Below average".to_string(),      // ~7th–31st percentile
+        _ => "Well below average".to_string(),              // <7th percentile
+    }
+}
+
+/// Check if we have any benchmark data loaded.
+pub fn has_benchmark_data(conn: &Connection) -> Result<bool, String> {
+    let count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM hero_benchmarks", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to count benchmarks: {}", e))?;
+    Ok(count > 0)
 }

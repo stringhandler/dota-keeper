@@ -422,6 +422,13 @@ struct StratzDetailedPlayer {
     steam_account_id: Option<u64>,
     player_slot: Option<i32>,
     position: Option<serde_json::Value>,
+    experience_per_minute: Option<i32>,
+    gold_per_minute: Option<i32>,
+    num_last_hits: Option<i32>,
+    num_denies: Option<i32>,
+    hero_damage: Option<i32>,
+    tower_damage: Option<i32>,
+    hero_healing: Option<i32>,
     stats: Option<StratzPlayerStats>,
 }
 
@@ -431,6 +438,7 @@ struct StratzPlayerStats {
     last_hits_per_minute: Option<Vec<i32>>,
     denies_per_minute: Option<Vec<i32>>,
     networth_per_minute: Option<Vec<i32>>,
+    xp_per_minute: Option<Vec<i32>>,
     item_purchases: Option<Vec<StratzItemPurchase>>,
 }
 
@@ -449,10 +457,18 @@ query GetMatchDetails($matchId: Long!) {
       steamAccountId
       playerSlot
       position
+      experiencePerMinute
+      goldPerMinute
+      numLastHits
+      numDenies
+      heroDamage
+      towerDamage
+      heroHealing
       stats {
         lastHitsPerMinute
         deniesPerMinute
         networthPerMinute
+        xpPerMinute
         itemPurchases {
           time
           itemId
@@ -504,16 +520,41 @@ pub async fn fetch_match_details(match_id: i64, api_key: &str) -> Result<Detaile
                 lane_role: Some(lane_role),
                 // Stratz returns per-minute deltas; convert to cumulative totals
                 // to match the OpenDota lh_t / dn_t format the rest of the app expects.
+                // Stratz per-minute arrays are 0-indexed starting at minute 1 (index 0 = end of
+                // minute 1). OpenDota's lh_t format starts at minute 0 (index 0 = game start).
+                // Prepend 0 to each cumulative array so index N maps to minute N, matching
+                // OpenDota's convention and the minute values stored in match_cs.
                 lh_t: p.stats.as_ref().and_then(|s| s.last_hits_per_minute.as_ref()).map(|v| {
                     let mut total = 0;
-                    v.iter().map(|&x| { total += x; total }).collect()
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
                 }),
                 dn_t: p.stats.as_ref().and_then(|s| s.denies_per_minute.as_ref()).map(|v| {
                     let mut total = 0;
-                    v.iter().map(|&x| { total += x; total }).collect()
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
                 }),
-                gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.clone()),
+                gold_t: p.stats.as_ref().and_then(|s| s.networth_per_minute.as_ref()).map(|v| {
+                    let mut out = vec![0];
+                    out.extend(v.iter().copied());
+                    out
+                }),
+                xp_t: p.stats.as_ref().and_then(|s| s.xp_per_minute.as_ref()).map(|v| {
+                    let mut total = 0;
+                    let mut out = vec![0];
+                    out.extend(v.iter().map(|&x| { total += x; total }));
+                    out
+                }),
                 purchase_log,
+                xp_per_min: p.experience_per_minute,
+                gold_per_min: p.gold_per_minute,
+                last_hits: p.num_last_hits,
+                denies: p.num_denies,
+                hero_damage: p.hero_damage,
+                tower_damage: p.tower_damage,
+                hero_healing: p.hero_healing,
             }
         })
         .collect();

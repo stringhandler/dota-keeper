@@ -28,6 +28,8 @@
   // Initialise i18n once on app load
   setupI18n();
 
+  let { children } = $props();
+
   let isLoading = $state(true);
   let isMobile = $state(false);
   let isLoggedIn = $state(false);
@@ -41,6 +43,8 @@
   let isUpdating = $state(false);
   let showConsentModal = $state(false);
   let steamLoginPending = $state(false);
+  /** Query strings of Steam deep links already processed this load (single-use nonces). */
+  const processedDeepLinks = new Set();
   let showFeedbackModal = $state(false);
   let appVersion = $state("");
   let showWhatsNew = $state(false);
@@ -50,7 +54,11 @@
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
+    // Safety net: never show the loading screen for more than 10 s.
+    // If Rust IPC hangs on startup the finally block in loadSettings never runs.
+    const loadingTimeout = setTimeout(() => { isLoading = false; }, 10_000);
     await loadSettings();
+    clearTimeout(loadingTimeout);
     appVersion = await getVersion();
 
     const lastSeen = localStorage.getItem('last_seen_version');
@@ -74,6 +82,46 @@
     if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
       showToast("Feedback is not configured. Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY.", "error", 8000);
     }
+
+    // Persistent Steam-login completion path. This MUST live at the layout level
+    // (not inside handleSteamLogin) because on Android the app process is often
+    // killed while the external browser is foregrounded — the WebView reloads on
+    // return, so any listener registered before the redirect is gone. onMount runs
+    // again on reload, so registering here guarantees the callback is handled.
+
+    // Desktop: handle_steam_callback emits this event with {steam_id} / {error}.
+    listen("steam-login-complete", async (event) => {
+      steamLoginPending = false;
+      const payload = /** @type {{steam_id?: string, error?: string}} */ (event.payload);
+      if (payload.steam_id) {
+        try {
+          await saveAndLogin(payload.steam_id);
+        } catch (e) {
+          error = `Failed to save Steam ID: ${e}`;
+        }
+      } else if (payload.error) {
+        error = payload.error;
+      }
+    });
+
+    // Android: handle the Steam deep link callback (dotakeeper://auth?openid.*).
+    // Uses listen() directly because @tauri-apps/plugin-deep-link has "browser":null,
+    // causing Vite to emit an empty module for WebView builds.
+    listen('deep-link://new-url', async (event) => {
+      const urls = /** @type {(string|null)[]} */ (event.payload);
+      for (const url of urls) {
+        await handleSteamDeepLink(url);
+      }
+    });
+
+    // Cold start: the launch deep link may have arrived before the listener above
+    // was attached. Drain any pending launch URL the app was opened with.
+    try {
+      const pending = /** @type {string[]} */ (await invoke('get_pending_deep_links'));
+      for (const url of pending) {
+        await handleSteamDeepLink(url);
+      }
+    } catch (_) {}
 
     // Check analytics consent on every startup
     const consent = await getAnalyticsConsent();
@@ -155,30 +203,45 @@
     }
   }
 
+  /**
+   * Verify and complete a Steam login from a dotakeeper://auth deep link URL.
+   * Called from both the live `deep-link://new-url` event and the cold-start
+   * drain of pending launch URLs, so it is safe to call with any URL.
+   * @param {string | null} url
+   */
+  async function handleSteamDeepLink(url) {
+    if (typeof url !== 'string' || !url.startsWith('dotakeeper://auth')) return;
+    const queryString = url.split('?')[1] ?? '';
+    // On cold start the same callback can arrive via both the deep-link event and
+    // the pending-link drain. Steam OpenID nonces are single-use, so dedupe to
+    // avoid a second verification failing and clobbering the successful login.
+    if (processedDeepLinks.has(queryString)) return;
+    processedDeepLinks.add(queryString);
+    try {
+      const steamId = /** @type {string | null} */ (
+        await invoke('verify_steam_deep_link', { queryString })
+      );
+      steamLoginPending = false;
+      if (steamId) {
+        await saveAndLogin(steamId);
+      }
+      // steamId === null means the user cancelled — stay on the login screen quietly.
+    } catch (e) {
+      steamLoginPending = false;
+      error = `Steam login failed: ${e}`;
+    }
+  }
+
   async function handleSteamLogin() {
     steamLoginPending = true;
     error = "";
-    /** @type {(() => void) | undefined} */
-    let unlisten;
     try {
       const url = await invoke("start_steam_login");
-      unlisten = await listen("steam-login-complete", async (event) => {
-        unlisten?.();
-        steamLoginPending = false;
-        const payload = event.payload;
-        if (payload.steam_id) {
-          try {
-            await saveAndLogin(payload.steam_id);
-          } catch (e) {
-            error = `Failed to save Steam ID: ${e}`;
-          }
-        } else {
-          error = payload.error || "Steam login failed";
-        }
-      });
+      // Completion is handled by the persistent listeners registered in onMount
+      // (the desktop `steam-login-complete` event and the Android deep-link path),
+      // which survive the WebView reload that Android may trigger on return.
       await openUrl(url);
     } catch (e) {
-      unlisten?.();
       steamLoginPending = false;
       error = `Steam login failed: ${e}`;
     }
@@ -225,8 +288,8 @@
         updateAvailable = true;
         updateVersion = update.version;
       }
-    } catch (e) {
-      console.error('Failed to check for updates:', e);
+    } catch (_) {
+      // updater plugin is desktop-only; silently skip on Android/iOS
     }
   }
 
@@ -253,7 +316,9 @@
 
 {#if isLoading}
   <div class="loading-screen">
-    <p>{$_('layout.loading')}</p>
+    <div class="loading-brand">DOTA KEEPER</div>
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <div class="loading-label">LOADING</div>
   </div>
 {:else if !isLoggedIn}
   <div class="login-screen">
@@ -373,6 +438,12 @@
           </svg>
           {$_('nav.medals')}
         </a>
+        <a href="/journal" class="nav-item" class:active={isActivePath('/journal')}>
+          <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+          {$_('nav.journal')}
+        </a>
         <a href="/settings" class="nav-item" class:active={isActive('/settings')}>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -416,7 +487,7 @@
 
       <!-- CONTENT -->
       <div class="content-area" class:content-area-mobile={isMobile}>
-        <slot />
+        {@render children()}
       </div>
     </div>
   </div>
@@ -458,16 +529,44 @@
   /* ── LOADING / LOGIN ── */
   .loading-screen {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    flex: 1;
-    background: var(--bg-base);
-    color: var(--gold);
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 12px;
-    letter-spacing: 3px;
+    gap: 20px;
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base, #111827);
+    padding-top: var(--sat, 0px);
+  }
+
+  .loading-brand {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 5px;
+    color: var(--gold, #f0b429);
     text-transform: uppercase;
-    padding-top: var(--sat);
+  }
+
+  .loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(240, 180, 41, 0.15);
+    border-top-color: var(--gold, #f0b429);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .loading-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .login-screen {
@@ -495,7 +594,7 @@
     }
 
     .login-brand {
-      font-size: 22px;
+      font-size: 24px;
     }
   }
 
@@ -510,7 +609,7 @@
   }
 
   .login-sub {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin-bottom: 28px;
   }
@@ -523,14 +622,14 @@
 
   .form-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
   }
 
   .login-hint {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-bottom: 8px;
   }
@@ -541,7 +640,7 @@
     gap: 10px;
     margin: 18px 0 4px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -567,7 +666,7 @@
     border-radius: 6px;
     color: #c6d4df;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -667,14 +766,14 @@
   }
 
   .app-version {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 1px;
     font-family: 'Barlow Condensed', sans-serif;
   }
 
   .brand-id {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     letter-spacing: 1px;
     margin-top: 6px;
@@ -688,7 +787,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 5px 8px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--gold-dim);
     letter-spacing: 0.5px;
     font-family: monospace;
@@ -710,7 +809,7 @@
     padding: 11px 20px;
     cursor: pointer;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-secondary);
@@ -778,7 +877,7 @@
   }
 
   .rank-text {
-    font-size: 9px;
+    font-size: 12px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1.5px;
@@ -806,7 +905,7 @@
     border-radius: 4px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
     cursor: pointer;
@@ -835,7 +934,7 @@
     border-radius: 6px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -903,7 +1002,7 @@
 
   .page-title {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 3px;
     color: var(--text-primary);

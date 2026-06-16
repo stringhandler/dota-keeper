@@ -191,7 +191,7 @@
 
   .loading, .no-changes {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     padding: 20px 0;
   }
 
@@ -201,7 +201,7 @@
     border-radius: 6px;
     padding: 12px 16px;
     color: #e57373;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* ── Empty state ── */
@@ -219,14 +219,14 @@
 
   .empty-title {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--text-secondary);
     text-transform: uppercase;
   }
 
-  .empty-sub { font-size: 13px; max-width: 340px; }
+  .empty-sub { font-size: 14px; max-width: 340px; }
 
   /* ── Stats row ── */
   .stats-row {
@@ -257,7 +257,7 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -272,7 +272,7 @@
   }
 
   .stat-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
@@ -284,7 +284,7 @@
 
   .peak-tag {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--gold);
@@ -309,7 +309,7 @@
 
   .medal-name {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -324,7 +324,7 @@
   /* ── Timeline ── */
   .section-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
     color: var(--text-muted);
@@ -383,14 +383,14 @@
   }
 
   .inline-stars {
-    font-size: 11px;
+    font-size: 12px;
     display: flex;
     gap: 1px;
   }
 
   .peak-chip {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--gold);
@@ -401,12 +401,12 @@
   }
 
   .timeline-date {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
   .timeline-match-link {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--gold-dim);
     text-decoration: none;
     transition: color 0.15s;

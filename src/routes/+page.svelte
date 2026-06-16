@@ -9,6 +9,7 @@
   import MoodCheckin from "$lib/MoodCheckin.svelte";
   import { pendingCheckinStore } from "$lib/checkin-store.js";
   import { _ } from "svelte-i18n";
+  import SkeletonLine from "$lib/SkeletonLine.svelte";
 
   let isLoading = $state(true);
   let error = $state("");
@@ -197,10 +198,13 @@
       await invoke("create_goal", {
         goal: {
           hero_id: suggestion.hero_id,
+          hero_scope: null,
           metric: "LastHits",
           target_value: suggestion.suggested_last_hits,
           target_time_minutes: 10,
-          game_mode: "Ranked"
+          item_id: null,
+          game_mode: "Ranked",
+          frequency_type: "pct_75",
         }
       });
       await loadGoalCalendar();
@@ -353,7 +357,29 @@
 
 <div class="dashboard">
   {#if isLoading}
-    <div class="loading-state">{$_('dashboard.loading')}</div>
+    <div class="skeleton-dashboard">
+      <div class="skeleton-stat-row">
+        {#each Array(4) as _}
+          <div class="skeleton-stat-card">
+            <SkeletonLine width="60%" height="11px" />
+            <SkeletonLine width="50%" height="28px" />
+          </div>
+        {/each}
+      </div>
+      <div class="skeleton-section">
+        <SkeletonLine width="140px" height="14px" />
+        {#each Array(3) as _}
+          <div class="skeleton-row-item">
+            <div class="skeleton-circle"></div>
+            <div class="skeleton-row-text">
+              <SkeletonLine width="120px" height="13px" />
+              <SkeletonLine width="80px" height="11px" />
+            </div>
+            <SkeletonLine width="50px" height="13px" />
+          </div>
+        {/each}
+      </div>
+    </div>
   {:else}
     {#if error}
       <div class="error-banner">{error}</div>
@@ -618,7 +644,7 @@
     }
 
     .stat-label {
-      font-size: 9px;
+      font-size: 12px;
       letter-spacing: 1px;
     }
 
@@ -653,7 +679,7 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -671,12 +697,12 @@
   .stat-value.stat-na { color: var(--text-muted); }
 
   .stat-unit {
-    font-size: 18px;
+    font-size: 20px;
     color: var(--text-secondary);
   }
 
   .stat-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-top: 4px;
   }
@@ -744,14 +770,14 @@
   }
 
   .challenge-meta {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     display: flex;
     gap: 14px;
   }
 
   .reset-text {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
   }
@@ -796,7 +822,7 @@
     padding: 40px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 28px;
     display: flex;
     flex-direction: column;
@@ -827,7 +853,7 @@
     border-color: rgba(100, 100, 200, 0.2);
   }
 
-  .weekly-empty-text { color: var(--text-secondary); font-size: 13px; }
+  .weekly-empty-text { color: var(--text-secondary); font-size: 14px; }
 
   .weekly-hero {
     margin-bottom: 8px;
@@ -867,7 +893,7 @@
   }
 
   .weekly-label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     white-space: nowrap;
     min-width: 3rem;
@@ -875,7 +901,7 @@
     font-family: 'Barlow Condensed', sans-serif;
   }
 
-  .weekly-meta { font-size: 11px; display: flex; align-items: center; gap: 8px; }
+  .weekly-meta { font-size: 12px; display: flex; align-items: center; gap: 8px; }
 
   /* ── HERO SUGGESTION ── */
   .suggestion-card {
@@ -895,7 +921,7 @@
 
   .suggestion-hero-name {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--gold);
     margin-bottom: 10px;
@@ -911,7 +937,7 @@
   .sug-stat { display: flex; flex-direction: column; }
 
   .sug-label {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -929,7 +955,7 @@
   .sug-value.green { color: var(--green); }
 
   .sug-games {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-style: italic;
   }
@@ -966,5 +992,67 @@
 
   @media (max-width: 640px) {
     .mobile-new-goal { display: block; }
+  }
+
+  .skeleton-dashboard { display: flex; flex-direction: column; gap: 20px; margin-top: 8px; }
+
+  .skeleton-stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .skeleton-stat-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .skeleton-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .skeleton-row-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .skeleton-row-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .skeleton-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--border) 50%, var(--bg-elevated) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  @media (max-width: 640px) {
+    .skeleton-stat-row { grid-template-columns: repeat(2, 1fr); }
   }
 </style>

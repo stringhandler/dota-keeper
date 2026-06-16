@@ -211,7 +211,7 @@
     border-radius: 4px;
     color: var(--text-primary);
     font-family: 'Barlow', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     padding: 6px 10px;
     cursor: pointer;
     text-align: left;
@@ -242,7 +242,7 @@
     background: rgba(60, 60, 70, 0.8);
     border: 1px solid rgba(139, 92, 46, 0.4);
     color: #d4af37;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: bold;
     display: flex;
     align-items: center;
@@ -264,7 +264,7 @@
 
   .chevron {
     margin-left: auto;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     transition: transform 0.15s;
     flex-shrink: 0;
@@ -294,7 +294,7 @@
     gap: 8px;
     padding: 5px 10px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-primary);
     transition: background 0.1s;
   }
@@ -333,7 +333,7 @@
   }
 
   .group-label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     padding: 4px 10px 2px;
     text-transform: uppercase;

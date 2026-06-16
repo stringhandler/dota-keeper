@@ -215,7 +215,7 @@
   .modal-header h2 {
     margin: 0;
     font-family: 'Rajdhani', sans-serif;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--gold, #f0b429);
@@ -251,14 +251,14 @@
 
   .field-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--text-muted, #8a7f6e);
   }
 
   .optional {
-    font-size: 10px;
+    font-size: 12px;
     opacity: 0.7;
     text-transform: none;
     letter-spacing: 0;
@@ -281,7 +281,7 @@
     border-radius: 6px;
     color: var(--text-secondary, #b8a895);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.5px;
     cursor: pointer;
@@ -342,7 +342,7 @@
     align-items: center;
     gap: 8px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary, #b8a895);
     cursor: pointer;
   }

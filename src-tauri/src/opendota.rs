@@ -114,7 +114,16 @@ pub struct DetailedPlayer {
     pub lh_t: Option<Vec<i32>>,  // Last hits at each minute
     pub dn_t: Option<Vec<i32>>,  // Denies at each minute
     pub gold_t: Option<Vec<i32>>,  // Gold (net worth) at each minute — OpenDota field name
+    pub xp_t: Option<Vec<i32>>,  // XP at each minute
     pub purchase_log: Option<Vec<PurchaseLogEntry>>,  // Item purchases
+    // End-of-game stats (may be absent from match history, populated from detailed fetch)
+    pub xp_per_min: Option<i32>,
+    pub gold_per_min: Option<i32>,
+    pub last_hits: Option<i32>,
+    pub denies: Option<i32>,
+    pub hero_damage: Option<i32>,
+    pub tower_damage: Option<i32>,
+    pub hero_healing: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

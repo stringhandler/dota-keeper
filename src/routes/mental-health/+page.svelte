@@ -250,7 +250,7 @@
 
   .page-header h1 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -262,7 +262,7 @@
     color: var(--text-muted);
     padding: 40px 0;
     text-align: center;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .error-banner {
@@ -271,7 +271,7 @@
     color: var(--red);
     border-radius: 6px;
     padding: 12px 16px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* ── Cards ──────────────────────────────────────────────────── */
@@ -296,7 +296,7 @@
 
   .disabled-state h3 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--text-primary);
@@ -304,7 +304,7 @@
   }
 
   .disabled-state p {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin: 0;
   }
@@ -343,7 +343,7 @@
   }
 
   .muted-note {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin: 0 0 12px;
   }
@@ -418,7 +418,7 @@
 
   .trend-line {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.5px;
   }
@@ -475,7 +475,7 @@
 
   .action-btn {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -506,7 +506,7 @@
 
   /* ── Empty history ──────────────────────────────────────────── */
   .empty-history p {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin: 0;
   }
@@ -569,21 +569,21 @@
   }
 
   .row-date {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
   }
 
   .row-time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     white-space: nowrap;
   }
 
   .result-pill {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 3px;
@@ -606,7 +606,7 @@
   }
 
   .skipped-tag {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-style: italic;
   }
@@ -635,14 +635,14 @@
   }
 
   .mood-score {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.3px;
   }
 
   .attrib-tag {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
@@ -661,7 +661,7 @@
     }
 
     .avg-value {
-      font-size: 11px;
+      font-size: 12px;
     }
 
     .attrib-tag {

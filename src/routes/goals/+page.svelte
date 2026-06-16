@@ -8,6 +8,7 @@
   import { trackPageView, trackEvent } from "$lib/analytics.js";
   import { showToast } from "$lib/toast.js";
   import { _ } from "svelte-i18n";
+  import SkeletonLine from "$lib/SkeletonLine.svelte";
 
   let pendingDeleteId = $state(/** @type {number | null} */ (null));
   let goals = $state(/** @type {any[]} */ ([]));
@@ -451,7 +452,18 @@
   </div>
 
   {#if isLoading}
-    <div class="loading-state">{$_('goals.loading')}</div>
+    <div class="skeleton-goals">
+      {#each Array(3) as _}
+        <div class="skeleton-goal-card">
+          <div class="skeleton-goal-header">
+            <SkeletonLine width="140px" height="14px" />
+            <SkeletonLine width="60px" height="11px" />
+          </div>
+          <SkeletonLine width="100%" height="8px" />
+          <SkeletonLine width="80px" height="11px" />
+        </div>
+      {/each}
+    </div>
   {:else if goals.length === 0}
     <div class="no-goals">
       {$_('goals.empty')}
@@ -582,11 +594,11 @@
   /* Align buttons with the inputs */
   .fg-action .btn { align-self: flex-start; }
 
-  .fg-action > div { /* spacer label */ font-size: 10px; visibility: hidden; }
+  .fg-action > div { /* spacer label */ font-size: 12px; visibility: hidden; }
 
   .form-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -602,7 +614,7 @@
     padding: 40px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* ── GOALS GRID ── */
@@ -626,7 +638,7 @@
   }
 
   .delete-confirm-label {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--red);
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 0.5px;
@@ -635,7 +647,7 @@
   /* Goal type tags */
   .goal-tag {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 1px;
     text-transform: uppercase;
     font-weight: 600;
@@ -678,7 +690,7 @@
   .warning-tag {
     color: var(--gold);
     font-style: italic;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   /* Inline icon layout for item timing goals */
@@ -705,5 +717,23 @@
     .mobile-new-goal-row { display: block; }
 
     .form-hidden-mobile { display: none; }
+  }
+
+  .skeleton-goals { display: flex; flex-direction: column; gap: 8px; }
+
+  .skeleton-goal-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .skeleton-goal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 </style>

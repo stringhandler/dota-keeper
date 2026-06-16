@@ -1,5 +1,6 @@
 package com.volthawk.dota_keeper
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -8,7 +9,7 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-
+import app.tauri.plugin.PluginManager
 class MainActivity : TauriActivity() {
   private var webViewRef: WebView? = null
   private var insetsBottom = 0f
@@ -29,9 +30,53 @@ class MainActivity : TauriActivity() {
       val density = resources.displayMetrics.density
       insetsBottom = navBar.bottom / density
       insetsTop = statusBar.top / density
+
+      // Some OEM ROMs (e.g. Huawei EMUI) report 0 for navigation bar insets
+      // even when a software nav bar is visible. Fall back to the system
+      // resource dimension so the app still gets the correct padding.
+      if (insetsBottom == 0f) {
+        insetsBottom = getSystemNavBarHeightDp()
+      }
+      if (insetsTop == 0f) {
+        insetsTop = getSystemStatusBarHeightDp()
+      }
+
       injectInsets()
       ViewCompat.onApplyWindowInsets(view, insets)
     }
+  }
+
+  /** Read the navigation bar height from system resources (works on all OEMs). */
+  private fun getSystemNavBarHeightDp(): Float {
+    val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+    if (resId > 0) {
+      val px = resources.getDimensionPixelSize(resId)
+      return px / resources.displayMetrics.density
+    }
+    return 0f
+  }
+
+  /** Read the status bar height from system resources. */
+  private fun getSystemStatusBarHeightDp(): Float {
+    val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+    if (resId > 0) {
+      val px = resources.getDimensionPixelSize(resId)
+      return px / resources.displayMetrics.density
+    }
+    return 0f
+  }
+
+  // tao-0.35.0 crashes in handle_intent when processing custom-scheme VIEW intents
+  // because it calls get_string() on a null JString returned by Intent.getType().
+  // Intercept our deep-link scheme here, forward only to PluginManager (so
+  // DeepLinkPlugin still receives it), and skip Rust.onNewIntent entirely.
+  override fun onNewIntent(intent: Intent) {
+    if (intent.action == Intent.ACTION_VIEW && intent.data?.scheme == "dotakeeper") {
+      setIntent(intent)
+      PluginManager.onNewIntent(intent)
+      return
+    }
+    super.onNewIntent(intent)
   }
 
   override fun onResume() {
@@ -46,8 +91,10 @@ class MainActivity : TauriActivity() {
 
   private fun injectInsets() {
     val wv = webViewRef ?: return
+    // Use Math.max with a 48px floor for bottom inset — guarantees clearance
+    // on devices where inset detection fails entirely.
     wv.evaluateJavascript(
-      "document.documentElement.style.setProperty('--sab','${insetsBottom}px');" +
+      "document.documentElement.style.setProperty('--sab', Math.max(${insetsBottom}, 48) + 'px');" +
       "document.documentElement.style.setProperty('--sat','${insetsTop}px');",
       null
     )

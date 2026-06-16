@@ -34,6 +34,7 @@
   // Filters
   let selectedHeroId = $state("");
   let selectedPeriod = $state("");
+  let selectedGameMode = $state("All"); // "All" | "Ranked" | "Turbo"
 
   // Get sorted hero list for dropdown
   const allHeroesSorted = Object.entries(heroes)
@@ -55,6 +56,13 @@
       const days = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 365;
       const cutoff = (Date.now() / 1000) - days * 86400;
       data = data.filter((d) => d.start_time >= cutoff);
+    }
+
+    // Filter by game mode (only when user explicitly selects one)
+    if (selectedGameMode === 'Ranked') {
+      data = data.filter((d) => d.game_mode === 22);
+    } else if (selectedGameMode === 'Turbo') {
+      data = data.filter((d) => d.game_mode === 23);
     }
 
     return data;
@@ -128,6 +136,25 @@
     return [...data]
       .sort((a, b) => a.start_time - b.start_time)
       .slice(-10);
+  });
+
+  // Whether lower value = better for this metric
+  let lowerIsBetter = $derived(goal?.metric === 'ItemTiming' || goal?.metric === 'Deaths');
+
+  // Best games: top 10 by value (highest, or lowest for lower-is-better metrics)
+  let bestGames = $derived.by(() => {
+    const data = filteredData;
+    return [...data]
+      .sort((a, b) => lowerIsBetter ? a.value - b.value : b.value - a.value)
+      .slice(0, 10);
+  });
+
+  // Worst games: bottom 10 by value
+  let worstGames = $derived.by(() => {
+    const data = filteredData;
+    return [...data]
+      .sort((a, b) => lowerIsBetter ? b.value - a.value : a.value - b.value)
+      .slice(0, 10);
   });
 
   // Achievement status indicator — behaviour depends on frequency_type
@@ -329,6 +356,121 @@
     };
   });
 
+  // Trend chart: all filtered games over time, with rolling average + goal line
+  let trendChartConfig = $derived.by(() => {
+    const data = [...filteredData].sort((a, b) => a.start_time - b.start_time);
+    if (!goal || data.length < 2) return null;
+
+    const isItemTiming = goal.metric === 'ItemTiming';
+    const fmt = /** @param {number} v */ (v) => isItemTiming ? formatSeconds(v) : String(v);
+    const window = 5;
+    const rollingAvg = data.map((_, i) => {
+      const slice = data.slice(Math.max(0, i - window + 1), i + 1);
+      return Math.round(slice.reduce((s, d) => s + d.value, 0) / slice.length);
+    });
+
+    const goalLinePlugin = {
+      id: 'trendGoalLine',
+      /** @param {import('chart.js').Chart} chart */
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        const yScale = chart.scales.y;
+        const xScale = chart.scales.x;
+        const y = yScale.getPixelForValue(goal.target_value);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(240,180,41,0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xScale.left, y);
+        ctx.lineTo(xScale.right, y);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(240,180,41,0.9)';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`Goal: ${fmt(goal.target_value)}`, xScale.right - 4, y - 4);
+        ctx.restore();
+      }
+    };
+
+    return {
+      type: 'line',
+      plugins: [goalLinePlugin],
+      data: {
+        labels: data.map(d => formatDate(d.start_time)),
+        datasets: [
+          {
+            label: 'Per game',
+            data: data.map(d => d.value),
+            borderColor: 'transparent',
+            pointBackgroundColor: data.map(d => d.achieved ? 'rgba(74,222,128,0.8)' : 'rgba(248,113,113,0.65)'),
+            pointBorderColor: data.map(d => d.achieved ? 'rgba(74,222,128,1)' : 'rgba(248,113,113,1)'),
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0,
+          },
+          {
+            label: `${window}-game avg`,
+            data: rollingAvg,
+            borderColor: 'rgba(240,180,41,0.85)',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (/** @type {any} */ ctx) => {
+                if (ctx.datasetIndex === 0) {
+                  const d = data[ctx.dataIndex];
+                  return `${fmt(d.value)} (${d.achieved ? '✓' : '✗'})`;
+                }
+                return `${window}-game avg: ${fmt(ctx.parsed.y)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#726558', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+            grid: { color: 'rgba(255,200,80,0.06)' },
+          },
+          y: {
+            ticks: { color: '#726558', font: { size: 11 },
+              callback: /** @param {any} v */ (v) => fmt(v),
+            },
+            grid: { color: 'rgba(255,200,80,0.08)' },
+          },
+        },
+      },
+    };
+  });
+
+  // Success rates for different time windows
+  let successRates = $derived.by(() => {
+    if (!filteredData.length) return null;
+    const now = Date.now() / 1000;
+    const windows = [
+      { label: 'Last 7d',  cutoff: now - 7 * 86400 },
+      { label: 'Last 30d', cutoff: now - 30 * 86400 },
+      { label: 'All time', cutoff: 0 },
+    ];
+    return windows.map(w => {
+      const games = filteredData.filter(d => d.start_time >= w.cutoff);
+      if (games.length === 0) return { label: w.label, rate: null, total: 0 };
+      const achieved = games.filter(d => d.achieved).length;
+      return { label: w.label, rate: Math.round((achieved / games.length) * 100), total: games.length };
+    }).filter(w => w.total > 0);
+  });
+
   let bannerDismissed = $state(false);
   let hoveredDot = $state(/** @type {any} */ (null));
 
@@ -401,6 +543,7 @@
   function resetFilters() {
     selectedHeroId = "";
     selectedPeriod = "";
+    selectedGameMode = "All";
   }
 
   /** @param {string} metric */
@@ -703,10 +846,24 @@
 
     <!-- Filters Row -->
     <div class="filters-row">
-      {#if goal.hero_id === null}
+      {#if goal.hero_id === null && !goal.hero_scope}
         <div class="filter-group">
           <div class="filter-label">{$_('goals_detail.hero_filter')}</div>
           <HeroSelect bind:value={selectedHeroId} heroes={allHeroesSorted} favoriteIds={favoriteHeroIds} anyLabel={$_('goals_detail.all_heroes')} />
+        </div>
+      {/if}
+      {#if goal.hero_id === null && !goal.hero_scope && goal.game_mode === 'All'}
+        <div class="filter-group">
+          <div class="filter-label">Game Mode</div>
+          <div class="period-buttons">
+            {#each ['All', 'Ranked', 'Turbo'] as mode}
+              <button
+                class="period-btn"
+                class:active={selectedGameMode === mode}
+                onclick={() => selectedGameMode = mode}
+              >{mode}</button>
+            {/each}
+          </div>
         </div>
       {/if}
       <div class="filter-group">
@@ -896,6 +1053,35 @@
       {/if}
     </section>
 
+    <!-- Trend Section -->
+    {#if trendChartConfig}
+      <section class="trend-section">
+        <h2>Performance Trend</h2>
+
+        {#if successRates && successRates.length > 0}
+          <div class="success-rate-chips">
+            {#each successRates as w}
+              {@const r = w.rate ?? 0}
+              <div class="rate-chip" class:rate-good={r >= 75} class:rate-warn={r >= 50 && r < 75} class:rate-bad={r < 50}>
+                <span class="rate-label">{w.label}</span>
+                <span class="rate-value">{r}%</span>
+                <span class="rate-count">({w.total}g)</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="trend-legend">
+          <span class="tl-dot achieved"></span><span class="tl-text">Achieved</span>
+          <span class="tl-dot failed"></span><span class="tl-text">Missed</span>
+          <span class="tl-line avg"></span><span class="tl-text">5-game avg</span>
+          <span class="tl-line goal"></span><span class="tl-text">Goal</span>
+        </div>
+
+        <Chart config={trendChartConfig} height="260px" />
+      </section>
+    {/if}
+
     <!-- Statistics Section -->
     <section class="stats-section">
       <h2>Statistics</h2>
@@ -961,6 +1147,41 @@
         </div>
       {/if}
     </section>
+
+    <!-- Best & Worst Games -->
+    {#if filteredData.length > 0}
+      <div class="best-worst-grid">
+        <section class="best-worst-section">
+          <h2 class="best-worst-title best">Best Games</h2>
+          <div class="games-list">
+            {#each bestGames as game}
+              <a href="/matches/{game.match_id}?from=goal&goalId={goalId}" class="game-row">
+                <HeroIcon heroId={game.hero_id} size="small" showName={false} />
+                <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
+                <span class="game-value best-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>
+                <span class="game-result {game.won ? 'win' : 'loss'}">{game.won ? 'W' : 'L'}</span>
+                <span class="game-date">{formatDate(game.start_time)}</span>
+              </a>
+            {/each}
+          </div>
+        </section>
+
+        <section class="best-worst-section">
+          <h2 class="best-worst-title worst">Worst Games</h2>
+          <div class="games-list">
+            {#each worstGames as game}
+              <a href="/matches/{game.match_id}?from=goal&goalId={goalId}" class="game-row">
+                <HeroIcon heroId={game.hero_id} size="small" showName={false} />
+                <span class="game-hero-name">{getHeroName(game.hero_id)}</span>
+                <span class="game-value worst-value">{formatStatValue(game.value, goal.metric)}{goal.metric !== 'ItemTiming' ? ` ${getMetricUnit(goal.metric)}` : ''}</span>
+                <span class="game-result {game.won ? 'win' : 'loss'}">{game.won ? 'W' : 'L'}</span>
+                <span class="game-date">{formatDate(game.start_time)}</span>
+              </a>
+            {/each}
+          </div>
+        </section>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -982,7 +1203,7 @@
 
   .loading p {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .error {
@@ -991,12 +1212,12 @@
     border: 1px solid rgba(248, 113, 113, 0.25);
     border-radius: 4px;
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .back-link {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1027,7 +1248,7 @@
 
   .page-header h1 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--text-primary);
@@ -1036,7 +1257,7 @@
   }
 
   .goal-description {
-    font-size: 14px;
+    font-size: 15px;
     color: var(--text-secondary);
     margin: 0;
     display: flex;
@@ -1047,7 +1268,7 @@
   .goal-freq-badge {
     display: inline-block;
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 12px;
     font-family: 'Barlow Condensed', sans-serif;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1069,7 +1290,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1086,7 +1307,7 @@
 
   .edit-success {
     color: var(--green);
-    font-size: 13px;
+    font-size: 14px;
     margin: 0;
   }
 
@@ -1110,7 +1331,7 @@
     flex-direction: column;
     gap: 6px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     color: var(--text-muted);
@@ -1125,7 +1346,7 @@
     border-radius: 4px;
     padding: 8px 12px;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 14px;
     outline: none;
     transition: border-color 0.2s;
   }
@@ -1149,7 +1370,7 @@
 
   .form-error {
     color: var(--red);
-    font-size: 13px;
+    font-size: 14px;
     margin: 0 0 12px 0;
   }
 
@@ -1164,7 +1385,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: var(--gold);
     color: #080c10;
     border: none;
@@ -1190,7 +1411,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1222,7 +1443,7 @@
 
   .filter-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1238,7 +1459,7 @@
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1274,7 +1495,7 @@
 
   h2 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--text-primary);
@@ -1291,7 +1512,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
     outline: none;
     transition: border-color 0.2s;
@@ -1307,7 +1528,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1351,7 +1572,7 @@
 
   .stat-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1361,7 +1582,7 @@
 
   .stat-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
     color: var(--text-primary);
   }
@@ -1374,7 +1595,7 @@
     color: var(--text-muted);
     text-align: center;
     padding: 32px 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .histogram-container {
@@ -1412,7 +1633,7 @@
   }
 
   .legend-item span {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
   }
 
@@ -1440,7 +1661,7 @@
 
   .achievement-rate-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1449,19 +1670,19 @@
 
   .achievement-rate-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
     color: var(--text-primary);
   }
 
   .achievement-rate-count {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--text-muted);
   }
 
   .achievement-target {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1px;
     color: var(--text-muted);
@@ -1469,7 +1690,7 @@
   }
 
   .achievement-status {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     margin-bottom: 10px;
   }
@@ -1531,7 +1752,7 @@
     align-items: flex-start;
     gap: 10px;
     flex: 1;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     line-height: 1.5;
   }
@@ -1558,7 +1779,7 @@
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: 4px;
     cursor: pointer;
     padding: 6px 12px;
@@ -1628,7 +1849,7 @@
 
   .scatter-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -1670,7 +1891,7 @@
   .tooltip-label {
     color: var(--text-muted);
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1679,7 +1900,7 @@
 
   .tooltip-status {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 6px;
     justify-content: flex-start;
   }
@@ -1694,7 +1915,7 @@
 
   .tooltip-hint {
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-align: center;
     font-style: italic;
@@ -1731,11 +1952,192 @@
     }
 
     .legend-item span {
-      font-size: 11px;
+      font-size: 12px;
     }
 
     :global(.chart-wrapper) {
       height: 240px !important;
     }
   }
+
+  /* Best & Worst Games */
+  .best-worst-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 28px;
+  }
+
+  .best-worst-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+  }
+
+  .best-worst-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin: 0 0 14px 0;
+  }
+
+  .best-worst-title.best { color: #4ade80; }
+  .best-worst-title.worst { color: #f87171; }
+
+  .games-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .game-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 5px;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: rgba(255, 200, 80, 0.03);
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+    font-size: 14px;
+  }
+
+  .game-row:hover {
+    background: rgba(255, 200, 80, 0.08);
+    border-color: rgba(255, 200, 80, 0.2);
+  }
+
+  .game-hero-name {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .game-value {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  .game-value.best-value { color: #4ade80; }
+  .game-value.worst-value { color: #f87171; }
+
+  .game-result {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .game-result.win {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+  }
+
+  .game-result.loss {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+  }
+
+  .game-date {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 700px) {
+    .best-worst-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Trend section */
+  .trend-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+
+  .trend-section h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    margin: 0 0 14px;
+  }
+
+  .success-rate-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .rate-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .rate-chip.rate-good { border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.08); }
+  .rate-chip.rate-warn { border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.08); }
+  .rate-chip.rate-bad  { border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+
+  .rate-label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+  .rate-value { color: var(--text-primary); font-size: 14px; }
+  .rate-count { color: var(--text-muted); font-size: 11px; }
+
+  .trend-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .tl-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .tl-dot.achieved { background: rgba(74,222,128,0.9); }
+  .tl-dot.failed   { background: rgba(248,113,113,0.9); }
+
+  .tl-line {
+    display: inline-block;
+    width: 18px; height: 2px;
+  }
+  .tl-line.avg  { background: rgba(240,180,41,0.85); }
+  .tl-line.goal { background: rgba(240,180,41,0.5); border-top: 2px dashed rgba(240,180,41,0.8); height: 0; }
+
+  .tl-text { margin-left: -6px; }
 </style>

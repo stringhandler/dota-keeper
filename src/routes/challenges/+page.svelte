@@ -272,7 +272,7 @@
 
   .subtitle {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 2px;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -284,7 +284,7 @@
     top: 0;
     right: 0;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -304,14 +304,14 @@
     border-radius: 4px;
     padding: 10px 14px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .loading, .no-data {
     color: var(--text-muted);
     text-align: center;
     padding: 48px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Options view */
@@ -327,7 +327,7 @@
   .options-intro {
     color: var(--text-secondary);
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .reroll-row {
@@ -341,7 +341,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
@@ -410,14 +410,14 @@
   .option-difficulty {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 700;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
   }
 
   .option-type {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -444,7 +444,7 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: 12px;
     background: var(--gold);
     color: #080c10;
     border: none;
@@ -480,7 +480,7 @@
 
   .completed-banner {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -497,7 +497,7 @@
 
   .difficulty-badge {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
     font-weight: 700;
@@ -507,7 +507,7 @@
 
   .active-header h2 {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--text-primary);
@@ -516,7 +516,7 @@
 
   .hero-label {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 14px;
     margin: 0;
   }
 
@@ -584,7 +584,7 @@
 
   .meta-label {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--text-muted);
@@ -592,7 +592,7 @@
 
   .meta-value {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--text-primary);
   }

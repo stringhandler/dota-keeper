@@ -25,6 +25,9 @@ export default defineConfig(async () => ({
     port: 5177,
     strictPort: true,
     host: host || false,
+    // Allow all hosts so the Android WebView (tauri.localhost) and the Tauri
+    // proxy can fetch @fs paths without Vite's host-check blocking them.
+    allowedHosts: host ? "all" : undefined,
     hmr: host
       ? {
           protocol: "ws",

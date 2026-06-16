@@ -61,7 +61,7 @@
 
   .titlebar-title {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 3px;
     text-transform: uppercase;
@@ -70,7 +70,7 @@
   }
 
   .beta-badge {
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
     color: #1a1a1a;
