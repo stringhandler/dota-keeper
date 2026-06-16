@@ -1,5 +1,6 @@
 package com.volthawk.dota_keeper
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -8,7 +9,7 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-
+import app.tauri.plugin.PluginManager
 class MainActivity : TauriActivity() {
   private var webViewRef: WebView? = null
   private var insetsBottom = 0f
@@ -63,6 +64,19 @@ class MainActivity : TauriActivity() {
       return px / resources.displayMetrics.density
     }
     return 0f
+  }
+
+  // tao-0.35.0 crashes in handle_intent when processing custom-scheme VIEW intents
+  // because it calls get_string() on a null JString returned by Intent.getType().
+  // Intercept our deep-link scheme here, forward only to PluginManager (so
+  // DeepLinkPlugin still receives it), and skip Rust.onNewIntent entirely.
+  override fun onNewIntent(intent: Intent) {
+    if (intent.action == Intent.ACTION_VIEW && intent.data?.scheme == "dotakeeper") {
+      setIntent(intent)
+      PluginManager.onNewIntent(intent)
+      return
+    }
+    super.onNewIntent(intent)
   }
 
   override fun onResume() {

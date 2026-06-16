@@ -24,10 +24,11 @@
   import { setupI18n, setLocale, resolveLocale, locale } from "$lib/i18n.js";
   import { _ } from "svelte-i18n";
   import '../app.css';
-  import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
   // Initialise i18n once on app load
   setupI18n();
+
+  let { children } = $props();
 
   let isLoading = $state(true);
   let isMobile = $state(false);
@@ -51,7 +52,11 @@
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
+    // Safety net: never show the loading screen for more than 10 s.
+    // If Rust IPC hangs on startup the finally block in loadSettings never runs.
+    const loadingTimeout = setTimeout(() => { isLoading = false; }, 10_000);
     await loadSettings();
+    clearTimeout(loadingTimeout);
     appVersion = await getVersion();
 
     const lastSeen = localStorage.getItem('last_seen_version');
@@ -77,16 +82,17 @@
     }
 
     // Handle Steam deep link callback on Android (dotakeeper://auth?openid.*)
-    try {
-      await onOpenUrl(async (/** @type {string[]} */ urls) => {
-        for (const url of urls) {
-          if (url.startsWith('dotakeeper://auth')) {
-            const queryString = url.split('?')[1] ?? '';
-            await invoke('verify_steam_deep_link', { queryString });
-          }
+    // Uses listen() directly because @tauri-apps/plugin-deep-link has "browser":null,
+    // causing Vite to emit an empty module for WebView builds.
+    listen('deep-link://new-url', async (event) => {
+      const urls = /** @type {(string|null)[]} */ (event.payload);
+      for (const url of urls) {
+        if (typeof url === 'string' && url.startsWith('dotakeeper://auth')) {
+          const queryString = url.split('?')[1] ?? '';
+          await invoke('verify_steam_deep_link', { queryString });
         }
-      });
-    } catch (_) {}
+      }
+    });
 
     // Check analytics consent on every startup
     const consent = await getAnalyticsConsent();
@@ -238,8 +244,8 @@
         updateAvailable = true;
         updateVersion = update.version;
       }
-    } catch (e) {
-      console.error('Failed to check for updates:', e);
+    } catch (_) {
+      // updater plugin is desktop-only; silently skip on Android/iOS
     }
   }
 
@@ -266,7 +272,9 @@
 
 {#if isLoading}
   <div class="loading-screen">
-    <p>{$_('layout.loading')}</p>
+    <div class="loading-brand">DOTA KEEPER</div>
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <div class="loading-label">LOADING</div>
   </div>
 {:else if !isLoggedIn}
   <div class="login-screen">
@@ -435,7 +443,7 @@
 
       <!-- CONTENT -->
       <div class="content-area" class:content-area-mobile={isMobile}>
-        <slot />
+        {@render children()}
       </div>
     </div>
   </div>
@@ -477,16 +485,44 @@
   /* ── LOADING / LOGIN ── */
   .loading-screen {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    flex: 1;
-    background: var(--bg-base);
-    color: var(--gold);
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 12px;
-    letter-spacing: 3px;
+    gap: 20px;
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base, #111827);
+    padding-top: var(--sat, 0px);
+  }
+
+  .loading-brand {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 5px;
+    color: var(--gold, #f0b429);
     text-transform: uppercase;
-    padding-top: var(--sat);
+  }
+
+  .loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(240, 180, 41, 0.15);
+    border-top-color: var(--gold, #f0b429);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .loading-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .login-screen {
