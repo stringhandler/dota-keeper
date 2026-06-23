@@ -5,6 +5,16 @@ All notable changes to Dota Keeper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-23
+
+### Added
+- **Steam Login**: Sign in with Steam through a deep-link callback flow instead of manually entering your Steam ID.
+- **Sideloadable Android APK**: Android releases now include a universal `.apk` signed with APK Signature Scheme v2/v3, so it can be installed directly on a device (previously only a Play-only AAB was produced).
+
+### Changed
+- Upgraded the Tauri API to 2.11.0 and added deep-link plugin support.
+- Steam login now returns values directly instead of emitting events, making the callback handling more reliable.
+
 ## [1.1.1] - 2026-04-22
 
 ### Fixed
