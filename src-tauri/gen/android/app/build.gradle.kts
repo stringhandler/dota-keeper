@@ -37,7 +37,12 @@ android {
             }
         }
         getByName("release") {
-            isMinifyEnabled = true
+            // R8 strips/renames classes & methods that Tauri (tao/wry) and the
+            // Tauri plugins reach reflectively over JNI by name (e.g.
+            // WryActivity.getId()), which crashes on launch with a JavaException
+            // in tao's onActivityCreate. Keep it disabled until the keep rules in
+            // proguard-rules.pro are verified against the current tao/wry version.
+            isMinifyEnabled = false
             ndk {
                 debugSymbolLevel = "FULL"
             }
