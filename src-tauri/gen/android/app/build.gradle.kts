@@ -18,7 +18,12 @@ android {
     namespace = "com.volthawk.dota_keeper"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.volthawk.dota_keeper"
+        // Published Play Store package id. Kept distinct from `namespace`
+        // (the code/R package) on purpose: the single Play app is registered as
+        // com.dotakeeper.dotakeeper.beta and uploads must match this id. The beta
+        // CI path re-runs `tauri android init` with tauri.beta.conf.json and
+        // regenerates this file, so this value only governs the release path.
+        applicationId = "com.dotakeeper.dotakeeper.beta"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

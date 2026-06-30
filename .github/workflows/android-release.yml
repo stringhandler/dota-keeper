@@ -78,11 +78,11 @@ jobs:
           if [ "${{ github.ref }}" = "refs/heads/beta" ]; then
             echo "IS_BETA=true" >> $GITHUB_ENV
             echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}-beta" >> $GITHUB_ENV
-            echo "ANDROID_APP_ID=com.volthawk.dota_keeper_beta" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.dotakeeper.dotakeeper.beta" >> $GITHUB_ENV
           else
             echo "IS_BETA=false" >> $GITHUB_ENV
             echo "RELEASE_TAG=v${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
-            echo "ANDROID_APP_ID=com.volthawk.dota_keeper" >> $GITHUB_ENV
+            echo "ANDROID_APP_ID=com.dotakeeper.dotakeeper.beta" >> $GITHUB_ENV
           fi
 
       # ── AAB (for Google Play Store) ────────────────────────────────────────
